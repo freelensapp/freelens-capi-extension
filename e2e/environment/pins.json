@@ -1,0 +1,56 @@
+{
+  "description": [
+    "The versions of what the scripts of the test environment download, and the SHA-256 of each file, which they check before they use it (e2e/scripts/pins.mts). kind is pinned once, in the env of .github/workflows/integration-tests.yaml, and the scripts read it from there.",
+    "Renovate updates the version of each object that names a datasource, a depName and a version, in this order. The digests of the new release, and for Cluster API the commit of its tag and the digests of the sources at that commit, are recorded in the same pull request, from the release on GitHub: until then the scripts refuse the downloads, and so does pnpm e2e:pins:check, which the workflow e2e-pins-check.yaml runs on every change to this file.",
+    "managementKubernetes is the version of Kubernetes of the kind clusters, the tag of kindest/node, inside supported, the minor versions that the release of Cluster API supports for a management cluster in the table of versions of its book; the scripts refuse it outside them, and a rule of Renovate keeps it inside them. The integration workflow of the template has a version of its own, which moves without this one.",
+    "certManager is the version that the pinned clusterctl installs by default, and workloadKubernetesVersion one that the release of Cluster API supports for workload clusters: both change with Cluster API, and Renovate does not follow them. The range of managementKubernetes changes with Cluster API too."
+  ],
+  "clusterApi": {
+    "datasource": "github-releases",
+    "depName": "kubernetes-sigs/cluster-api",
+    "version": "v1.14.4",
+    "commit": "4356c154f4a76b8939748ef7ebc2d0793ffe47e8",
+    "workloadKubernetesVersion": "v1.37.0",
+    "assets": {
+      "core-components.yaml": "0030264eb0a0d90ebacc9da8f6bbb717bee32e45ffadc4a74784fb5ad7b9bb0b",
+      "bootstrap-components.yaml": "cf805775f24d197581b06e938bcd0eb9a9ed49d675f67e0f689ce7b71e5e397c",
+      "control-plane-components.yaml": "7fecb41843dcff7e05ab539dbe497c050a9aa7c888d4fb68be12d3c1805be438",
+      "infrastructure-components-development.yaml": "b37e8da93a6d68f4f66ceacf505ef1bd271b38a120a06b7bcabceaa8b6ee639f",
+      "cluster-template-development.yaml": "7dd5249f22a4ce0fbe667d1c764dd5919775f81847bceb2aa16fc5acb138b99b",
+      "cluster-template-development-mp.yaml": "1f59b93e3c5439a7227d66a3d06a7ac0f584db07bfeee0a85cfa99dff2a45956",
+      "clusterclass-quick-start.yaml": "85d414afc4af00e4ff4472cec46ab49a6aa85cb839a771b44ab0a6c7f6c8e24e",
+      "metadata.yaml": "c470906f551ac3e3e9aedc9a3e733b5a5994428693df43e95f65ea67c035f9fe",
+      "clusterctl-darwin-amd64": "279842ecb14e89006395583e822fe0b0015aec497c490755690a71e83ac985a4",
+      "clusterctl-darwin-arm64": "bdd7e8dd0863f9c996f508b7525a86a0b894f36c6b05335b2659a1d928e8d20e",
+      "clusterctl-linux-amd64": "c7301a8515ed329562b06c958463051dd55d9649fac591393f5df54a868fa79b",
+      "clusterctl-linux-arm64": "25a693b888a307f68ea00f9a251aa02971026bc2795b518142a565737902289f"
+    },
+    "sources": {
+      "cmd/clusterctl/config/crd/bases/clusterctl.cluster.x-k8s.io_providers.yaml": "6402bb22f0b3b6439c5571081a340cc052ccbc4a7c42a2f77c1d291c45eb3402",
+      "test/e2e/data/cni/kindnet/kindnet.yaml": "01af8774780d5899f3e03136c004f628f7fbf75fbadad0010a6cec27a2c6ed5f"
+    }
+  },
+  "managementKubernetes": {
+    "datasource": "docker",
+    "depName": "kindest/node",
+    "version": "v1.37.0",
+    "supported": {
+      "from": "v1.33",
+      "to": "v1.37"
+    }
+  },
+  "clusterApiOperator": {
+    "datasource": "github-releases",
+    "depName": "kubernetes-sigs/cluster-api-operator",
+    "version": "v0.30.1",
+    "assets": {
+      "operator-components.yaml": "e1c91ebc22ced777c7f3be5c45bcaa8a04687e124b453c5b351f9f727ae1f63e"
+    }
+  },
+  "certManager": {
+    "version": "v1.21.3",
+    "assets": {
+      "cert-manager.yaml": "c04a51295adda2b1a775146751f973e787190778c7f35180861d9678876e5c74"
+    }
+  }
+}

@@ -26,7 +26,10 @@
     // allowArbitraryExtensions, while knip resolves `import styles from
     // "./x.module.scss"` to the stylesheet, so it would report them as unused
     "!src/**/*.d.{css,scss}.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    // the scripts of the test environment, which the scripts of package.json
+    // run with node
+    "e2e/scripts/**/*.mts"
   ],
 
   // The Vite plugin adds the renderer entry of vite.config.mjs as an entry of
@@ -61,14 +64,16 @@
 
   "typescript": {
     // one program per runtime environment, one for the tests, one for the
-    // integration tests and one for the tooling files
+    // integration tests, one for the tooling files and one for the scripts of
+    // the test environment
     "config": [
       "src/main/tsconfig.json",
       "src/renderer/tsconfig.json",
       "src/common/tsconfig.json",
       "src/tsconfig.json",
       "integration/tsconfig.json",
-      "tsconfig.json"
+      "tsconfig.json",
+      "e2e/scripts/tsconfig.json"
     ]
   },
 

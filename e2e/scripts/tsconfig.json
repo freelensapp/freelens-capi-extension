@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": ["node"],
+    // Node runs the scripts as they are, stripping their types: modules resolve as Node resolves them, with
+    // the extension of each relative import, a type is imported with `import type`, and no syntax needs
+    // more than stripping, such as an enum.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["./**/*.mts"]
+}
