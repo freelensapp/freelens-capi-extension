@@ -135,6 +135,22 @@
       "matchDepNames": ["npm"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "The pins of the test environment: Renovate updates the version of a project in e2e/environment/pins.json, and the digests of what the scripts download from the new release, with the commit of the tag of Cluster API and the digests of its sources at that commit, are recorded in the same pull request. The workflow e2e-pins-check.yaml downloads every pinned file and checks it against its pin, so the pull request fails until they are (docs/development/TESTING.md, The pins).",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["e2e/environment/pins.json"],
+      "matchDepNames": ["kubernetes-sigs/cluster-api", "kubernetes-sigs/cluster-api-operator"],
+      "prBodyNotes": [
+        "Record in `e2e/environment/pins.json` the SHA-256 of every asset it lists for {{{newVersion}}}, from the release on GitHub (`gh release view {{{newVersion}}} --repo {{{depName}}} --json assets --jq '.assets[] | [.name, (.digest | ltrimstr(\"sha256:\"))] | @tsv'`), and for Cluster API the commit of its tag and the SHA-256 of each source at that commit. The check of the pins, `pnpm e2e:pins:check`, fails until then."
+      ]
+    },
+    {
+      "description": "The Kubernetes of the kind clusters of the test environment, kindest/node in e2e/environment/pins.json, stays within the versions that Cluster API v1.14.4 supports for a management cluster, v1.33 to v1.37: the table of the core provider in docs/book/src/reference/versions.md at the tag, https://github.com/kubernetes-sigs/cluster-api/blob/v1.14.4/docs/book/src/reference/versions.md#core-provider-cluster-api-controller (commit 4356c154f4a76b8939748ef7ebc2d0793ffe47e8), where v1.31 and v1.32 are for workload clusters only. The range changes with Cluster API, here and in managementKubernetes.supported of the pins, which the scripts check the version against.",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["e2e/environment/pins.json"],
+      "matchDepNames": ["kindest/node"],
+      "allowedVersions": "/^v?1\\.3[3-7]\\.[0-9]+$/"
     }
   ],
   "customDatasources": {
@@ -188,6 +204,15 @@
         "(\\s+|.*?@)(?<currentValue>\\S+?)!?\\s*#\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(\\s+versioning=(?<versioning>\\S+))?(\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\n"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "description": "The versions of the projects that the scripts of the test environment download, in e2e/environment/pins.json: each object names its datasource, its depName and its version, in this order. cert-manager names none: it is the version that the pinned clusterctl installs, and changes with Cluster API.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^e2e/environment/pins\\.json$/"],
+      "matchStrings": [
+        "\"datasource\":\\s*\"(?<datasource>[^\"]+)\",\\s*\"depName\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "semver"
     }
   ]
 }

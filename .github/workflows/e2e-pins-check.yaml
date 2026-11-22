@@ -1,0 +1,69 @@
+name: Test environment pins
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/e2e-pins-check.yaml
+      - e2e/environment/pins.json
+      - e2e/scripts/**
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - .github/workflows/e2e-pins-check.yaml
+      - e2e/environment/pins.json
+      - e2e/scripts/**
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check-pins:
+    name: test environment pins
+
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Get pnpm cache directory
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
+
+      - name: Use pnpm cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.pnpm_cache_dir }}
+          key: ubuntu-26.04-arm-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ubuntu-26.04-arm-node-
+
+      - name: Install pnpm dependencies
+        id: install-pnpm
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        continue-on-error: true
+
+      - name: Install pnpm dependencies (retry)
+        if: steps.install-pnpm.outcome == 'failure'
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+
+      # Downloads every file that e2e/environment/pins.json names, from the official release or source of its
+      # project and not from a cache, and checks its SHA-256 against the pin; then the release and the commit
+      # that the clusterctl of the runner reports. A pull request that changes a version without the digests
+      # of the new release, or the commit of its tag, fails here. No cluster is created.
+      - name: Check the pins of the test environment
+        run: pnpm e2e:pins:check

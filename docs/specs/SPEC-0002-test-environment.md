@@ -115,7 +115,55 @@ the pre-review pass, which has a spec of its own at the end of M1.
 
 - Unit: the parser of the pins file, the check of a local API server, the
   shift of the times of a fixture, the cleaning of a captured object; each
-  seen failing on a broken case.
+  seen failing on a broken case. In `test/environment.test.ts`, by the groups
+  of its cases, for the first pull request:
+  - the pins: the pins of the repository are read, and the Kubernetes of the
+    kind clusters is inside the range that they declare, which the rule of
+    Renovate allows and no other; refused, a digest in capitals or cut short,
+    a source without its digest, an asset the scripts do not download, a
+    prerelease, a version without its `v`, a Kubernetes of the workload
+    clusters that is not a release, a commit cut short, another repository or
+    datasource for Renovate, a version before its datasource and depName, a
+    project the scripts do not know, a Kubernetes of the kind clusters above
+    or below its range, a range that is not of minor versions, another image
+    for it, a file that is not JSON; kind is read from the top-level env of a
+    workflow, which is refused without kind, with a version that is not one,
+    with kind only in the env of a job, and with kind twice;
+  - the check of a local API server: loopback addresses accepted, in their
+    forms, and any other address or name refused; refused, a server over HTTP
+    or with no port, a second context, another current context, a context that
+    names another cluster or user, a cluster with no authority, with a proxy or
+    that skips the verification of the server, a credential plugin; the node
+    that the scripts created accepted, and refused, a node that the state did
+    not record, another container of the same name, another name, the label of
+    another kind cluster, another role, a node that is not running, another
+    port, every address, no socket of Docker for the real project;
+  - the local Docker: a Unix socket accepted, a context or a `DOCKER_HOST` over
+    TCP or SSH refused;
+  - the check of a digest, and the downloads: a download kept with its digest,
+    refused and not kept without it, a good copy of the cache used with no
+    download, a changed copy removed and downloaded again, a fresh download
+    that fails keeping the copy, and every pinned file listed once from the
+    official source of its project;
+  - the private state: its folder, inside the repository, the repository
+    itself, or a symbolic link refused; the lock of a run, taken when free,
+    released by its holder only, refused while held, taken over from a run
+    that is gone, not while another run takes it over; the kubeconfig of the
+    user, and its changes reported;
+  - the environment of a command: nothing of the user but what finds the
+    tools and Docker, the kubeconfig of the scripts, no kuberc;
+  - the containers of a workload cluster, and every one left in place beside a
+    container that the development provider did not make; `down`, which
+    deletes the cluster of the real project first, nothing when the kind
+    clusters cannot be listed, no kind cluster that it did not create, no
+    workload container without the record of its cluster, and keeps the state
+    when a step fails;
+  - the command line, which refuses a name that is not a command, such as
+    `constructor`; the limits of inotify and the clusterctl of the system; the
+    definitions of a release file, kindnet and its label.
+
+  The shift of the times of a fixture and the cleaning of a captured object
+  come with the fixtures, in the second pull request.
 - In Freelens, on the definitions and the fixtures: the extension installs
   and activates with no error in either process, and the host lists the
   objects of every fixture.
@@ -128,3 +176,79 @@ the pre-review pass, which has a spec of its own at the end of M1.
 ## Notes and deviations
 
 Filled during implementation.
+
+The spec is implemented in two pull requests: the first has the scripts, the
+pins, their check in CI, the documents and the unit tests; the second the
+fixtures, their capture, the session in Freelens on the definitions and the
+fixtures, and the jobs of CI of the two tiers.
+
+- Decided while implementing the first part: the kind clusters are
+  `freelens-capi-definitions` and `freelens-capi-management`, and the workload
+  clusters `freelens-capi-md`, with a MachineDeployment of two workers and
+  kindnet, and `freelens-capi-mp`, with a MachinePool of one worker and no
+  network add-on, both in `default` ([TESTING.md](../development/TESTING.md)).
+  These names are global to the Docker daemon: the scripts record the node of
+  each kind cluster they create, and use again, or delete, only the cluster
+  whose node they recorded.
+- Deviation, decided while implementing: kind is pinned once, by version and
+  with no digest, in the env of the integration workflow of the template,
+  which the scripts read, and not in the one file of pins that the Design
+  names: the template keeps it there for its own integration tests, and
+  Renovate follows it there.
+- Decided while implementing: the kind clusters do not take the Kubernetes of
+  the integration workflow, which Renovate moves for the template whatever
+  Cluster API supports. They take `managementKubernetes` of the pins, the tag
+  of `kindest/node`, `v1.37.0`, with the minor versions that `v1.14.4`
+  supports for a management cluster, `v1.33` to `v1.37`, declared next to it
+  (the table of the core provider in `docs/book/src/reference/versions.md` at
+  the tag, where `v1.31` and `v1.32` are for workload clusters only). The
+  scripts refuse a version outside the declared range; a rule of Renovate
+  follows the tag within it, and a unit test checks that the rule allows the
+  same range. The range changes with Cluster API. The node image is
+  `kindest/node` at that version, by its tag.
+- Decided while implementing: the workload clusters take their version of
+  Kubernetes from the pins, `v1.37.0`, which the release supports for workload
+  clusters (`docs/book/src/reference/versions.md` at the tag), and not from
+  the workflow, which Renovate updates whatever Cluster API supports.
+- Deviation, decided while implementing: the `Provider` definition of the
+  inventory of clusterctl comes from the source of Cluster API at the commit of
+  the tag, checked by digest, and not from a release, as the Design says of the
+  definitions of the operator and of the inventory: no asset of the release
+  carries it, and clusterctl installs it from a copy inside its binary.
+- Deviation, decided while implementing: the kind cluster of the real project
+  has one IP family, IPv4, where the quick start of the book makes a dual-stack
+  one (`networking.ipFamily: dual`); the workload clusters of the scripts are
+  IPv4 clusters.
+- Deviation, decided while implementing: `up` waits for `freelens-capi-md`
+  alone to report `Available` `True`, where the Tests say "workload clusters".
+  `freelens-capi-mp` reported `Available` `True` in every run too, with no Node
+  ready, but only because the summary of the project leaves MachinePools out
+  (SPEC-0001, H1), which a later release can change.
+- Decided while implementing: the pins name cert-manager too, at the version
+  that the pinned clusterctl installs by default, `v1.21.3`, with the digest
+  of its `cert-manager.yaml`, so that clusterctl reads every manifest from a
+  local repository of checked files and downloads nothing itself. The digests
+  pin the manifests; the images they name are pulled by their tags.
+- Decided while implementing: a command, `pnpm e2e:pins:check`, downloads
+  every pinned file and checks it, with no cluster, and the workflow
+  `e2e-pins-check.yaml` runs it on every change to the pins or the scripts, so
+  that a pull request that changes a version without the digests of its
+  release fails before the jobs of the two tiers exist.
+- Decided while implementing: the scripts raise the limits of inotify to the
+  values of the troubleshooting page of the book of Cluster API, 8192
+  instances and 1048576 watches.
+- Decided while implementing: the definitions of the first tier are the
+  documents of the release files whose kind is `CustomResourceDefinition`,
+  applied as they are with a server-side apply, which keeps no copy of each
+  one in an annotation of its own.
+- Seen on 2026-11-22, on a kind cluster with Kubernetes 1.37.0 and the pins of
+  this spec: the development provider gives the containers of a workload
+  cluster the labels of kind, `io.x-k8s.kind.cluster` with the name of the
+  workload cluster and `io.x-k8s.kind.role`, and names them after it, so kind
+  lists the workload clusters as clusters of its own; `down` deletes them by
+  that label, their name and their role. `freelens-capi-mp` reported
+  `Available` `True` with no control plane Machine ready, as SPEC-0001 notes.
+  Docker published the API server of the kind node and of each control plane
+  Machine on `127.0.0.1`, and the load balancer of each workload cluster on
+  `0.0.0.0`, its API server and the statistics of HAProxy, as the Safety
+  section of [TESTING.md](../development/TESTING.md) says.

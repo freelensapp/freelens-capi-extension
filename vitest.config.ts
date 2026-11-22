@@ -23,8 +23,9 @@ export default defineConfig({
     globals: true,
     exclude: ["integration/**", "node_modules/**", "dist/**"],
     // The same files that `src/tsconfig.json` type-checks and Biome lets
-    // import "vitest".
-    include: ["src/**/*.test.{ts,tsx}"],
+    // import "vitest": the tests of the sources, and those of `test/`, such
+    // as the tests of the scripts of the test environment.
+    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.ts"],
     passWithNoTests: true,
     alias: {
       // The host provides `@freelensapp/extensions` on

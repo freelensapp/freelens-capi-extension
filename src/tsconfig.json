@@ -4,7 +4,10 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"],
     "jsx": "react-jsx",
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    // The tests of the scripts of the test environment import them by their
+    // `.mts` names, as Node runs them.
+    "allowImportingTsExtensions": true
   },
   "include": ["./**/*.test.ts", "./**/*.test.tsx", "../test/**/*"]
 }

@@ -197,6 +197,7 @@ pnpm type:check:sources        # main and renderer, each with src/common/
 pnpm type:check:tests          # Tests and test support
 pnpm type:check:tooling        # Vite and Vitest configs, build plugins
 pnpm type:check:integration    # Integration tests
+pnpm type:check:scripts        # Scripts of the test environment
 pnpm type:check:environments   # Environment tests
 
 # Linting & formatting
@@ -211,6 +212,14 @@ pnpm knip:check           # Unused files, unused and unlisted dependencies (knip
 # Tests
 pnpm test:unit            # vitest
 pnpm test:integration     # vitest, against Freelens dev with a kind cluster
+
+# Test environment (docs/development/TESTING.md)
+pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
+pnpm e2e:cluster:up:definitions   # The definitions of Cluster API alone, on another kind cluster
+pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters
+pnpm e2e:pins:check               # Downloads every pinned file and checks it, with no cluster
+pnpm demo:up                      # e2e:cluster:up, then how to open it in Freelens
+pnpm demo:down                    # Alias for e2e:cluster:down
 
 # Build
 pnpm build                # Both Vite runs, without the type check
@@ -233,9 +242,12 @@ src/
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
+test/environment.test.ts         # Unit tests of the scripts of the test environment
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
 integration/__tests__/           # Integration tests, run against Freelens dev over CDP, and their shared module
+e2e/environment/pins.json        # Versions and digests of what the scripts of the test environment download
+e2e/scripts/                     # The scripts of the test environment, run by Node as they are
 ```
 
 The extension registers nothing yet: each feature adds its files with its
@@ -753,6 +765,7 @@ does not have fails `pnpm type:check` rather than the extension:
 | `src/tsconfig.json`          | ES2024, DOM, DOM.Iterable | `node`, `vite/client`             | `*.test.ts(x)` under `src/`, and `test/`        |
 | `integration/tsconfig.json`  | ES2024, DOM, DOM.Iterable | `node`, `@freelensapp/extensions` | `integration/`                                  |
 | `tsconfig.json`              | ES2024                    | `node`                            | `vite.config.mjs`, the Vitest configs, `build/` |
+| `e2e/scripts/tsconfig.json`  | ES2024                    | `node`                            | `e2e/scripts/`                                  |
 
 All of them extend `tsconfig.base.json`, which has the compiler options of
 Freelens's fixture extension: `strict`, `moduleResolution: Bundler`,
@@ -875,6 +888,23 @@ The root `tsconfig.json` checks the tooling files. It has `checkJs`, so the
 Vite config and the build plugins are type-checked too; give their function
 parameters JSDoc types.
 
+### The scripts of the test environment
+
+Node runs `e2e/scripts/*.mts` as they are, stripping their types, so
+`e2e/scripts/tsconfig.json` checks them as Node runs them: `module: NodeNext`,
+which wants the extension of every relative import, `verbatimModuleSyntax`,
+which wants `import type` for a type that Node would otherwise look for at run
+time, and `erasableSyntaxOnly`, which refuses syntax that stripping cannot
+remove, such as an enum. Each of the three fails `pnpm type:check:scripts` on
+a mistake that the other programs accept and Node rejects. `environment.mts`
+is the entry that the scripts of `package.json` run, and the only module that
+runs anything when it is imported: the commands are in `commands.mts`, and
+what they check and decide is in modules of pure functions, or of functions
+that take what they act on, such as `fetch`, a folder or the operations of
+`down`. Their unit tests are in `test/environment.test.ts`, which imports them
+by their `.mts` names, so `src/tsconfig.json` has `allowImportingTsExtensions`,
+and Vitest includes `test/**/*.test.ts` next to the tests of the sources.
+
 ## Lint and CI
 
 ### Biome
@@ -953,6 +983,11 @@ Vitest alias target `test/freelens-extensions.ts` and the probes in
 `src/renderer/index.tsx!`, and the production pass then skips the renderer.
 `--no-config-hints` is set because one config serves both passes, and an entry
 that only the production pass needs is reported as redundant by the other.
+The scripts of the test environment need no entry: knip finds
+`e2e/scripts/environment.mts` in the scripts of `package.json`, which run it
+with `node`, and the other scripts through its imports. `project` lists
+`e2e/scripts/**/*.mts`, so that a script that nothing reaches is reported, and
+`typescript.config` lists their program.
 
 One more setting keeps the file check to real findings. `project` leaves out
 the CSS module declarations with `!src/**/*.d.{css,scss}.ts`, those of plain
@@ -974,15 +1009,16 @@ problem does not show.
 
 ### Workflows
 
-| Workflow                 | Runs                                                                          |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `type-check.yaml`        | `pnpm type:check`                                                             |
-| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                            |
-| `unit-tests.yaml`        | `pnpm test:unit`                                                              |
-| `trunk-check.yaml`       | `trunk check --all`                                                           |
-| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                 |
-| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version |
-| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                 |
+| Workflow                 | Runs                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| `type-check.yaml`        | `pnpm type:check`                                                                     |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                    |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                                      |
+| `trunk-check.yaml`       | `trunk check --all`                                                                   |
+| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                         |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version         |
+| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check` |
+| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                         |
 
 The type check has a workflow of its own, on pull requests and on pushes to
 `main`, as in Freelens. It runs every program, tests, tooling and environment
