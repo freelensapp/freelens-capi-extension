@@ -1,6 +1,6 @@
 # SPEC-0002: Test environment
 
-- **Status:** Approved
+- **Status:** Verified
 - **Milestone:** `M1` (see [ROADMAP.md](../development/ROADMAP.md))
 - **Reviewed project:** Cluster API `v1.14.4`, commit
   `4356c154f4a76b8939748ef7ebc2d0793ffe47e8`
@@ -488,3 +488,7 @@ fixtures, and the jobs of CI of the two tiers.
   a checkout. A value that starts as a document marker, which yamlfmt quotes
   and yamllint then finds quoted for nothing, is written in a literal block,
   and a text with a line that starts with a tab in double quotes.
+- Verified on 2026-11-25: both pull requests of the spec and the follow-up
+  of the review of their fixes are merged, and every job of CI ran green on
+  `main` after them, those of the fixtures and of the real project included.
+  The spec has no manual check.

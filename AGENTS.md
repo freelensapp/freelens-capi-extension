@@ -116,8 +116,8 @@ external" in Freelens's `migrating-from-v1.md`, and contracts C3 and C11 of
 
 ## Development process (binding)
 
-This repository follows the Freelens extension kit, version `v0.1.2`:
-`https://github.com/freelensapp/freelens-extension-kit/tree/v0.1.2`. It is
+This repository follows the Freelens extension kit, version `v0.1.3`:
+`https://github.com/freelensapp/freelens-extension-kit/tree/v0.1.3`. It is
 developed spec first. Before implementing anything, read these, as far as
 they exist yet:
 
