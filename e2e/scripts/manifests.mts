@@ -284,10 +284,11 @@ export function machineSetWithoutNode(cluster: string, namespace: string, versio
   ];
 }
 
-// One object of each kind of the fixtures, those that have a status and those that have none, but the Docker
-// kinds of the development provider, which no template of the release uses, as a user writes it: no controller
-// has reconciled one of them, so none has a status yet. They make one Cluster without a topology, whose parts
-// name each other, and its ClusterClass, with a fictitious pool of addresses.
+// One object of each kind of the fixtures, those that have a status and those that have none, two of
+// DevMachineTemplate and of KubeadmConfig, and none of the Docker kinds of the development provider, which no
+// template of the release uses, as a user writes it: no controller has reconciled one of them, so none has a
+// status yet. They make one Cluster without a topology, whose parts name each other, and its ClusterClass, with
+// a fictitious pool of addresses.
 export function objectsWithoutStatus(
   name: string,
   namespace: string,

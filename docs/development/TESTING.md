@@ -150,7 +150,7 @@ state, so that the fixtures of every state can be on the first tier at once.
 | `machine-pools`                 | `freelens-capi-machine-pools`         | A Cluster whose only workers are a MachinePool, with no network add-on                                                                               |
 | `machine-pool-without-machines` | `freelens-capi-pool-without-machines` | Written by hand, from SPEC-0001 R2.66 to R2.69: a MachinePool whose provider keeps no Machines, which the development provider cannot show           |
 | `remediation`                   | `freelens-capi-remediation`           | Both workers marked for remediation with `maxInFlight` 1: one remediated, its deletion held by a hook of the scripts, the other deferred             |
-| `no-status`                     | `freelens-capi-no-status`             | One object of each kind but the Docker kinds, as a user writes it, in a server-side dry run of its creation                                          |
+| `no-status`                     | `freelens-capi-no-status`             | One or two objects of each kind but the Docker kinds, as a user writes them, in a server-side dry run of their creation                              |
 
 The files are YAML as kubectl writes it, with the keys in order and the
 sequences unindented under their key, quotes only where a value needs them, as
@@ -280,15 +280,15 @@ included, so a fixture that does not pass it fails there; no schema is changed.
   fixtures of `healthy`, before it starts Freelens dev with a profile that syncs
   the kubeconfig of the scripts alone. The session of the fixtures,
   `integration/__tests__/fixtures.tests.ts`, opens that cluster and checks that
-  the host loads the extension in the frame of the cluster, and activates it
-  there with no error in either process, and that the host lists every object
-  of the set, in the list of its kind, by the cell of its name;
-  `TEST_FIXTURE_STATE` names another state. The list of the host keys its
-  columns by the names of the printer columns, and the definitions of
-  MachineDeployment and KubeadmControlPlane at `v1beta2` name two columns
-  `Available`, so React logs a repeated key in Freelens dev. The session decides
-  each such error when it arrives: it leaves it out only while the frame that
-  logged it shows the list of the host for a custom resource, with no details
+  the host imports the extension in the frame of the cluster with no error in
+  either process, and that it lists every object of the set, in the list of
+  its kind, by the cell of its name; `TEST_FIXTURE_STATE` names another state.
+  The list of the host keys its columns by the names of the printer columns,
+  and the definitions of MachineDeployment and KubeadmControlPlane at
+  `v1beta2` name two columns `Available`, so React logs a repeated key in
+  Freelens dev. The session decides each such error as it arrives, on the
+  address that the frame that logged it had then: it leaves it out only when
+  that address is the list of the host for a custom resource, with no details
   panel open, and the key is a column that the list repeats, as the host makes
   its columns from the definition; any other repeated key counts (`AGENTS.md`).
   The session of the template installs the extension, as before.

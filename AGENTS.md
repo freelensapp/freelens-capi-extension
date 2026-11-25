@@ -1070,12 +1070,15 @@ logged by either process:
   `appPreferences` entry. It needs no cluster.
 - `fixtures.tests.ts` opens the kind cluster with the definitions of Cluster
   API and the fixtures of one state, `healthy` unless `TEST_FIXTURE_STATE`
-  names another, and checks that the host loads the extension in the frame of
-  the cluster, where it links the stylesheet of the extension once it has
-  imported its renderer, and activates it with no error in either process, and
-  that the host lists every object of the fixtures, by the cell of its name, in
-  the list of the host for its kind, which it opens by its address with its
-  namespace filter on the namespace of the state. It reads the fixtures with
+  names another, and checks that the host imports the renderer of the
+  extension in the frame of the cluster, which it shows by linking the
+  stylesheet of the extension there before it activates it, with no error in
+  either process, an error of the activation failing the teardown, and that
+  the host lists every object of the fixtures, by the cell of its name, in the
+  list of the host for its kind, which it opens by its address with its
+  namespace filter on the namespace of the state. The first check needs the
+  extension to ship `dist/renderer.css`, and fails at once, saying so, when
+  the build has none. It reads the fixtures with
   the modules of the scripts of the test environment, and changes nothing on
   the cluster. It keeps an in-place installation of this checkout that is
   enabled, and installs it otherwise.
@@ -1141,18 +1144,24 @@ and KubeadmControlPlane of Cluster API name two columns `Available`, their
 condition and their count of available replicas. React logs the repeated key
 as an error at every render of their lists in Freelens dev
 (`Encountered two children with the same key`). The session decides each such
-error when it arrives, by the frame that logged it, found by the host of the
-script that logged it: it leaves the error out only while that frame shows the
-list of the host for a custom resource, `/crd/<group>/<plural>`, with no
-details panel open (no `kube-details` in its address), and the key is one that
-the list gives two columns, as the host makes them from the CRD: the name, the
-namespace, the printer columns of the version it reads (the stored one when it
-is served, else the served one of the highest priority) without those of a
-priority above 0, and the age. Any other repeated key counts, those of the
-extension's own views included, and so does one that a details panel logs over
-a list. The decision does not wait for the session to open a list, so it also
-covers a list that Freelens restores when it opens the cluster; `errors()`
-waits for the decisions of the messages that arrived.
+error in the handler of its message, as it arrives, on the address of the
+frame that logged it, found by the host of the script that logged it, as
+Playwright last saw it: Playwright follows the navigations of a frame in order
+with its console messages, so that is the address the frame had when it
+logged the error. The error is left out only when that address is the list of
+the host for a custom resource, `/crd/<group>/<plural>`, with no details panel
+open (no `kube-details` in it), and the key is one that the list gives two
+columns, as the host makes them from the CRD: the name, the namespace, the
+printer columns of the version it reads (the stored one when it is served,
+else the served one of the highest priority) without those of a priority
+above 0, and the age. `hostLists` reads those keys before it opens a list; for
+a list that the session finds open, such as one that Freelens restores when it
+opens the cluster, they are read when its first message arrives, and that
+decision waits for the read, which counts the error, with its reason, when it
+fails. Any other repeated key counts, those of the extension's own views
+included, and so does one that a details panel logs over a list. `errors()`
+and the teardown wait until no decision is pending, those that start meanwhile
+included.
 
 The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent

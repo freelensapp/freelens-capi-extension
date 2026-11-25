@@ -199,13 +199,16 @@ the pre-review pass, which has a spec of its own at the end of M1.
     document marker in a literal block; what yamlfmt makes of a long value
     read; refused, a plain value of another type in YAML 1.1, a tab that
     indents, a key twice, and a document that is not a mapping; the objects of
-    a file in the order of the code units of their names, in every locale;
+    a file in the order of the code units of their names, with the collation
+    of a language where it differs;
   - the states of the fixtures: a name and a namespace of their own, one set
     written by hand; a healthy workload cluster told from one that is not,
     and from one with a MachineHealthCheck that does not report every Machine
     that its selector targets healthy, or that has not counted them yet; the
-    labels that a selector matches; the sets of `healthy` and `paused` with
-    every Machine that a MachineHealthCheck targets healthy;
+    Machines that an annotation keeps out of its checks left out, and a
+    selector with expressions; the labels that a selector matches; the sets of
+    `healthy` and `paused` with every Machine that a MachineHealthCheck targets
+    healthy;
   - the providers of the real project: those of the pins that the inventory
     of clusterctl lacks, and those at another release;
   - the fixture sets of the repository: each written as the scripts write it,
@@ -448,17 +451,21 @@ fixtures, and the jobs of CI of the two tiers.
   replicas (core/config/crd/bases/cluster.x-k8s.io_machinedeployments.yaml:873-889;
   controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml:2878-2894),
   so React logs a repeated key at every render of their lists. Decided while
-  implementing: the session of the fixtures decides each such error when it
-  arrives, by the frame that logged it, and leaves it out only while that
-  frame shows the list of the host for a custom resource, with no details panel
-  open, and the key is a column that the list repeats, as the host makes its
-  columns from the definition: the printer columns of the version it reads,
-  without those of a priority above 0. Any other repeated key counts, those of
-  the views of the extension included; the error is the host's, and says
-  nothing about the extension. The session checks that the host loaded the
-  extension in the frame of the cluster, where the host links its stylesheet
-  once it has imported its renderer, and finds every object of a set by the
-  cell of its name in the list of the host.
+  implementing: the session of the fixtures decides each such error in the
+  handler of its message, on the address that the frame that logged it had
+  then, as Playwright reports it in order with the messages, and leaves it out
+  only when that address is the list of the host for a custom resource, with
+  no details panel open, and the key is a column that the list repeats, as the
+  host makes its columns from the definition: the printer columns of the
+  version it reads, without those of a priority above 0. The keys of a list
+  are read before the session opens it, or, for a list that Freelens restores,
+  when its first message arrives. Any other repeated key counts, those of the
+  views of the extension included; the error is the host's, and says nothing
+  about the extension. The session checks that the host imported the renderer
+  of the extension in the frame of the cluster, where the host links its
+  stylesheet before it activates it, an error of the activation failing its
+  teardown, and finds every object of a set by the cell of its name in the
+  list of the host.
 - Decided while implementing: the jobs of the two tiers are the workflow
   `test-environment.yaml`, on `ubuntu-24.04`, an amd64 runner, the processor of
   the machine where the scripts ran the captures. A new push to a pull request

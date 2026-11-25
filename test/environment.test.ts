@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertDigest,
   assertKindNode,
@@ -1828,13 +1828,28 @@ describe("the YAML of the fixtures", () => {
   });
 
   it("orders the objects of a file by the code units of their names, in every locale", () => {
+    // The system as one in Czech, where `ch` is a letter of its own, after `h`: an order that follows the
+    // locale, as `localeCompare` does, puts `ch-b` last.
+    const czech = new Intl.Collator("cs").compare;
+    const localeCompare = vi.spyOn(String.prototype, "localeCompare").mockImplementation(function (
+      this: unknown,
+      that: string,
+    ) {
+      return czech(String(this), that);
+    });
     const machine = (name: string) => fixtureObject("Machine", name);
-    const files = fixtureFiles([machine("h-c"), machine("ch-b"), machine("d-a")]);
 
-    // In Czech, `ch` is a letter of its own, after `h`.
-    expect(
-      parseDocuments(files.get("machine.yaml") ?? "").map((object) => (object.metadata as { name: string }).name),
-    ).toEqual(["ch-b", "d-a", "h-c"]);
+    try {
+      expect(["h-c", "ch-b", "d-a"].sort((a, b) => a.localeCompare(b))).toEqual(["d-a", "h-c", "ch-b"]);
+
+      const files = fixtureFiles([machine("h-c"), machine("ch-b"), machine("d-a")]);
+
+      expect(
+        parseDocuments(files.get("machine.yaml") ?? "").map((object) => (object.metadata as { name: string }).name),
+      ).toEqual(["ch-b", "d-a", "h-c"]);
+    } finally {
+      localeCompare.mockRestore();
+    }
   });
 
   it("reads what yamlfmt makes of a long value: folded over lines, with comments and empty lines", () => {
@@ -1963,6 +1978,44 @@ describe("the states of the fixtures", () => {
     expect(notHealthy(checkedWorkers({ expectedMachines: 2, currentHealthy: 2 }, [true, false]))).toBe(
       "Machine workload-md-0-b, which MachineHealthCheck workload-md-0 targets, does not report HealthCheckSucceeded True",
     );
+  });
+
+  it("leaves out of the targets a Machine that an annotation pauses or keeps out of remediation", () => {
+    // Two more workers of the MachineDeployment, which the controller of the MachineHealthCheck does not check:
+    // neither has HealthCheckSucceeded, and neither is counted.
+    const skipped = ["cluster.x-k8s.io/paused", "cluster.x-k8s.io/skip-remediation"].map((annotation, index) =>
+      fixtureObject("Machine", `workload-md-0-skipped-${index}`, undefined, {
+        metadata: {
+          name: `workload-md-0-skipped-${index}`,
+          labels: { "cluster.x-k8s.io/cluster-name": "workload", "topology.cluster.x-k8s.io/deployment-name": "md-0" },
+          annotations: { [annotation]: "" },
+        },
+        status: {
+          nodeRef: { name: `workload-md-0-skipped-${index}` },
+          conditions: [{ type: "Ready", status: "True" }],
+        },
+      }),
+    );
+
+    expect(
+      healthChecksPending([...checkedWorkers({ expectedMachines: 2, currentHealthy: 2 }), ...skipped]),
+    ).toBeUndefined();
+  });
+
+  it("finds the targets of a MachineHealthCheck whose selector has expressions", () => {
+    const withSelector = (selector: Record<string, unknown>) =>
+      checkedWorkers({ expectedMachines: 2, currentHealthy: 2 }).map((object) =>
+        object.kind === "MachineHealthCheck" ? { ...object, spec: { clusterName: "workload", selector } } : object,
+      );
+    const deployment = "topology.cluster.x-k8s.io/deployment-name";
+
+    expect(
+      healthChecksPending(withSelector({ matchExpressions: [{ key: deployment, operator: "In", values: ["md-0"] }] })),
+    ).toBeUndefined();
+    // Only the control plane Machine of the Cluster has no such label.
+    expect(
+      healthChecksPending(withSelector({ matchExpressions: [{ key: deployment, operator: "DoesNotExist" }] })),
+    ).toBe("MachineHealthCheck workload-md-0 counts 2 Machines, and targets 1");
   });
 
   it("matches labels as a selector of Kubernetes does", () => {
