@@ -3,8 +3,8 @@
 A Cluster with a managed topology, from the template `development-mp` of the
 release, whose only workers are a MachinePool of one worker, with no network
 add-on, so that no Node becomes ready. Captured once the Cluster reports
-`Available` `True` and the Machines of the pool exist: the development provider
-keeps Machines for its pools.
+`Available` `True` and the Machines of the pool exist, each with its Node, which
+does not become ready: the development provider keeps Machines for its pools.
 
 The objects of the namespace `freelens-capi-machine-pools` of the real project
 of the test environment, Cluster API `v1.14.4` with its development provider, at

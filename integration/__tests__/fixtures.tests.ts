@@ -5,8 +5,8 @@
 
 // Opens the cluster of the definitions of Cluster API with the fixtures of one
 // state on it, `healthy` unless TEST_FIXTURE_STATE names another, and checks
-// that the extension activates there with no error in either process and that
-// the host lists every object of the fixtures. The cluster, its definitions
+// that the host loads the extension there with no error in either process and
+// that it lists every object of the fixtures. The cluster, its definitions
 // and the fixtures are those of the scripts of the test environment
 // (docs/development/TESTING.md): the integration workflow makes them before
 // it starts Freelens dev, as `pnpm e2e:cluster:up:definitions` and
@@ -91,7 +91,10 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: state.namespace }))
       expect(errors).toEqual([]);
     });
 
-    it("activates the extension on the cluster with no error in either process", async () => {
+    // The host imports the renderer of the extension in the frame of the
+    // cluster, then activates it; an error of the activation that comes after
+    // this check fails the teardown, which checks the errors again.
+    it("loads the extension on the cluster with no error in either process", async () => {
       if (!session || !frame) {
         throw new Error("The cluster is not open");
       }

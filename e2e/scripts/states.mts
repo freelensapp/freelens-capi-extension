@@ -801,7 +801,7 @@ export const FIXTURE_STATES: readonly FixtureState[] = [
     name: "machine-pools",
     namespace: "freelens-capi-machine-pools",
     title: "A Cluster whose only workers are MachinePools",
-    how: `A Cluster with a managed topology, from the template \`development-mp\` of the release, whose only workers are a MachinePool of one worker, with no network add-on, so that no Node becomes ready. Captured once the Cluster reports \`Available\` \`True\` and the Machines of the pool exist: the development provider keeps Machines for its pools.`,
+    how: `A Cluster with a managed topology, from the template \`development-mp\` of the release, whose only workers are a MachinePool of one worker, with no network add-on, so that no Node becomes ready. Captured once the Cluster reports \`Available\` \`True\` and the Machines of the pool exist, each with its Node, which does not become ready: the development provider keeps Machines for its pools.`,
     capture: async (project, namespace) => {
       startWorkload(project, namespace, { flavor: "development-mp", controlPlane: 1, workers: 1, kindnet: false });
       return snapshot(project, namespace, {
@@ -882,7 +882,7 @@ export const FIXTURE_STATES: readonly FixtureState[] = [
     namespace: "freelens-capi-no-status",
     title: "Objects with no status",
     source: "dry run",
-    how: `One object of each kind of the fixtures but the Docker kinds of the development provider, which no template of the release uses, as a user writes it, before any controller reconciles it, so with no status: the scripts send them to the real project in a server-side dry run of their creation, which its webhooks default and validate and which stores nothing, and keep what the API server answers. They make one Cluster without a topology, whose parts name each other, and a ClusterClass. No ExtensionConfig is among them: the real project of the test environment runs without the feature RuntimeSDK, without which its webhook refuses one.`,
+    how: `One object of each kind of the fixtures, two of DevMachineTemplate and of KubeadmConfig, and none of the Docker kinds of the development provider, which no template of the release uses, as a user writes it, before any controller reconciles it, so with no status: the scripts send them to the real project in a server-side dry run of their creation, which its webhooks default and validate and which stores nothing, and keep what the API server answers. They make one Cluster without a topology, whose parts name each other, and a ClusterClass. No ExtensionConfig is among them: the real project of the test environment runs without the feature RuntimeSDK, without which its webhook refuses one.`,
     capture: async (project, namespace) => {
       project.kubectl(["create", "namespace", namespace]);
 
