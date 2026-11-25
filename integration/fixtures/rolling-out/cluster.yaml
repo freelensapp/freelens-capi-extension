@@ -1,0 +1,226 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:20Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-rolling-out
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-rolling-out
+  namespace: freelens-capi-rolling-out
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.18
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-rolling-out-hsfpd
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-rolling-out-c8hvj
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 1
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 2
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 1
+    reason: ProbeSucceeded
+    status: "True"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:58:25Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:17Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:58:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: ReconcileSucceeded
+    status: "True"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: |-
+      * MachineDeployment freelens-capi-rolling-out-md-0-t96dp:
+        * Rolling out 2 not up-to-date replicas
+          * MachineDeployment spec.rolloutAfter expired
+    observedGeneration: 1
+    reason: RollingOut
+    status: "True"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:22Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: "* MachineDeployment freelens-capi-rolling-out-md-0-t96dp: Scaling down from 3 to 2 replicas"
+    observedGeneration: 1
+    reason: ScalingDown
+    status: "True"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: |-
+      * Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n:
+        * NodeHealthy:
+          * Node.Ready: [container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:Network plugin returns error: cni plugin not initialized, CSINode is not yet initialized]
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:22Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: |-
+      * Machines freelens-capi-rolling-out-md-0-t96dp-xkg62-kkdsc, freelens-capi-rolling-out-md-0-t96dp-xkg62-tfl6d:
+        * MachineDeployment spec.rolloutAfter expired
+    observedGeneration: 1
+    reason: NotUpToDate
+    status: "False"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:21Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:22Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:57Z"
+        status: "True"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:58:25Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:58:20Z"
+        status: "True"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    controlPlaneInitialized: true
+    infrastructureProvisioned: true
+  observedGeneration: 1
+  phase: Provisioned
+  workers:
+    availableReplicas: 2
+    desiredReplicas: 2
+    readyReplicas: 2
+    replicas: 3
+    upToDateReplicas: 1
+    versions:
+    - replicas: 3
+      version: v1.37.0

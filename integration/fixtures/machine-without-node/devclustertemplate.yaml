@@ -1,0 +1,35 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevClusterTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:58:11Z"
+  name: quick-start-cluster
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: ClusterClass
+    name: quick-start
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          failureDomains:
+          - controlPlane: true
+            name: fd1
+          - controlPlane: true
+            name: fd2
+          - controlPlane: true
+            name: fd3
+          - controlPlane: true
+            name: fd4
+          - controlPlane: true
+            name: fd5
+          - controlPlane: false
+            name: fd6
+          - controlPlane: false
+            name: fd7
+          - controlPlane: false
+            name: fd8
+          loadBalancer: {}
+      controlPlaneEndpoint:
+        port: 6443

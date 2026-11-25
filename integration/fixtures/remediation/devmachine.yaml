@@ -1,0 +1,242 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-remediation-qh2p9
+    devmachine.infrastructure.cluster.x-k8s.io/weight: "100"
+  creationTimestamp: "2025-12-31T23:58:31Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-remediation-glx8b
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-glx8b-42wn2
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-remediation-glx8b-42wn2
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-remediation-glx8b-42wn2
+status:
+  addresses:
+  - address: freelens-capi-remediation-glx8b-42wn2
+    type: Hostname
+  - address: 172.19.0.14
+    type: InternalIP
+  - address: 172.19.0.14
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  failureDomain: fd1
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-remediation-md-0-htkz6
+  creationTimestamp: "2025-12-31T23:58:47Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/deployment-name: freelens-capi-remediation-md-0-qrjs5
+    cluster.x-k8s.io/set-name: freelens-capi-remediation-md-0-qrjs5-t4crs
+    machine-template-hash: 3572739918-t4crs
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+status:
+  addresses:
+  - address: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+    type: Hostname
+  - address: 172.19.0.16
+    type: InternalIP
+  - address: 172.19.0.16
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:50Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-remediation-md-0-htkz6
+  creationTimestamp: "2025-12-31T23:58:47Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/deployment-name: freelens-capi-remediation-md-0-qrjs5
+    cluster.x-k8s.io/set-name: freelens-capi-remediation-md-0-qrjs5-t4crs
+    machine-template-hash: 3572739918-t4crs
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+status:
+  addresses:
+  - address: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+    type: Hostname
+  - address: 172.19.0.15
+    type: InternalIP
+  - address: 172.19.0.15
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:50Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  initialization:
+    provisioned: true

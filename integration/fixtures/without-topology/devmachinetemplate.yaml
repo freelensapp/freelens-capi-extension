@@ -1,0 +1,39 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:58:41Z"
+  name: freelens-capi-without-topology-control-plane
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-topology
+spec:
+  template:
+    spec:
+      backend:
+        docker: {}
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:58:41Z"
+  name: freelens-capi-without-topology-md-0
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-topology
+spec:
+  template:
+    spec:
+      backend:
+        docker: {}
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi

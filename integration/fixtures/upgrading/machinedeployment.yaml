@@ -1,0 +1,133 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  annotations:
+    machinedeployment.clusters.x-k8s.io/revision: "1"
+  creationTimestamp: "2025-12-31T23:58:24Z"
+  finalizers:
+  - cluster.x-k8s.io/machinedeployment
+  - machinedeployment.topology.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-md-0-82krw
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-upgrading
+spec:
+  clusterName: freelens-capi-upgrading
+  replicas: 1
+  rollout:
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+      type: RollingUpdate
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+        topology.cluster.x-k8s.io/deployment-name: md-0
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-upgrading-md-0-bnc5h
+      clusterName: freelens-capi-upgrading
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-upgrading-md-0-8l4r4
+      version: v1.36.4
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:47Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:25Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 1
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:36Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:36Z"
+        status: "True"
+        type: Available
+      - lastTransitionTime: "2025-12-31T23:59:35Z"
+        status: "True"
+        type: MachineSetReady
+      readyReplicas: 1
+      unavailableReplicas: 0
+      updatedReplicas: 1
+  observedGeneration: 1
+  phase: Running
+  readyReplicas: 1
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-upgrading,topology.cluster.x-k8s.io/deployment-name=md-0,topology.cluster.x-k8s.io/owned=
+  upToDateReplicas: 1
+  versions:
+  - replicas: 1
+    version: v1.36.4

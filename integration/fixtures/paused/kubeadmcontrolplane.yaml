@@ -1,0 +1,189 @@
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmControlPlaneTemplate.controlplane.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: quick-start-control-plane
+  creationTimestamp: "2025-12-31T23:58:27Z"
+  finalizers:
+  - kubeadm.controlplane.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-q6kg9
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Cluster
+    name: freelens-capi-paused
+spec:
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs:
+        - localhost
+        - 127.0.0.1
+        - 0.0.0.0
+        - host.docker.internal
+        extraArgs:
+        - name: admission-control-config-file
+          value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        extraVolumes:
+        - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+          mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+          name: admission-pss
+          pathType: File
+          readOnly: true
+    files:
+    - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+  machineTemplate:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-paused
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-paused-wfb6c
+  replicas: 1
+  rollout:
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+      type: RollingUpdate
+  version: v1.37.0
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:33Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:04Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: Initialized
+  - lastTransitionTime: "2025-12-31T23:59:09Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: EtcdClusterHealthy
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: ControlPlaneComponentsHealthy
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:04Z"
+        status: "True"
+        type: Available
+      - lastTransitionTime: "2025-12-31T23:58:33Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: ControlPlaneComponentsHealthy
+      - lastTransitionTime: "2025-12-31T23:59:09Z"
+        status: "True"
+        type: EtcdClusterHealthy
+      - lastTransitionTime: "2025-12-31T23:58:34Z"
+        status: "True"
+        type: MachinesCreated
+      - lastTransitionTime: "2025-12-31T23:58:39Z"
+        status: "True"
+        type: MachinesReady
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: Resized
+      readyReplicas: 1
+      unavailableReplicas: 0
+      updatedReplicas: 1
+  initialization:
+    controlPlaneInitialized: true
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-paused,cluster.x-k8s.io/control-plane
+  upToDateReplicas: 1
+  version: v1.37.0
+  versions:
+  - replicas: 1
+    version: v1.37.0

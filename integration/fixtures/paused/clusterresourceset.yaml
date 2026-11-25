@@ -1,0 +1,37 @@
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSet
+metadata:
+  creationTimestamp: "2025-12-31T23:58:25Z"
+  finalizers:
+  - addons.cluster.x-k8s.io
+  name: cni-kindnet
+  namespace: freelens-capi-paused
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: kindnet
+  resources:
+  - kind: ConfigMap
+    name: cni-kindnet
+  strategy: ApplyOnce
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:04Z"
+    message: ""
+    observedGeneration: 1
+    reason: Applied
+    status: "True"
+    type: ResourcesApplied
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:04Z"
+        status: "True"
+        type: ResourcesApplied
+  observedGeneration: 1

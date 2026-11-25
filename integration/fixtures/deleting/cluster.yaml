@@ -1,0 +1,234 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:32Z"
+  deletionTimestamp: "2025-12-31T23:59:47Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting
+  namespace: freelens-capi-deleting
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.11
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-deleting-4kcdh
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-deleting-n2jlv
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 1
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 2
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:48Z"
+    message: |-
+      * Deleting:
+        * MachineDeployments: freelens-capi-deleting-md-0-8dcql
+        * MachineSets: freelens-capi-deleting-md-0-8dcql-vp49h
+        * Worker Machines: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+      * WorkersAvailable:
+        * MachineDeployment freelens-capi-deleting-md-0-8dcql: Deletion in progress
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:09Z"
+    message: ""
+    observedGeneration: 2
+    reason: ProbeSucceeded
+    status: "True"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:09Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 2
+    reason: Available
+    status: "True"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:52Z"
+    message: "* MachineDeployment freelens-capi-deleting-md-0-8dcql: Deletion in progress"
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:59:48Z"
+    message: Cluster is deleting
+    observedGeneration: 2
+    reason: Deleting
+    status: "False"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:49Z"
+    message: "* MachineDeployment freelens-capi-deleting-md-0-8dcql: Scaling down from 1 to 0 replicas"
+    observedGeneration: 2
+    reason: ScalingDown
+    status: "True"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:32Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: |-
+      * Machine freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw:
+        * Deleting: Machine deletion in progress, stage: WaitingForPreTerminateHook
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:33Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:48Z"
+    message: |-
+      * MachineDeployments: freelens-capi-deleting-md-0-8dcql
+      * MachineSets: freelens-capi-deleting-md-0-8dcql-vp49h
+      * Worker Machines: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+    observedGeneration: 2
+    reason: WaitingForWorkersDeletion
+    status: "True"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:32Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:09Z"
+        status: "True"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:32Z"
+        status: "True"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:58:37Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:48Z"
+        message: Cluster is deleting
+        reason: Deleting
+        severity: Info
+        status: "False"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    controlPlaneInitialized: true
+    infrastructureProvisioned: true
+  observedGeneration: 2
+  phase: Deleting
+  workers:
+    availableReplicas: 0
+    desiredReplicas: 2
+    readyReplicas: 0
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0

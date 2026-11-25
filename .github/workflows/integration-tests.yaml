@@ -14,7 +14,6 @@ permissions:
 
 env:
   kind_version: 0.33.0 # datasource=github-releases depName=kubernetes-sigs/kind
-  kubernetes_version: 1.37.0 # datasource=docker depName=kindest/node
 
 jobs:
   test-integration:
@@ -79,6 +78,27 @@ jobs:
         run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      # The kind cluster of the sessions is the cluster of the definitions of
+      # the scripts of the test environment (docs/development/TESTING.md),
+      # which write only to a cluster that they created: they create it, then
+      # apply the definitions of Cluster API to it, then the fixtures of the
+      # state that the session of the fixtures opens. Their private state stays
+      # outside the checkout.
+      - name: Set the state folder of the scripts
+        run: echo "XDG_STATE_HOME=${RUNNER_TEMP}/test-environment" >> "${GITHUB_ENV}"
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          version: v${{ env.kind_version }}
+          install_only: true
+
+      - name: Create the cluster of the definitions
+        run: pnpm e2e:cluster:up:definitions
+
+      - name: Apply the fixtures of the session
+        run: pnpm e2e:fixtures:up healthy
 
       # The tests install this checkout in place, so Freelens loads the
       # extension from dist/.
@@ -254,23 +274,16 @@ jobs:
           path: freelens/freelens/binaries
           key: ${{ steps.binaries-cache-restore.outputs.cache-primary-key }}
 
-      - name: Start KinD cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: freelens
-          version: v${{ env.kind_version }}
-          node_image: kindest/node:v${{ env.kubernetes_version }}
-          wait: 5m
-
       # FREELENS_INTEGRATION_TESTING_DIR gives Freelens dev a fresh profile; the
       # app accepts it only under the system's temporary directory. A dev
       # profile syncs no kubeconfig by default, so the profile is seeded with
-      # one sync entry: a file with the kind cluster alone. The catalog then
-      # lists that cluster and nothing else.
+      # one sync entry: a copy of the kubeconfig of the scripts, which holds the
+      # cluster of the definitions alone. The catalog then lists that cluster
+      # and nothing else.
       - name: Seed the Freelens dev profile
         run: |
-          kubeconfig="${RUNNER_TEMP}/kind-freelens.kubeconfig"
-          kubectl config view --minify --flatten --context kind-freelens > "$kubeconfig"
+          kubeconfig="${RUNNER_TEMP}/freelens-capi-definitions.kubeconfig"
+          cp "${XDG_STATE_HOME}/freelens-capi-extension/freelens-capi-definitions/kubeconfig" "$kubeconfig"
           mkdir -p "${FREELENS_INTEGRATION_TESTING_DIR}/FreelensDev"
           KUBECONFIG_FILE="$kubeconfig" yq -n -o json '.preferences.syncKubeconfigEntries = [{"filePath": strenv(KUBECONFIG_FILE)}]' \
             > "${FREELENS_INTEGRATION_TESTING_DIR}/FreelensDev/lens-user-store.json"
@@ -306,10 +319,11 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      # The tests run three sessions against the one app: the install test and
-      # one session per API version of the Example CRD, each of which applies
-      # the manifests of its version to the kind cluster named by
-      # TEST_KIND_CLUSTER_NAME, and removes them again.
+      # The tests run two sessions against the one app: the install test, and
+      # the session of the fixtures, which opens the kind cluster named by
+      # TEST_KIND_CLUSTER_NAME, with the fixtures of TEST_FIXTURE_STATE that
+      # the steps above applied, and reads it through the kubeconfig of the
+      # profile.
       #
       # The tests are deterministic, so a failure is not retried. A failing view
       # costs one view timeout.
@@ -317,7 +331,9 @@ jobs:
         run: timeout 600 pnpm --color=always test:integration --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:
           FREELENS_MAIN_LOG: ${{ runner.temp }}/freelens-dev.log
-          TEST_KIND_CLUSTER_NAME: freelens
+          TEST_KIND_CLUSTER_NAME: freelens-capi-definitions
+          TEST_FIXTURE_STATE: healthy
+          KUBECONFIG: ${{ runner.temp }}/freelens-capi-definitions.kubeconfig
 
       - name: Show Freelens dev output
         if: always()

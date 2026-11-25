@@ -1,0 +1,48 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachinePool
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachinePoolTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: quick-start-default-worker-machinepooltemplate
+  creationTimestamp: "2025-12-31T23:58:37Z"
+  finalizers:
+  - dockermachinepool.infrastructure.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-machine-pools
+    topology.cluster.x-k8s.io/owned: ""
+    topology.cluster.x-k8s.io/pool-name: mp-0
+  name: freelens-capi-machine-pools-mp-0-6cl2n
+  namespace: freelens-capi-machine-pools
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-machine-pools
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachinePool
+    name: freelens-capi-machine-pools-mp-0-s48vb
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+  providerID: dev:////freelens-capi-machine-pools-dmp-freelens-capi-machine-pools-mp-0-6cl2n
+  providerIDList:
+  - docker:////freelens-capi-machine-pools-worker-c6khcq
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: ReplicasReady
+  infrastructureMachineKind: DevMachine
+  ready: true
+  replicas: 1

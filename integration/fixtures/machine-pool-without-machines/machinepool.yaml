@@ -1,0 +1,88 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachinePool
+metadata:
+  creationTimestamp: "2025-12-31T23:58:37Z"
+  finalizers:
+  - machinepool.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-pool-without-machines
+    topology.cluster.x-k8s.io/owned: ""
+    topology.cluster.x-k8s.io/pool-name: mp-0
+  name: freelens-capi-pool-without-machines-mp-0-s48vb
+  namespace: freelens-capi-pool-without-machines
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-pool-without-machines
+spec:
+  clusterName: freelens-capi-pool-without-machines
+  providerIDList:
+  - docker:////freelens-capi-pool-without-machines-worker-c6khcq
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-pool-without-machines
+        topology.cluster.x-k8s.io/owned: ""
+        topology.cluster.x-k8s.io/pool-name: mp-0
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfig
+          name: freelens-capi-pool-without-machines-mp-0-wl6nx
+        dataSecretName: freelens-capi-pool-without-machines-mp-0-wl6nx
+      clusterName: freelens-capi-pool-without-machines
+      deletion:
+        nodeDeletionTimeoutSeconds: 10
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachinePool
+        name: freelens-capi-pool-without-machines-mp-0-6cl2n
+      version: v1.37.0
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        reason: WaitingForReplicasReady
+        severity: Info
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:54Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        reason: WaitingForReplicasReady
+        severity: Info
+        status: "False"
+        type: ReplicasReady
+      unavailableReplicas: 1
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  nodeRefs:
+  - apiVersion: v1
+    kind: Node
+    name: freelens-capi-pool-without-machines-worker-c6khcq
+    uid: cfe4ae92-25e6-469d-a9dd-28b4c25cb1b3
+  observedGeneration: 1
+  phase: ScalingUp
+  readyReplicas: 1
+  replicas: 1
+  upToDateReplicas: 1
+  versions:
+  - replicas: 1
+    version: v1.37.0
