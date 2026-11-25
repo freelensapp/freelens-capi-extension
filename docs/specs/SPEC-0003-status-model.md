@@ -1177,7 +1177,7 @@ controlplane/kubeadm/webhooks/admission/kubeadmcontrolplane.go:73,
 a control plane is upgrading: by the precedence of semantic versions, then
 by their build metadata, where numeric identifiers compare by number, a
 number comes before a word, two different words cannot be ordered, and of
-two equal lists the longer comes after (util/version/version.go:52-212;
+two equal lists the longer comes after (util/version/version.go:52-201;
 internal/contract/controlplane.go:296-352). A control plane is Upgrading
 when the project says so: when its `spec.version` comes after one of its
 versions in status, or differs from it only by words of its build metadata
@@ -1695,3 +1695,103 @@ checked in the main session before the approval.
 
 P32 tries S7 as three cases, since the webhook of Cluster refuses its case
 as written; the trial records its outcome here.
+
+Decided while implementing: the spec is implemented in three pull requests.
+The first has the parsers, `src/common/parsers/`, with their unit tests; the
+second the model, `src/common/status/`, with its unit tests; the third the
+cases on the fixtures of SPEC-0002 and the trial S7 on the real tier, once
+the fixtures are merged. The case of `condition-message.test.ts` that reads
+every message of the fixtures is written down there as left for the third.
+In the first, nothing automated keeps a clock or a timer out of
+`src/common/parsers/`: the program of `src/common/` has them, and Biome
+rejects only the modules of Node. The purity test of "Safety" comes with the
+second, and reads `src/common/parsers/` too.
+
+- Decided while implementing the first pull request: the five parsers are
+  production entries of `knip.jsonc`, each by its name, until a module
+  reached from another production entry imports it: the model, if the second
+  pull request gives it a production entry, otherwise the first view of
+  SPEC-0004 that imports it. The pull request that brings that import removes
+  the entry. The production pass of knip starts from the entries of
+  `src/main/` and `src/renderer/`, from which no code reaches a parser yet,
+  and it reports a module that only its tests import as an unused file
+  (AGENTS.md, "Knip"). An entry for each file keeps the check whole for every
+  other file, a new module of the same folder included, ignores no file and
+  adds no module.
+- Decided while implementing: in P26, an item whose major or minor has a
+  leading zero, such as `v01`, or is above 2^53 - 1 (P28), is not of the
+  form, and is left out for the reason that P26 gives for any item of another
+  form. A `cluster.x-k8s.io/v1beta2` label with no item of the form gives
+  Unknown, and the `v1beta1` label is not read in its place: the project
+  reads that one only when the first is missing or empty
+  (internal/contract/version.go:131-140). Labels that are not an object, and
+  a contract label that is not a string, give Unknown.
+- Decided while implementing: in P27, a message is split into lines at `\n`
+  alone, and an empty message has no line and no headline. A line has the
+  shape that the project composes when its indentation is an even number of
+  spaces and it does not end in a carriage return; then `* ` right after its
+  indentation is a bullet. The subject of a summary or of an aggregate is
+  read on a bullet only, and that of the line that closes an aggregate with
+  or without one. Any other line, and one with a tab or a `*` with no space
+  where the bullet would be, has no bullet and no subject, and keeps all of
+  its text after its spaces, a tab or a carriage return included. A line is
+  the child of the nearest line before it that is indented less, so the
+  bullets that follow a headline at its own indentation, as a scale up that
+  waits writes them, stand next to it. In a subject, a kind starts with a
+  capital letter, a name holds no white space, comma, colon or slash, a
+  count is read up to 2^53 - 1 (P28), and a type is one that the
+  definitions of the release allow
+  (core/config/crd/bases/cluster.x-k8s.io_clusters.yaml:3552). A line whose
+  count is above that limit reads no subject, and a message that is not a
+  string gives Unknown.
+- Decided while implementing, where P27 is silent: the line that closes an
+  aggregate is read also as a bullet, `* And <n> <Kind or Kinds> <text>`,
+  since a summary that indents an aggregate under its own line turns it into
+  one, two spaces deeper than the line of the summary, and puts the lines of
+  the aggregate four spaces deeper (util/conditions/merge_strategies.go:571-590);
+  both are children of the line of the summary. The shapes of a subject are
+  read where other code of the project writes them too: the lines
+  `* Node.<Type>:` of the `NodeReady` and the `NodeHealthy` of a Machine
+  (core/reconcilers/machine/machine_controller_status.go:331, 458-499), the
+  templates that the `RefVersionsUpToDate` of a ClusterClass names
+  (core/reconcilers/clusterclass/clusterclass_controller_status.go:57), and
+  the Machines that the checks of a KubeadmControlPlane name
+  (controlplane/kubeadm/pkg/workload_cluster_conditions.go:1169). The drain
+  of a Machine writes lines of the shape of an aggregate for the Pods of its
+  Node, named `<namespace>/<name>`
+  (core/reconcilers/machine/drain/drain.go:482-483, 505, 528-529, 550-553):
+  Pods of the workload cluster, which the extension never reads (A2, R3.40).
+  No name of an object of the management cluster holds a slash, so those
+  lines read no subject, and a view links none of them. A line that another
+  text happens to shape in the same way reads the same, since the parser
+  gives no meaning to the text.
+- Decided while implementing: in P28, a number above 2^53 - 1, among the
+  three numbers of a version, in its pre-release or in its build metadata,
+  gives Unknown, so that the model keeps the exact value of each; the
+  project reads a number of build metadata as an unsigned integer of 64
+  bits, and ignores the error of a larger one
+  (util/version/version.go:92-97). The same limit holds for every number
+  that the parsers read: the major and the minor of an item of a contract
+  label (P26), and the counts of a message (P27). The order of two versions
+  is one of before, equal, after, unordered, for two different words of
+  build metadata, and unknown, for an Unknown on either side. The model
+  reads Upgrading for after and for unordered, as the project does for the
+  results 1 and 2 of its comparison (internal/contract/controlplane.go:325,
+  352; util/version/version.go:105-136).
+- Decided while implementing: in P29, the set of the pending hooks holds the
+  hooks of a Cluster and the one of a Machine together, since the parser
+  reads the key and the value of an annotation, not the kind of its object.
+  The preflight checks are trimmed of the white space that `strings.TrimSpace`
+  of Go trims, as the controller trims them
+  (core/reconcilers/machineset/machineset_preflight.go:276): the characters
+  of the White_Space property of Unicode, as the documentation of
+  `unicode.IsSpace` of Go defines them, which the reviewed sources do not
+  hold. The trim of JavaScript would differ on two of them: it trims U+FEFF,
+  which Go keeps, and keeps U+0085, which Go trims. An absent annotation
+  gives no item, and a value that is not a string gives Unknown.
+- Decided while implementing: in P30, the zero time of Go is Unavailable
+  however it is written, `0001-01-01T01:00:00+01:00` included; the hours and
+  the minutes of an offset are checked as those of the time, up to 23 and
+  59; the instant counts to the millisecond, and the digits below it are
+  dropped. A value that is not absent, null, empty or a string is
+  Unavailable.
