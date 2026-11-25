@@ -13,7 +13,17 @@
     // the Vitest alias for @freelensapp/extensions, which knip does not follow
     "test/freelens-extensions.ts",
     // compiled by `type:check:environments` only, with no importer
-    "environment-tests/*.ts"
+    "environment-tests/*.ts",
+    // the parsers of SPEC-0003, which only their tests import yet: each one is
+    // a production entry until a module reached from another production entry
+    // imports it, the model if the second pull request of SPEC-0003 gives it a
+    // production entry, otherwise the first view of SPEC-0004 that imports it;
+    // the pull request that brings that import removes its line
+    "src/common/parsers/condition-message.ts!",
+    "src/common/parsers/contract-label.ts!",
+    "src/common/parsers/kubernetes-version.ts!",
+    "src/common/parsers/list-annotation.ts!",
+    "src/common/parsers/time.ts!"
   ],
   "project": [
     "*.{js,mjs,ts}",

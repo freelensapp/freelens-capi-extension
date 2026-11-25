@@ -241,6 +241,7 @@ src/
   main/index.ts                  # Main entry (Main.LensExtension)
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage
+  common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/environment.test.ts         # Unit tests of the scripts of the test environment
 environment-tests/               # Probes for the per-environment programs
@@ -973,14 +974,22 @@ modules are devDependencies, for their types, and are ignored.
 A file is unused when no entry reaches it: a leftover module, a barrel that
 nothing imports. The production pass starts from the `!` entries only, so it
 also reports a module that only tests import. The fix is to remove the file,
-not to ignore it. The check does not include unused exports and types: on this
-tree they are mostly the exported spec and status types of the models.
+not to ignore it. The one exception is the parsers of `src/common/parsers/`,
+which SPEC-0003 adds before any code of the bundles imports them: each is a
+production entry of its own, as the next paragraph says. The check does not
+include unused exports and types: on this tree they are mostly the exported
+spec and status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. Its Vite plugin is off: it adds the renderer entry of
-`vite.config.mjs` as a development entry, which displaces
-`src/renderer/index.tsx!`, and the production pass then skips the renderer.
+`environment-tests/`. It also lists each module of `src/common/parsers/` by its
+name, as a production entry, until a module reached from another production
+entry imports it: the model, if the second pull request of SPEC-0003 gives it a
+production entry, otherwise the first view of SPEC-0004 that imports it
+(SPEC-0003, "Notes and deviations").
+Its Vite plugin is off: it adds the renderer entry of `vite.config.mjs` as a
+development entry, which displaces `src/renderer/index.tsx!`, and the
+production pass then skips the renderer.
 `--no-config-hints` is set because one config serves both passes, and an entry
 that only the production pass needs is reported as redundant by the other.
 The scripts of the test environment need no entry: knip finds
