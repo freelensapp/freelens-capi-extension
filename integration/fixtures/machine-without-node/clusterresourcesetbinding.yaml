@@ -1,0 +1,20 @@
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSetBinding
+metadata:
+  creationTimestamp: "2025-12-31T23:58:12Z"
+  name: freelens-capi-without-node
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: addons.cluster.x-k8s.io/v1beta2
+    kind: ClusterResourceSet
+    name: cni-kindnet
+spec:
+  bindings:
+  - clusterResourceSetName: cni-kindnet
+    resources:
+    - applied: true
+      hash: sha256:942e9232673844af8e77982496640c3baf2fda387550c139c1344e8e67b94b5b
+      kind: ConfigMap
+      lastAppliedTime: "2025-12-31T23:58:53Z"
+      name: cni-kindnet
+  clusterName: freelens-capi-without-node

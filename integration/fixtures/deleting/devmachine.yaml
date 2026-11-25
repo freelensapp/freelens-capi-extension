@@ -1,0 +1,161 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-deleting-bfsnx
+    devmachine.infrastructure.cluster.x-k8s.io/weight: "100"
+  creationTimestamp: "2025-12-31T23:58:39Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-deleting-4kcdh
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting-4kcdh-cgs69
+  namespace: freelens-capi-deleting
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-deleting-4kcdh-cgs69
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-deleting-4kcdh-cgs69
+status:
+  addresses:
+  - address: freelens-capi-deleting-4kcdh-cgs69
+    type: Hostname
+  - address: 172.19.0.14
+    type: InternalIP
+  - address: 172.19.0.14
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:58:47Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:58:47Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:43Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  failureDomain: fd1
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-deleting-md-0-gq8t7
+  creationTimestamp: "2025-12-31T23:58:54Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cluster.x-k8s.io/deployment-name: freelens-capi-deleting-md-0-8dcql
+    cluster.x-k8s.io/set-name: freelens-capi-deleting-md-0-8dcql-vp49h
+    machine-template-hash: 130548642-vp49h
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  namespace: freelens-capi-deleting
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+status:
+  addresses:
+  - address: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+    type: Hostname
+  - address: 172.19.0.15
+    type: InternalIP
+  - address: 172.19.0.15
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:22Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:22Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  initialization:
+    provisioned: true

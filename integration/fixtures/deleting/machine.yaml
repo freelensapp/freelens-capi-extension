@@ -1,0 +1,373 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:58:39Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-deleting-4kcdh
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting-4kcdh-cgs69
+  namespace: freelens-capi-deleting
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-deleting-4kcdh
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-deleting-4kcdh-cgs69
+    dataSecretName: freelens-capi-deleting-4kcdh-cgs69
+  clusterName: freelens-capi-deleting
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd1
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-deleting-4kcdh-cgs69
+  providerID: docker:////freelens-capi-deleting-4kcdh-cgs69
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-deleting-4kcdh-cgs69
+    type: Hostname
+  - address: 172.19.0.14
+    type: InternalIP
+  - address: 172.19.0.14
+    type: ExternalIP
+  certificatesExpiryDate: "2026-12-31T23:58:53Z"
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:58:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Set
+    status: "True"
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:13Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:44Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: APIServerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:58:44Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: ControllerManagerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:13Z"
+        status: "True"
+        type: EtcdMemberHealthy
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: EtcdPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:32Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:06Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:30Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: SchedulerPodHealthy
+  failureDomain: fd1
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:11Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: 4883973408054876be4b3c5ca0ac841b
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 4883973408054876be4b3c5ca0ac841b
+  nodeRef:
+    name: freelens-capi-deleting-4kcdh-cgs69
+  observedGeneration: 1
+  phase: Running
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/test-environment: ""
+  creationTimestamp: "2025-12-31T23:58:54Z"
+  deletionTimestamp: "2025-12-31T23:59:50Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cluster.x-k8s.io/deployment-name: freelens-capi-deleting-md-0-8dcql
+    cluster.x-k8s.io/set-name: freelens-capi-deleting-md-0-8dcql-vp49h
+    machine-template-hash: 130548642-vp49h
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  namespace: freelens-capi-deleting
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-deleting-md-0-8dcql-vp49h
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+    dataSecretName: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  clusterName: freelens-capi-deleting
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  providerID: docker:////freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+    type: Hostname
+  - address: 172.19.0.15
+    type: InternalIP
+  - address: 172.19.0.15
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: "* Deleting: Machine deletion in progress, stage: WaitingForPreTerminateHook"
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:10Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:22Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: ""
+    observedGeneration: 2
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 2
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:47Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:54Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: "Waiting for pre-terminate hooks to succeed (hooks: pre-terminate.delete.hook.machine.cluster.x-k8s.io/test-environment)"
+    observedGeneration: 2
+    reason: WaitingForPreTerminateHook
+    status: "True"
+    type: Deleting
+  deletion:
+    waitForPreTerminateHookStartTime: "2025-12-31T23:59:50Z"
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:10Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:10Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:47Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:50Z"
+        reason: WaitingExternalHook
+        severity: Info
+        status: "False"
+        type: PreTerminateDeleteHookSucceeded
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:50Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: 437ad5b16a0848df8bd1829b98f31236
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 437ad5b16a0848df8bd1829b98f31236
+  nodeRef:
+    name: freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+  observedGeneration: 2
+  phase: Deleting

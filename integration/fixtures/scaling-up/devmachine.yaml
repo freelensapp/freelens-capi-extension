@@ -1,0 +1,325 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-bdtvf
+    devmachine.infrastructure.cluster.x-k8s.io/weight: "100"
+  creationTimestamp: "2025-12-31T23:59:36Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-scaling-up-dzqt7
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-dzqt7-kr7ml
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-dzqt7-kr7ml
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-scaling-up-dzqt7-kr7ml
+status:
+  addresses:
+  - address: freelens-capi-scaling-up-dzqt7-kr7ml
+    type: Hostname
+  - address: 172.19.0.18
+    type: InternalIP
+  - address: 172.19.0.18
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: |-
+      * BootstrapCompleted: Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: |-
+      Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  failureDomain: fd5
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-bdtvf
+    devmachine.infrastructure.cluster.x-k8s.io/weight: "100"
+  creationTimestamp: "2025-12-31T23:58:28Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-scaling-up-dzqt7
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-dzqt7-ph4fc
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-dzqt7-ph4fc
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-scaling-up-dzqt7-ph4fc
+status:
+  addresses:
+  - address: freelens-capi-scaling-up-dzqt7-ph4fc
+    type: Hostname
+  - address: 172.19.0.13
+    type: InternalIP
+  - address: 172.19.0.13
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  failureDomain: fd1
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-md-0-x9wgf
+  creationTimestamp: "2025-12-31T23:59:37Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/deployment-name: freelens-capi-scaling-up-md-0-474jl
+    cluster.x-k8s.io/set-name: freelens-capi-scaling-up-md-0-474jl-xnzdc
+    machine-template-hash: 1290635152-xnzdc
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+status:
+  addresses:
+  - address: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+    type: Hostname
+  - address: 172.19.0.19
+    type: InternalIP
+  - address: 172.19.0.19
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:51Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:51Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-md-0-x9wgf
+  creationTimestamp: "2025-12-31T23:58:29Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/deployment-name: freelens-capi-scaling-up-md-0-474jl
+    cluster.x-k8s.io/set-name: freelens-capi-scaling-up-md-0-474jl-xnzdc
+    machine-template-hash: 1290635152-xnzdc
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+status:
+  addresses:
+  - address: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+    type: Hostname
+  - address: 172.19.0.20
+    type: InternalIP
+  - address: 172.19.0.20
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:10Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:10Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:08Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:01Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:08Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  initialization:
+    provisioned: true

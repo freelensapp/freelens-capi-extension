@@ -1,0 +1,16 @@
+apiVersion: ipam.cluster.x-k8s.io/v1beta2
+kind: IPAddress
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  name: freelens-capi-no-status
+  namespace: freelens-capi-no-status
+spec:
+  address: 10.0.0.10
+  claimRef:
+    name: freelens-capi-no-status
+  gateway: 10.0.0.1
+  poolRef:
+    apiGroup: ipam.test-environment.freelens.app
+    kind: AddressPool
+    name: freelens-capi-no-status
+  prefix: 24

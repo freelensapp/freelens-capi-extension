@@ -9,12 +9,13 @@
 // with Playwright. Its name does not match `*.tests.ts`, so Vitest does not
 // collect it as a test file.
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { chromium } from "playwright";
 
-import type { Browser, ConsoleMessage, Locator, Page } from "playwright";
+import type { Browser, ConsoleMessage, Frame, Locator, Page } from "playwright";
 
 export const extensionName = "@freelensapp/capi-extension";
 
@@ -34,6 +35,9 @@ const mainLogFile = process.env.FREELENS_MAIN_LOG;
 export const kindClusterName = process.env.TEST_KIND_CLUSTER_NAME || "kind";
 
 const viewTimeout = { timeout: 60 * 1000 };
+
+// Connecting a cluster starts its proxy and loads its frame.
+const clusterTimeout = { timeout: 120 * 1000 };
 
 const ansiEscapePattern = /\u001b\[[0-9;]*m/g;
 
@@ -60,6 +64,28 @@ const devFileRouteFailurePattern = /\[DEV-FILE-ROUTE\]: request for (\S+) failed
 
 const badGatewayPattern = /^Failed to load resource: the server responded with a status of 502\b/;
 
+// The list of the host for a custom resource keys its columns by the names of
+// the printer columns of the CRD, and a CRD may give two columns one name: at
+// v1beta2, MachineDeployment and KubeadmControlPlane of Cluster API name both
+// their condition `Available` and their count of available replicas
+// `Available`. React logs the repeated key as an error in Freelens dev, at
+// every render of the list. Each such error is decided as it arrives, in the
+// handler of the message, on the address of the frame that logged it as
+// Playwright last saw it, which follows the navigations of the frame in order
+// with its messages: it is left out only when that frame shows the list of the
+// host for a custom resource, `/crd/<group>/<plural>`, with no details panel
+// open, and its key is one that the list gives two columns, as the host makes
+// its columns from the CRD. The keys of a list are read before the session
+// opens it; for a list that the session finds open, such as one that Freelens
+// restores, they are read when its first message arrives, and that decision
+// waits for them. Any other repeated key counts, those of the extension's own
+// views included, and so does one that a details panel or another page logs,
+// or one whose list could not be read.
+const repeatedKeyPattern = /^Encountered two children with the same key, `%s`\. .*:\$(\S+)$/;
+
+// The address of the list of the host for a custom resource.
+const hostListPattern = /^\/crd\/([^/]+)\/([^/]+)$/;
+
 /** The path of a URL, without its query, as the dev file route logs it. */
 const urlPath = (url: string) => (URL.canParse(url) ? new URL(url).pathname : url.replace(/[?#].*$/, ""));
 
@@ -70,8 +96,8 @@ export interface AppSession {
   browser: Browser;
   /** The root frame's page, where the catalog, the extensions and the preferences render. */
   window: Page;
-  /** The errors logged so far. */
-  errors(): string[];
+  /** The errors logged so far, once the messages that arrived are described and decided. */
+  errors(): Promise<string[]>;
   /** The paths of the requests that the dev file route failed so far, in order, one entry per failure. */
   devFileRouteFailures(): string[];
   /** Stops collecting errors; returns every error logged until then. */
@@ -81,12 +107,13 @@ export interface AppSession {
 }
 
 /**
- * Whether Freelens dev answers on its CDP endpoint and the kind cluster is
- * reachable. Outside CI a session skips with a warning otherwise; in CI the
- * run fails, so that a mistake in the workflow does not turn into a silent
- * skip.
+ * Whether Freelens dev answers on its CDP endpoint, the kind cluster is
+ * reachable, and, for a session that opens the fixtures of a state, their
+ * namespace is there. Outside CI a session skips with a warning otherwise; in
+ * CI the run fails, so that a mistake in the workflow does not turn into a
+ * silent skip.
  */
-export async function appReady({ cluster }: { cluster: boolean }): Promise<boolean> {
+export async function appReady({ cluster, namespace }: { cluster: boolean; namespace?: string }): Promise<boolean> {
   let reason: string | undefined;
 
   try {
@@ -102,6 +129,11 @@ export async function appReady({ cluster }: { cluster: boolean }): Promise<boole
   if (!reason && cluster) {
     if (spawnSync("kubectl", ["--context", `kind-${kindClusterName}`, "get", "--raw", "/readyz"]).status !== 0) {
       reason = `the kind cluster ${kindClusterName} is not reachable`;
+    } else if (
+      namespace &&
+      spawnSync("kubectl", ["--context", `kind-${kindClusterName}`, "get", "namespace", namespace]).status !== 0
+    ) {
+      reason = `the kind cluster ${kindClusterName} has no namespace ${namespace}: apply its fixtures first`;
     }
   }
 
@@ -164,8 +196,11 @@ async function describeConsoleArgs(msg: ConsoleMessage): Promise<string> {
  * lines of the main log written after the session started.
  */
 function collectErrors(window: Page) {
-  const errorLogs: string[] = [];
-  const pendingDescriptions: Promise<void>[] = [];
+  // An entry is undefined once a repeated key is found to be the host's.
+  const errorLogs: (string | undefined)[] = [];
+  // The descriptions of messages and the decisions on repeated keys that are
+  // not done yet; none of them rejects.
+  const pending: Promise<void>[] = [];
   // The thrown `Event`s, kept apart until the main log tells whether the dev
   // file route failed a request.
   const workerLoadErrors: string[] = [];
@@ -195,16 +230,56 @@ function collectErrors(window: Page) {
         return;
       }
 
-      const index = errorLogs.push(`[renderer] ${text}${location}`) - 1;
+      const entry = `[renderer] ${text}${location}`;
+      const repeatedKey = repeatedKeyPattern.exec(text)?.[1];
+
+      if (repeatedKey) {
+        decideRepeatedKey(entry, repeatedKey, hostListShown(window, url));
+
+        return;
+      }
+
+      const index = errorLogs.push(entry) - 1;
 
       if (!text.trim() || /^[A-Z]\w*$/.test(text)) {
-        pendingDescriptions.push(
+        pending.push(
           describeConsoleArgs(msg).then((description) => {
             errorLogs[index] = `[renderer] ${description}${location}`;
           }),
         );
       }
     }
+  };
+
+  // A repeated key, on the list that its frame showed when it arrived: left
+  // out when that list gives the key two columns, at once when the keys of the
+  // list are known, after they are read otherwise.
+  const decideRepeatedKey = (entry: string, key: string, list: HostList | undefined) => {
+    const keys = list && knownRepeatedKeys.get(definitionOf(list));
+
+    if (!list || keys) {
+      if (!keys?.includes(key)) {
+        errorLogs.push(entry);
+      }
+
+      return;
+    }
+
+    const index = errorLogs.push(entry) - 1;
+
+    pending.push(
+      repeatedKeysOfList(list).then(
+        (read) => {
+          if (read.includes(key)) {
+            errorLogs[index] = undefined;
+          }
+        },
+        (error) => {
+          errorLogs[index] =
+            `${entry} (not decided: the keys of its list could not be read: ${error instanceof Error ? error.message : error})`;
+        },
+      ),
+    );
   };
 
   // Playwright gives an uncaught value that is not an `Error`, such as an
@@ -289,16 +364,23 @@ function collectErrors(window: Page) {
       const unexplainedBadGateways = badGatewayErrors
         .filter(({ path }) => !failedPaths.has(path))
         .map(({ text }) => text);
-
-      return [...errorLogs, ...unexplainedBadGateways, ...(failedPaths.size ? [] : workerLoadErrors)];
+      return [
+        ...errorLogs.filter((text) => text !== undefined),
+        ...unexplainedBadGateways,
+        ...(failedPaths.size ? [] : workerLoadErrors),
+      ];
     },
     devFileRouteFailures: () => {
       readMainLog();
 
       return [...devFileRouteFailures];
     },
+    // Waits until no description and no decision is pending, those that start
+    // while it waits included.
     settle: async () => {
-      await Promise.all(pendingDescriptions);
+      while (pending.length) {
+        await Promise.all(pending.splice(0));
+      }
     },
     stop: () => {
       window.off("console", onConsole);
@@ -322,13 +404,13 @@ export async function connectApp(): Promise<AppSession> {
 
     const stopCollecting = () => {
       collected ??= (async () => {
-        await collector.settle();
+        try {
+          await collector.settle();
 
-        const errors = collector.errors();
-
-        collector.stop();
-
-        return errors;
+          return collector.errors();
+        } finally {
+          collector.stop();
+        }
       })();
 
       return collected;
@@ -337,15 +419,19 @@ export async function connectApp(): Promise<AppSession> {
     return {
       browser,
       window,
-      errors: collector.errors,
+      errors: async () => {
+        await collector.settle();
+
+        return collector.errors();
+      },
       devFileRouteFailures: collector.devFileRouteFailures,
       stopCollecting,
       close: async () => {
-        const errors = await stopCollecting();
-
-        await browser.close();
-
-        return errors;
+        try {
+          return await stopCollecting();
+        } finally {
+          await browser.close();
+        }
       },
     };
   } catch (error) {
@@ -483,4 +569,279 @@ export async function installExtension({ window }: AppSession, { reinstall = fal
   // `engines.freelens`.
   await enabled.waitFor(viewTimeout);
   await dismissNotifications(window);
+}
+
+/**
+ * Opens the kind cluster of the sessions: finds its entity in the catalog of
+ * the root frame by its name, `kind-<name>`, navigates to it, and waits until
+ * its frame shows its sidebar. The catalog lists the cluster once the
+ * kubeconfig sync of the profile has read the file that holds it. A frame that
+ * did not render, after the dev file route of Freelens dev failed a request,
+ * is loaded again once.
+ */
+export async function openKindCluster(session: AppSession): Promise<Frame> {
+  const { window } = session;
+  const name = `kind-${kindClusterName}`;
+  const failuresBefore = session.devFileRouteFailures().length;
+  const found = await window.waitForFunction(
+    (name) =>
+      globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
+        .getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster")
+        .find((entity) => entity.getName() === name)
+        ?.getId(),
+    name,
+    clusterTimeout,
+  );
+  const id = await found.jsonValue();
+
+  await navigate(window, `/cluster/${id}`);
+
+  const element = await window.waitForSelector(`#cluster-frame-${id}`, clusterTimeout);
+  const frame = await element.contentFrame();
+
+  if (!frame) {
+    throw new Error(`The cluster ${name} has no frame`);
+  }
+
+  try {
+    await frame.waitForSelector("[data-testid=cluster-sidebar]", clusterTimeout);
+  } catch (error) {
+    if (session.devFileRouteFailures().length === failuresBefore) {
+      throw error;
+    }
+
+    console.log(`the frame of ${name} did not render after a failed request of the dev file route: loading it again`);
+    await frame.evaluate(() => globalThis.location.reload());
+    await frame.waitForSelector("[data-testid=cluster-sidebar]", clusterTimeout);
+  }
+
+  return frame;
+}
+
+/**
+ * Disconnects the kind cluster of the sessions with the `disconnect()` of
+ * its entity in the catalog.
+ */
+export async function disconnectKindCluster({ window }: AppSession) {
+  await window.evaluate(async (name) => {
+    const entity = globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
+      .getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster")
+      .find((item) => item.getName() === name) as { disconnect?: () => Promise<void> } | undefined;
+
+    await entity?.disconnect?.();
+  }, `kind-${kindClusterName}`);
+}
+
+/**
+ * Goes to an address of the cluster frame, as a link of the host would: the
+ * frame follows its history only on a `popstate` event.
+ */
+async function navigateCluster(frame: Frame, address: string) {
+  console.log(`navigate the cluster frame to ${address}`);
+  await frame.evaluate((target) => {
+    window.history.pushState({}, "", target);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, address);
+}
+
+/**
+ * Points the namespace filter of the host at one namespace, unless it shows
+ * it already. The lists of the host show the namespaces of its filter, and a
+ * new cluster shows only `default`.
+ */
+async function selectHostNamespace(frame: Frame, namespace: string) {
+  const filtered = frame.locator(`[data-testid="namespace-select-filter"] >> text="Namespace: ${namespace}"`);
+  const select = await frame.waitForSelector(".NamespaceSelect", viewTimeout);
+
+  if (await filtered.count()) {
+    return;
+  }
+
+  await select.click();
+  await select.type(namespace);
+
+  const option = frame.locator(".Select__option").filter({ has: frame.locator(`span:text-is("${namespace}")`) });
+
+  if (await option.count()) {
+    await option.first().click();
+  } else {
+    await select.press("Enter");
+  }
+
+  // The menu does not close on select, and would cover the table underneath.
+  if (await frame.locator(".Select__menu").count()) {
+    await select.click();
+  }
+
+  await filtered.waitFor(viewTimeout);
+}
+
+/**
+ * The order of two versions of a CRD by the priority that Kubernetes gives
+ * them, highest first: a version named as `v1`, `v1beta2` or `v1alpha3` before
+ * any other, GA before beta before alpha, then the higher major and minor
+ * version; any other name after them, by its code units.
+ */
+function byVersionPriority(left: string, right: string): number {
+  const rank = (name: string) => {
+    const match = /^v(\d+)(?:(alpha|beta)(\d+))?$/.exec(name);
+
+    return match && [{ alpha: 0, beta: 1 }[match[2] ?? ""] ?? 2, Number(match[1]), Number(match[3] ?? 0)];
+  };
+  const [a, b] = [rank(left), rank(right)];
+
+  if (a && b) {
+    return b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
+  }
+
+  if (a || b) {
+    return a ? -1 : 1;
+  }
+
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** A list of the host for a custom resource, by the group and the plural of its address. */
+interface HostList {
+  group: string;
+  plural: string;
+}
+
+const definitionOf = (list: HostList) => `${list.plural}.${list.group}`;
+
+const execFileAsync = promisify(execFile);
+
+// The keys that the list of the host for each custom resource gives two
+// columns, by its definition: the reads that have started, so that a list is
+// read once, and those that are done, which the handler of a message reads
+// without waiting.
+const repeatedKeysOfLists = new Map<string, Promise<string[]>>();
+const knownRepeatedKeys = new Map<string, string[]>();
+
+interface PrinterVersion {
+  name: string;
+  served: boolean;
+  storage: boolean;
+  additionalPrinterColumns?: { name: string; priority?: number }[];
+}
+
+/**
+ * The keys that the list of the host for a custom resource gives two columns
+ * or more, as the host makes its columns from the CRD: the name, the namespace
+ * of a namespaced resource, the printer columns of the version that it reads,
+ * the stored one when it is served, else the served one of the highest
+ * priority, without those of a priority above 0, which it shows in the
+ * details, and without an age, and the age.
+ */
+function keysRepeatedBy(spec: { scope: string; versions: PrinterVersion[] }): string[] {
+  const stored = spec.versions.find((version) => version.storage);
+  const [served] = spec.versions
+    .filter((version) => version.served)
+    .sort((left, right) => byVersionPriority(left.name, right.name));
+  const version = stored?.served ? stored : (served ?? stored);
+  const keys = [
+    "name",
+    ...(spec.scope === "Namespaced" ? ["namespace"] : []),
+    ...(version?.additionalPrinterColumns ?? [])
+      .filter((column) => column.name.toLowerCase() !== "age" && !column.priority)
+      .map((column) => column.name),
+    "age",
+  ];
+
+  return [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+}
+
+/**
+ * The keys that a list of the host repeats, read from its CRD on the kind
+ * cluster once, without blocking the session. A read that fails rejects, and
+ * the next one tries again.
+ */
+function repeatedKeysOfList(list: HostList): Promise<string[]> {
+  const definition = definitionOf(list);
+  const started = repeatedKeysOfLists.get(definition);
+
+  if (started) {
+    return started;
+  }
+
+  const read = execFileAsync(
+    "kubectl",
+    ["--context", `kind-${kindClusterName}`, "get", "customresourcedefinition", definition, "--output", "json"],
+    { encoding: "utf8", timeout: viewTimeout.timeout },
+  ).then(({ stdout }) => {
+    const keys = keysRepeatedBy((JSON.parse(stdout) as { spec: { scope: string; versions: PrinterVersion[] } }).spec);
+
+    knownRepeatedKeys.set(definition, keys);
+
+    return keys;
+  });
+
+  read.catch(() => repeatedKeysOfLists.delete(definition));
+  repeatedKeysOfLists.set(definition, read);
+
+  return read;
+}
+
+/**
+ * The list of the host that the frame of a script shows, from the address of
+ * the frame as Playwright last saw it, which follows the navigations of the
+ * frame in order with its console messages: the list for a custom resource,
+ * `/crd/<group>/<plural>`, with no details panel open (no `kube-details` in
+ * the address). The frame is found by the host of the script, each frame of
+ * the app having a host of its own; nothing when none is found.
+ */
+function hostListShown(window: Page, scriptUrl: string): HostList | undefined {
+  const host = URL.canParse(scriptUrl) ? new URL(scriptUrl).host : undefined;
+  const frame = window.frames().find((item) => URL.canParse(item.url()) && new URL(item.url()).host === host);
+
+  if (!frame) {
+    return undefined;
+  }
+
+  const address = new URL(frame.url());
+  const list = hostListPattern.exec(address.pathname);
+
+  return list && !address.searchParams.has("kube-details") ? { group: list[1], plural: list[2] } : undefined;
+}
+
+/**
+ * Waits until the host has imported the renderer of the extension in a frame:
+ * once it has, it links there the stylesheet of the extension,
+ * `dist/renderer.css`, and then it activates the extension. So this proves the
+ * import; an error that the activation logs later fails the session when its
+ * teardown checks the errors again. It needs the extension to ship that
+ * stylesheet, and fails at once, saying so, when the build has none.
+ */
+export async function extensionLoadedIn(frame: Frame) {
+  const stylesheet = path.join(extensionDir, "dist", "renderer.css");
+
+  if (!fs.existsSync(stylesheet)) {
+    throw new Error(
+      `${stylesheet} is missing, and the host links the stylesheet of the extension in a frame only when the extension ships one: build the extension, or check its loading another way if it has no CSS`,
+    );
+  }
+
+  await frame
+    .locator(`link[data-freelens-extension="${extensionName}"]`)
+    .waitFor({ state: "attached", ...viewTimeout });
+}
+
+/**
+ * Opens the list that the host has of a custom resource, by its address,
+ * with its namespace filter on `namespace`, and waits for a row whose name is
+ * each name, in the cell of the name. The keys that the list repeats are read
+ * before it opens, so that its messages are decided as they arrive.
+ */
+export async function hostLists(frame: Frame, resource: HostList, namespace: string, names: readonly string[]) {
+  await repeatedKeysOfList(resource);
+  await navigateCluster(frame, `/crd/${resource.group}/${resource.plural}`);
+  await selectHostNamespace(frame, namespace);
+
+  for (const name of names) {
+    await frame
+      .locator(".TableRow .TableCell.name")
+      .getByText(name, { exact: true })
+      .first()
+      .waitFor({ state: "visible", ...viewTimeout });
+  }
 }

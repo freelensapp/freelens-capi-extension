@@ -1,0 +1,15 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachinePoolTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:59:33Z"
+  name: quick-start-default-worker-machinepooltemplate
+  namespace: freelens-capi-provisioning
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: ClusterClass
+    name: quick-start
+spec:
+  template:
+    spec:
+      backend:
+        docker: {}

@@ -23,7 +23,7 @@ describe.skipIf(!(await appReady({ cluster: false })))("extensions page tests", 
     expect((await session?.close()) ?? []).toEqual([]);
   });
 
-  it("installs the extension", () => {
-    expect(session?.errors()).toEqual([]);
+  it("installs the extension", async () => {
+    expect(await session?.errors()).toEqual([]);
   });
 });

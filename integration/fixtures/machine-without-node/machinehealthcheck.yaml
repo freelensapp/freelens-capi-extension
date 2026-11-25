@@ -1,0 +1,123 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:12Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-without-node-glvg7
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-node
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-without-node
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/control-plane: ""
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:12Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:27Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-without-node-glvg7-tjzjx
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:12Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-without-node-md-0-glbqj
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-node
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-without-node
+  selector:
+    matchLabels:
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:12Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:27Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-without-node-md-0-glbqj-j9nhm-whkkn
