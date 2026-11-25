@@ -1,0 +1,221 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:35Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-down
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-down
+  namespace: freelens-capi-scaling-down
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.16
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-scaling-down-z8tnq
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-scaling-down-8pjvv
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 1
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 1
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: ""
+    observedGeneration: 2
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:11Z"
+    message: ""
+    observedGeneration: 2
+    reason: ProbeSucceeded
+    status: "True"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:58:40Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:12Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:33Z"
+    message: ""
+    observedGeneration: 2
+    reason: Available
+    status: "True"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: ""
+    observedGeneration: 2
+    reason: Available
+    status: "True"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: ReconcileSucceeded
+    status: "True"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: "* MachineDeployment freelens-capi-scaling-down-md-0-97cl7: Scaling down from 2 to 1 replicas"
+    observedGeneration: 2
+    reason: ScalingDown
+    status: "True"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:45Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:54Z"
+    message: |-
+      * Machine freelens-capi-scaling-down-md-0-97cl7-8p6v4-lt8mz:
+        * Deleting: Machine deletion in progress, stage: WaitingForPreDrainHook
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:12Z"
+        status: "True"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:58:40Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:58:36Z"
+        status: "True"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    controlPlaneInitialized: true
+    infrastructureProvisioned: true
+  observedGeneration: 2
+  phase: Provisioned
+  workers:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 2
+    upToDateReplicas: 2
+    versions:
+    - replicas: 2
+      version: v1.37.0

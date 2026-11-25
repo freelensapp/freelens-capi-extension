@@ -60,12 +60,15 @@ export interface Pins {
     // The version of Kubernetes of the workload clusters: one that the release supports for workload
     // clusters, in the table of versions of its book. It changes with Cluster API, not with the template.
     workloadKubernetesVersion: string;
+    // The version that a workload cluster is made at before the capture of an upgrade upgrades it to the one
+    // above: an earlier release that Cluster API supports for workload clusters too.
+    workloadKubernetesUpgradeFrom: string;
     // The SHA-256 of each file of the source, by its path at the commit.
     sources: Record<ClusterApiSource, string>;
   };
   // The version of Kubernetes of the kind clusters, the tag of `kindest/node`, and the minor versions that
   // the release of Cluster API supports for a management cluster, in the table of versions of its book. The
-  // integration workflow of the template moves on its own; this one stays within that range.
+  // kind cluster of the integration workflow is the cluster of the definitions, so it takes this version too.
   managementKubernetes: {
     version: string;
     supported: { from: string; to: string };
@@ -90,6 +93,13 @@ const KUBERNETES_MINOR = /^v1\.(0|[1-9]\d*)$/;
 // The minor version of a version of Kubernetes, `v1.37.0` or `v1.37`.
 export function kubernetesMinor(version: string): number {
   return Number(version.split(".")[1]);
+}
+
+// The order of two releases, `v1.2.3`: negative when the first comes before the second.
+function compareReleases(first: string, second: string): number {
+  const [a, b] = [first, second].map((version) => version.slice(1).split(".").map(Number));
+
+  return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 }
 
 type Fields = Record<string, unknown>;
@@ -210,7 +220,24 @@ export function parsePins(text: string): Pins {
     "clusterApi",
     CLUSTER_API_ASSETS,
     { depName: "kubernetes-sigs/cluster-api" },
-    ["commit", "workloadKubernetesVersion", "sources"],
+    ["commit", "workloadKubernetesVersion", "workloadKubernetesUpgradeFrom", "sources"],
+  );
+  const workloadKubernetesVersion = matching(
+    clusterApi.object.workloadKubernetesVersion,
+    RELEASE,
+    "clusterApi.workloadKubernetesVersion",
+    "a release version, such as v1.2.3",
+  );
+  const workloadKubernetesUpgradeFrom = matching(
+    clusterApi.object.workloadKubernetesUpgradeFrom,
+    RELEASE,
+    "clusterApi.workloadKubernetesUpgradeFrom",
+    "a release version, such as v1.2.3",
+  );
+
+  ensure(
+    compareReleases(workloadKubernetesUpgradeFrom, workloadKubernetesVersion) < 0,
+    `clusterApi.workloadKubernetesUpgradeFrom ${workloadKubernetesUpgradeFrom} is not before clusterApi.workloadKubernetesVersion ${workloadKubernetesVersion}`,
   );
 
   return {
@@ -222,12 +249,8 @@ export function parsePins(text: string): Pins {
         "clusterApi.commit",
         "a commit, 40 lowercase hexadecimal characters",
       ),
-      workloadKubernetesVersion: matching(
-        clusterApi.object.workloadKubernetesVersion,
-        RELEASE,
-        "clusterApi.workloadKubernetesVersion",
-        "a release version, such as v1.2.3",
-      ),
+      workloadKubernetesVersion,
+      workloadKubernetesUpgradeFrom,
       sources: digests(clusterApi.object.sources, CLUSTER_API_SOURCES, "clusterApi.sources"),
     },
     managementKubernetes: managementKubernetes(root.managementKubernetes),
@@ -239,8 +262,8 @@ export function parsePins(text: string): Pins {
 }
 
 // The version of kind, from the top-level env of the integration workflow, where `kind_version` carries the
-// hint that Renovate follows. The `kubernetes_version` there is the one of the integration tests of the
-// template: the kind clusters of the scripts take theirs from the pins.
+// hint that Renovate follows. The kind clusters of the scripts, that of the integration tests among them, take
+// their version of Kubernetes from the pins.
 export function parseWorkflowPins(text: string): WorkflowPins {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((line) => /^env:\s*$/.test(line));

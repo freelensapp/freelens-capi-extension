@@ -1,0 +1,327 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:59:40Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-provisioning
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-provisioning-5cqww
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-provisioning-5cqww-6fcc7
+  namespace: freelens-capi-provisioning
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-provisioning-5cqww
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-provisioning-5cqww-6fcc7
+    dataSecretName: freelens-capi-provisioning-5cqww-6fcc7
+  clusterName: freelens-capi-provisioning
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd1
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-provisioning-5cqww-6fcc7
+  providerID: docker:////freelens-capi-provisioning-5cqww-6fcc7
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-provisioning-5cqww-6fcc7
+    type: Hostname
+  - address: 172.19.0.14
+    type: InternalIP
+  - address: 172.19.0.14
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: |-
+      * InfrastructureReady:
+        * BootstrapCompleted: Running boostrap command [ /bin/sh -c sleep 150 ] (33 of 34)
+      * NodeHealthy: Waiting for Cluster control plane to be initialized
+      * NodeKubeadmLabelsAndTaintsSet: Waiting for Cluster control plane to be initialized
+      * Control plane components: Waiting for Cluster control plane to be initialized
+      * EtcdMemberHealthy: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: "* BootstrapCompleted: Running boostrap command [ /bin/sh -c sleep 150 ] (33 of 34)"
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: InspectionFailed
+    status: Unknown
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: "* BootstrapCompleted: Running boostrap command [ /bin/sh -c sleep 150 ] (33 of 34)"
+        reason: NotReady
+        status: "False"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:42Z"
+        reason: WaitingForNodeRef
+        severity: Info
+        status: "False"
+        type: NodeHealthy
+  failureDomain: fd1
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:49Z"
+  observedGeneration: 1
+  phase: Provisioned
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  creationTimestamp: "2025-12-31T23:59:41Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-provisioning
+    cluster.x-k8s.io/deployment-name: freelens-capi-provisioning-md-0-5cs96
+    cluster.x-k8s.io/set-name: freelens-capi-provisioning-md-0-5cs96-hbvpm
+    machine-template-hash: 3672718254-hbvpm
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp
+  namespace: freelens-capi-provisioning
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-provisioning-md-0-5cs96-hbvpm
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp
+  clusterName: freelens-capi-provisioning
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp
+  version: v1.37.0
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: |-
+      * BootstrapConfigReady:
+        * DataSecretAvailable: Waiting for Cluster control plane to be initialized
+        * CertificatesAvailable: Condition not yet reported
+      * InfrastructureReady:
+        * CGroupsReady: WaitingForContainer
+        * ContainerProvisioned: WaitingForControlPlaneInitialized
+        * PreLoadedImagesReady: WaitingForContainer
+        * BootstrapCompleted: WaitingForContainer
+      * NodeHealthy: Waiting for Cluster control plane to be initialized
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: |-
+      * DataSecretAvailable: Waiting for Cluster control plane to be initialized
+      * CertificatesAvailable: Condition not yet reported
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: |-
+      * CGroupsReady: WaitingForContainer
+      * ContainerProvisioned: WaitingForControlPlaneInitialized
+      * PreLoadedImagesReady: WaitingForContainer
+      * BootstrapCompleted: WaitingForContainer
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        message: 0 of 2 completed
+        reason: WaitingForControlPlaneAvailable
+        severity: Info
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        reason: WaitingForControlPlaneAvailable
+        severity: Info
+        status: "False"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        message: |-
+          * CGroupsReady: WaitingForContainer
+          * ContainerProvisioned: WaitingForControlPlaneInitialized
+          * PreLoadedImagesReady: WaitingForContainer
+          * BootstrapCompleted: WaitingForContainer
+        reason: NotReady
+        status: "False"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:42Z"
+        reason: WaitingForNodeRef
+        severity: Info
+        status: "False"
+        type: NodeHealthy
+  lastUpdated: "2025-12-31T23:59:42Z"
+  observedGeneration: 1
+  phase: Pending

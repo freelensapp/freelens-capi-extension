@@ -1,0 +1,44 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: quick-start-default-worker-bootstraptemplate
+  creationTimestamp: "2025-12-31T23:55:31Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up-held
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-held-md-0-v4g27
+  namespace: freelens-capi-scaling-up-held
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-scaling-up-held
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+          - name: eviction-hard
+            value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:55:30Z"
+  name: quick-start-default-worker-bootstraptemplate
+  namespace: freelens-capi-scaling-up-held
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: ClusterClass
+    name: quick-start
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+          - name: eviction-hard
+            value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%

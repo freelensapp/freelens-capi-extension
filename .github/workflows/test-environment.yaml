@@ -1,0 +1,204 @@
+name: Test environment
+
+# The two tiers of the test environment (docs/development/TESTING.md): the fixtures on the definitions alone,
+# read back as their files, and the real project, brought up, checked, brought up again and taken down. They
+# run when what they run changes, on main, and every night, when an image that a pinned manifest names by its
+# tag may have moved. Nothing of the private state of the scripts, a kubeconfig above all, leaves the runner.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - .github/workflows/test-environment.yaml
+      - .github/workflows/integration-tests.yaml
+      - .nvmrc
+      - e2e/**
+      - integration/fixtures/**
+      - package.json
+      - pnpm-lock.yaml
+  schedule:
+    - cron: 17 3 * * *
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    name: test environment fixtures
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Get pnpm cache directory
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
+
+      # The job of the real project saves this cache, under the same key: restored alone here, so that the
+      # two jobs, which run side by side, do not both save it.
+      - name: Use pnpm cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.pnpm_cache_dir }}
+          key: ubuntu-24.04-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ubuntu-24.04-node-
+
+      - name: Install pnpm dependencies
+        id: install-pnpm
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        continue-on-error: true
+
+      - name: Install pnpm dependencies (retry)
+        if: steps.install-pnpm.outcome == 'failure'
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+
+      # The private state of the scripts, outside the checkout, as they ask.
+      - name: Set the state folder of the scripts
+        run: echo "XDG_STATE_HOME=${RUNNER_TEMP}/test-environment" >> "${GITHUB_ENV}"
+
+      # kind is pinned once, in the env of the integration workflow, where the scripts read it too.
+      - name: Get the version of kind
+        id: kind
+        run: |
+          version=$(sed -n 's/^  kind_version: *\([0-9.]*\).*/\1/p' .github/workflows/integration-tests.yaml)
+          if ! printf '%s\n' "${version}" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::integration-tests.yaml has no kind_version in its env that this step can read"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          version: v${{ steps.kind.outputs.version }}
+          install_only: true
+
+      - name: Create the cluster of the definitions
+        run: pnpm e2e:cluster:up:definitions
+
+      # Each fixture set applied, read back at the version of its file and compared with it.
+      - name: Check the fixtures against their files
+        run: pnpm e2e:fixtures:check
+
+      - name: Take the test environment down
+        if: always()
+        run: pnpm e2e:cluster:down
+
+  real-project:
+    name: test environment real project
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    # A new push to a pull request cancels the job of the real project that still runs for it, which takes
+    # up to an hour. The runs of main and of the night each have a group of their own, and none is cancelled.
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('test-environment-real-project-pr-{0}', github.event.pull_request.number) || format('test-environment-real-project-run-{0}', github.run_id) }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Get pnpm cache directory
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
+
+      - name: Use pnpm cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.pnpm_cache_dir }}
+          key: ubuntu-24.04-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ubuntu-24.04-node-
+
+      - name: Install pnpm dependencies
+        id: install-pnpm
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        continue-on-error: true
+
+      - name: Install pnpm dependencies (retry)
+        if: steps.install-pnpm.outcome == 'failure'
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+
+      - name: Set the state folder of the scripts
+        run: echo "XDG_STATE_HOME=${RUNNER_TEMP}/test-environment" >> "${GITHUB_ENV}"
+
+      - name: Get the version of kind
+        id: kind
+        run: |
+          version=$(sed -n 's/^  kind_version: *\([0-9.]*\).*/\1/p' .github/workflows/integration-tests.yaml)
+          if ! printf '%s\n' "${version}" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::integration-tests.yaml has no kind_version in its env that this step can read"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          version: v${{ steps.kind.outputs.version }}
+          install_only: true
+
+      # It waits until the first workload cluster reports Available True, and fails otherwise.
+      - name: Bring the real project up
+        run: pnpm e2e:cluster:up
+
+      - name: Check that the first workload cluster reports Available True
+        run: |
+          available=$(kubectl get clusters.v1beta2.cluster.x-k8s.io freelens-capi-md --namespace default \
+            --output 'jsonpath={.status.conditions[?(@.type=="Available")].status}')
+          echo "freelens-capi-md reports Available ${available:-nothing}"
+          test "${available}" = True
+        env:
+          KUBECONFIG: ${{ runner.temp }}/test-environment/freelens-capi-extension/freelens-capi-management/kubeconfig
+
+      # Run again, it resumes: it uses the kind cluster it created and creates nothing that exists.
+      - name: Bring the real project up again
+        run: pnpm e2e:cluster:up
+
+      # What the objects of the workload clusters say, without the kubeconfig or any Secret.
+      - name: Show the workload clusters
+        if: failure()
+        run: kubectl get clusters.v1beta2.cluster.x-k8s.io,machines.v1beta2.cluster.x-k8s.io --all-namespaces || true
+        env:
+          KUBECONFIG: ${{ runner.temp }}/test-environment/freelens-capi-extension/freelens-capi-management/kubeconfig
+
+      - name: Take the test environment down
+        if: always()
+        run: pnpm e2e:cluster:down
+
+      # down checks what it leaves already; this says it from outside the scripts.
+      - name: Check that nothing of the test environment is left
+        run: |
+          kind get clusters
+          docker ps --all --format '{{.Names}}'
+          test -z "$(kind get clusters 2>/dev/null | grep '^freelens-capi-' || true)"
+          test -z "$(docker ps --all --format '{{.Names}}' | grep '^freelens-capi-' || true)"

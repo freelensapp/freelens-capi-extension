@@ -1,0 +1,125 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:20Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-rolling-out
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-rolling-out-hsfpd
+  namespace: freelens-capi-rolling-out
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-rolling-out
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-rolling-out
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/control-plane: ""
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:35Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-rolling-out-hsfpd-87hrn
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:20Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-rolling-out
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-rolling-out-md-0-t96dp
+  namespace: freelens-capi-rolling-out
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-rolling-out
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-rolling-out
+  selector:
+    matchLabels:
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 2
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:35Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 3
+  observedGeneration: 1
+  remediationsAllowed: 2
+  targets:
+  - freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+  - freelens-capi-rolling-out-md-0-t96dp-xkg62-kkdsc
+  - freelens-capi-rolling-out-md-0-t96dp-xkg62-tfl6d

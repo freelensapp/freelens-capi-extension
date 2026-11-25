@@ -2,7 +2,10 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["node", "@freelensapp/extensions"]
+    "types": ["node", "@freelensapp/extensions"],
+    // The session of the fixtures reads them with the modules of the scripts
+    // of the test environment, which it imports by their `.mts` names.
+    "allowImportingTsExtensions": true
   },
   "include": ["./**/*.ts"]
 }

@@ -1,0 +1,52 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevCluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:41Z"
+  finalizers:
+  - dockercluster.infrastructure.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-topology
+  name: freelens-capi-without-topology
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-topology
+spec:
+  backend:
+    docker:
+      loadBalancer: {}
+  controlPlaneEndpoint:
+    host: 172.19.0.18
+    port: 6443
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: LoadBalancerAvailable
+  - lastTransitionTime: "2025-12-31T23:58:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:46Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:46Z"
+        status: "True"
+        type: LoadBalancerAvailable
+  initialization:
+    provisioned: true

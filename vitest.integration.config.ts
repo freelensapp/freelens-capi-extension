@@ -8,8 +8,8 @@ export default defineConfig({
     name: "integration",
     environment: "node",
     include: ["integration/__tests__/**/*.tests.ts"],
-    // One app, one session at a time: the sessions install the extension and
-    // change the CRD on one cluster.
+    // One app, one session at a time: each session installs the extension in
+    // it, and the session of the fixtures opens its cluster.
     fileParallelism: false,
     testTimeout: 120_000,
     hookTimeout: 120_000,

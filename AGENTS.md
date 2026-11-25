@@ -168,7 +168,12 @@ Rules that hold on top of the process:
 - Data read from a real environment stay on the machine that read them. They
   never go into source, fixtures, specs, documents, logs, screenshots, test
   reports or Git history, and never to an agent, a remote service or hosted
-  CI. Fixtures are synthetic.
+  CI. Fixtures are synthetic. Those that the scripts capture from the real
+  project of the test environment, a kind cluster of their own, keep nothing
+  that the machine of the capture tells of itself: the kernel, the boot and
+  the swap of each Node and the capacity of each machine template are
+  replaced or left out, and only the architecture of the Nodes is kept
+  (`docs/development/TESTING.md`, "The fixtures").
 - Never store, log or forward credentials or signed URLs.
 - The content of the kubeconfig of a workload cluster never appears on
   screen or in a log.
@@ -218,6 +223,10 @@ pnpm e2e:cluster:up               # The real project: Cluster API and two worklo
 pnpm e2e:cluster:up:definitions   # The definitions of Cluster API alone, on another kind cluster
 pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters
 pnpm e2e:pins:check               # Downloads every pinned file and checks it, with no cluster
+pnpm e2e:fixtures:capture <state> # Captures the fixtures of a state, or of all, from the real project
+pnpm e2e:fixtures:up <state>      # Applies the fixtures of a state, or of all, to the cluster of the definitions
+pnpm e2e:fixtures:down            # Removes the fixtures from the cluster of the definitions
+pnpm e2e:fixtures:check           # Applies each fixture set, reads it back and compares it with its files
 pnpm demo:up                      # e2e:cluster:up, then how to open it in Freelens
 pnpm demo:down                    # Alias for e2e:cluster:down
 
@@ -247,6 +256,7 @@ test/environment.test.ts         # Unit tests of the scripts of the test environ
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
 integration/__tests__/           # Integration tests, run against Freelens dev over CDP, and their shared module
+integration/fixtures/            # The fixtures of the test environment: objects of Cluster API, one folder per state
 e2e/environment/pins.json        # Versions and digests of what the scripts of the test environment download
 e2e/scripts/                     # The scripts of the test environment, run by Node as they are
 ```
@@ -1018,16 +1028,17 @@ problem does not show.
 
 ### Workflows
 
-| Workflow                 | Runs                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `type-check.yaml`        | `pnpm type:check`                                                                     |
-| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                    |
-| `unit-tests.yaml`        | `pnpm test:unit`                                                                      |
-| `trunk-check.yaml`       | `trunk check --all`                                                                   |
-| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                         |
-| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version         |
-| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check` |
-| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                         |
+| Workflow                 | Runs                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `type-check.yaml`        | `pnpm type:check`                                                                       |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                      |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                                        |
+| `trunk-check.yaml`       | `trunk check --all`                                                                     |
+| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                           |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version           |
+| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`   |
+| `test-environment.yaml`  | the fixtures and the real project of the test environment (docs/development/TESTING.md) |
+| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                           |
 
 The type check has a workflow of its own, on pull requests and on pushes to
 `main`, as in Freelens. It runs every program, tests, tooling and environment
@@ -1050,29 +1061,33 @@ a file and a fresh profile in `FREELENS_INTEGRATION_TESTING_DIR`, waits until
 the CDP endpoint answers, and runs `pnpm test:integration` here. The job
 `integration tests` waits for every job of the matrix and fails when one of
 them did not succeed; the branch rules require it rather than the jobs of the
-matrix, whose names change with the matrix. A profile of
+matrix, whose names change with the matrix. The kind cluster of the sessions is
+the cluster of the definitions of the test environment, which the workflow
+creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
+fixtures of the session with `pnpm e2e:fixtures:up healthy`
+(docs/development/TESTING.md). A profile of
 Freelens dev syncs no kubeconfig by default, so the workflow seeds the fresh
-one with a single sync entry, a file with the kind cluster alone, and the
-catalog lists that cluster and nothing else. Every test
-file is a session of its own on the one app, and fails on any error logged by
-either process:
+one with a single sync entry, a copy of the kubeconfig of the scripts, which
+holds that cluster alone, and the catalog lists that cluster and nothing else.
+Every test file is a session of its own on the one app, and fails on any error
+logged by either process:
 
 - `extensions.tests.ts` uninstalls whatever installation of the extension the
   app has, installs this checkout in place from the Extensions page and opens
   its preferences page, without changing the preference: the extension's tab
   in the "Extensions" tab group shows the title and the checkbox label of its
   `appPreferences` entry. It needs no cluster.
-- `example-v1alpha1.tests.ts` and `example-v1alpha2.tests.ts` open the kind
-  cluster with the CRD of one API version and its test object, and click
-  through the extension's views: the list page shows a row for the object,
-  its details show the extension's panel with `Api Version` set to the
-  session's version and no error page of the error boundary, and the row's
-  menu lists the extension's `Suspend` item, which is not clicked. Each view
-  is an `it` that navigates from the sidebar itself, so that it does not
-  depend on the state another left. They do not check the columns, every
-  field, what a menu action does, or the Custom Resources tree. They keep an
-  in-place installation of this checkout that is enabled, and install it
-  otherwise.
+- `fixtures.tests.ts` opens the kind cluster with the definitions of Cluster
+  API and the fixtures of one state, `healthy` unless `TEST_FIXTURE_STATE`
+  names another, and checks that the host loads the extension in the frame of
+  the cluster, where it links the stylesheet of the extension once it has
+  imported its renderer, and activates it with no error in either process, and
+  that the host lists every object of the fixtures, by the cell of its name, in
+  the list of the host for its kind, which it opens by its address with its
+  namespace filter on the namespace of the state. It reads the fixtures with
+  the modules of the scripts of the test environment, and changes nothing on
+  the cluster. It keeps an in-place installation of this checkout that is
+  enabled, and installs it otherwise.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 600`. A retry
@@ -1129,36 +1144,46 @@ stylesheets, the frame does not render its sidebar, and `openKindCluster`,
 after its timeout, loads the frame again once, only if the main log has a
 failed request since the cluster was opened.
 
+The list of the host for a custom resource keys its columns by the names of
+the printer columns of the CRD, and at `v1beta2` the CRDs of MachineDeployment
+and KubeadmControlPlane of Cluster API name two columns `Available`, their
+condition and their count of available replicas. React logs the repeated key
+as an error at every render of their lists in Freelens dev
+(`Encountered two children with the same key`). The session decides each such
+error when it arrives, by the frame that logged it, found by the host of the
+script that logged it: it leaves the error out only while that frame shows the
+list of the host for a custom resource, `/crd/<group>/<plural>`, with no
+details panel open (no `kube-details` in its address), and the key is one that
+the list gives two columns, as the host makes them from the CRD: the name, the
+namespace, the printer columns of the version it reads (the stored one when it
+is served, else the served one of the highest priority) without those of a
+priority above 0, and the age. Any other repeated key counts, those of the
+extension's own views included, and so does one that a details panel logs over
+a list. The decision does not wait for the session to open a list, so it also
+covers a list that Freelens restores when it opens the cluster; `errors()`
+waits for the decisions of the messages that arrived.
+
 The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent
 `dev` task never ends, so the log would stay empty.
 
-There is one session per API version because the cluster and the app are
-singletons: the CRD `examples.example.freelens.app` is one object, whose
-`examples/v1alpha1` definition serves v1alpha1 only and whose
-`examples/v1alpha2` definition serves both versions, and the app reads which
-versions are served when it connects to the cluster. So the v1alpha1 session
-checks that the page falls back to the v1alpha1 list, and the v1alpha2
-session that it picks v1alpha2, the newest version. Vitest runs the files one
-at a time (`fileParallelism: false`), in no set order, and none depends on
-another having run: each session disconnects the kind cluster, removes the
-leftovers of an earlier run (the namespace `integration-tests` and the CRD),
-applies the CRD from `examples/<version>/crds`, waits until it is
-established, applies `integration/fixtures/<version>/` (the object of
-`examples/<version>/test`, in the namespace `integration-tests`, which the
-kustomization creates), and only then connects the cluster. The session then
-selects `integration-tests` in the namespace filter of the extension's own
-page, which its `KubeObjectListLayout` renders for a namespaced resource,
-unless the filter already shows it: a new cluster shows only `default`, and
-the app keeps the selection for every namespaced list of the cluster. Without
-it the page lists nothing, and every view fails on its timeout. The session
-opens no page of the host, whose requests can log errors of their own: the
-Pods page asks for pod metrics, and kind has no metrics server. A session's
-teardown stops collecting the errors first, then disconnects the cluster, so
-that the app logs no watch error for a CRD deleted under it, then deletes the
-fixtures and the CRD with `--wait`, also when a test failed, and then checks
-the errors. The app refreshes the cluster's permissions while it disconnects
-it, and when the refresh loses the race, its requests fail on its own proxy
+There is one state of the fixtures per run because the cluster and the app
+are singletons: the workflow applies the fixtures of `healthy`, and the
+session opens the state that `TEST_FIXTURE_STATE` names. Vitest runs the files
+one at a time (`fileParallelism: false`), in no set order, and none depends on
+another having run. The session of the fixtures changes nothing on the
+cluster: it checks that the namespace of its state is there, connects the
+cluster, and opens the list of the host for each kind of the set by its
+address, `/crd/<group>/<plural>`, in the cluster frame. It selects the
+namespace of the state in the namespace filter of the list, unless the filter
+already shows it: a new cluster shows only `default`, and the app keeps the
+selection for every namespaced list of the cluster. Without it the list shows
+nothing, and every check fails on its timeout. It opens no other page of the
+host, whose requests can log errors of their own: the Pods page asks for pod
+metrics, and kind has no metrics server. A session's teardown stops collecting
+the errors first, then disconnects the cluster, and then checks the errors.
+The app refreshes the cluster's permissions while it disconnects it, and when
+the refresh loses the race, its requests fail on its own proxy
 (`[AUTHORIZATION-REVIEW]`, `[AUTHORIZATION-NAMESPACE-REVIEW]`,
 `[FREELENS-PROXY]` with `Cluster <id> is not connected` or `The client is
 destroyed`); those errors come and go with the timing of a run and say
@@ -1166,34 +1191,40 @@ nothing about the extension, and the session no longer collects them.
 
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
-connecting and disconnecting the kind cluster, kubectl, and the selectors. Its
+connecting and disconnecting the kind cluster, opening the lists of the host,
+kubectl, and the selectors. Its
 name does not match `*.tests.ts`, so Vitest does not collect it.
 `integration/tsconfig.json` compiles the directory with Node and the DOM,
 because the callbacks of `page.evaluate` run in the page, and with the types
 of `@freelensapp/extensions`, which declare `globalThis.FreelensExtensionApi`
 for them.
 
-Three variables configure the sessions. `FREELENS_CDP_URL` is the CDP
+Four variables configure the sessions. `FREELENS_CDP_URL` is the CDP
 endpoint (`http://127.0.0.1:9223` by default), `FREELENS_MAIN_LOG` the main
-log, and `TEST_KIND_CLUSTER_NAME` names the kind cluster (`kind` by default,
-`freelens` in the workflow); every kubectl call names its context,
-`kind-<name>`, so a run never acts on the current context. The checkout to
-install, and the manifests, are found from the location of the helpers. Outside
-CI a session skips with a warning when Freelens dev does not answer or the
-cluster is not reachable; in CI (`CI` set) the run fails instead, so that a
-mistake in the workflow does not turn into a silent skip.
+log, `TEST_KIND_CLUSTER_NAME` names the kind cluster (`kind` by default,
+`freelens-capi-definitions` in the workflow, which gives kubectl the
+kubeconfig of the scripts through `KUBECONFIG`), and `TEST_FIXTURE_STATE` the
+state of the fixtures of the session of the fixtures; every kubectl call names
+its context, `kind-<name>`, so a run never acts on the current context. The
+checkout to install is found from the location of the helpers, and the
+fixtures from that of the session. Outside CI a session skips with a warning
+when Freelens dev does not answer or the cluster is not reachable; in CI (`CI`
+set) the run fails instead, so that a mistake in the workflow does not turn
+into a silent skip.
 
 Run locally, the tests act on the profile of Freelens dev, `FreelensDev`,
 which is apart from that of an installed Freelens: they navigate its window,
 leave this checkout installed in place, uninstalling another installation of
 the extension, and leave the kind cluster disconnected, with the namespace
-filter set to `integration-tests`. They touch no other cluster of the
-catalog. The profile lists the kind cluster only once its kubeconfig is in
+filter set to the namespace of the fixtures. They touch no other cluster of
+the catalog. The profile lists the kind cluster only once its kubeconfig is in
 "Kubeconfig Syncs" (see "Checking the Extension in Freelens Dev"); without
-it the cluster sessions fail on the timeout of finding the cluster. A run
-deletes the CRD `examples.example.freelens.app`, and with it every `Example`
-on the cluster: run it only against a kind cluster with nothing worth
-keeping.
+it the cluster sessions fail on the timeout of finding the cluster. The
+session of the fixtures needs the cluster of the definitions with the fixtures
+of its state, `pnpm e2e:cluster:up:definitions` and
+`pnpm e2e:fixtures:up healthy`, and the kubeconfig of the scripts in
+"Kubeconfig Syncs" and in `KUBECONFIG`; it skips with a warning when the
+namespace of the fixtures is not there.
 
 ## Checking the Extension in Freelens Dev
 
@@ -1248,7 +1279,9 @@ syncs of the dev profile" in Freelens's `DEVELOPMENT.md`).
   navigate in `onClick`; their `href` is not the page URL. A click on an
   entry's `[data-testid="sidebar-item-…"]` element does not navigate; a DOM
   `click()` on the link inside it, `[data-testid="link-for-sidebar-item-…"]`,
-  does. Neither does `history.pushState` in the cluster frame.
+  does. Neither does `history.pushState` in the cluster frame, alone; followed
+  by a `popstate` event, it does, which is how the session of the fixtures
+  opens the lists of the host by their addresses.
 - The root frame navigates with `Renderer.Navigation.navigate(url)` of the
   extension API, run in its page: `/extensions`, `/catalog`,
   `/preferences/extension/<name>`, `/cluster/<id>`. The application menu
@@ -1267,7 +1300,9 @@ and paths. Keep only warnings, errors, page errors and the extension's own
 lines, and never paste the full console into a PR, an issue or a report.
 React reports key problems as console errors ("Each child in a list should
 have a unique key", "Encountered two children with the same key"); they count
-as failures of the "no error in DevTools" check.
+as failures of the "no error in DevTools" check. The one exception is the list
+of the host for a custom resource whose CRD names two printer columns alike,
+as the integration tests describe.
 
 The renderer's requests to Kubernetes go through Chromium, which logs every
 response that is not a success as a console error,

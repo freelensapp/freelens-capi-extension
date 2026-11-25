@@ -1,0 +1,124 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:24Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-52g8b
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-upgrading
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-upgrading
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/control-plane: ""
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:39Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 2
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-upgrading-52g8b-2xtlv
+  - freelens-capi-upgrading-52g8b-xr8w4
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:24Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-md-0-82krw
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-upgrading
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-upgrading
+  selector:
+    matchLabels:
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:39Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
