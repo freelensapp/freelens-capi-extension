@@ -79,7 +79,8 @@ pnpm demo:down
 ```
 
 It deletes the kind cluster of the demo and the containers of its workload
-clusters, and the cluster of the definitions too when it is up, and says so
-when something could not be deleted. A kind cluster of the same name that the
+clusters, those that a capture of the fixtures left included, and the cluster
+of the definitions too when it is up, and says so when something could not be
+deleted. A kind cluster of the same name that the
 scripts did not create from their state folder is left in place. It leaves
 the downloads in the private state, for the next run.

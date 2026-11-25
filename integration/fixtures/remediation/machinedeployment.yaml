@@ -1,0 +1,145 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  annotations:
+    machinedeployment.clusters.x-k8s.io/revision: "1"
+  creationTimestamp: "2025-12-31T23:58:25Z"
+  finalizers:
+  - cluster.x-k8s.io/machinedeployment
+  - machinedeployment.topology.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-md-0-qrjs5
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-remediation
+spec:
+  clusterName: freelens-capi-remediation
+  remediation:
+    maxInFlight: 1
+  replicas: 2
+  rollout:
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+      type: RollingUpdate
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+        topology.cluster.x-k8s.io/deployment-name: md-0
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-remediation-md-0-vr2sc
+      clusterName: freelens-capi-remediation
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-remediation-md-0-htkz6
+      version: v1.37.0
+status:
+  availableReplicas: 0
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:56Z"
+    message: 0 available replicas, at least 2 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 2)
+    observedGeneration: 1
+    reason: NotAvailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: |-
+      * Machine freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq: Machine is deleting
+      * Machine freelens-capi-remediation-md-0-qrjs5-t4crs-bd642: Waiting because there are already too many remediations in progress (spec.strategy.remediation.maxInFlight is 1)
+    observedGeneration: 1
+    reason: Remediating
+    status: "True"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: |-
+      * Machine freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq:
+        * Deleting: Machine deletion in progress, stage: WaitingForPreDrainHook
+        * HealthCheckSucceeded: Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation
+      * Machine freelens-capi-remediation-md-0-qrjs5-t4crs-bd642:
+        * HealthCheckSucceeded: Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:27Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 2
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        status: "True"
+        type: Available
+      - lastTransitionTime: "2025-12-31T23:59:56Z"
+        message: 0 of 2 completed
+        reason: HasRemediateMachineAnnotation @ Machine/freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+        severity: Warning
+        status: "False"
+        type: MachineSetReady
+      readyReplicas: 2
+      unavailableReplicas: 0
+      updatedReplicas: 2
+  observedGeneration: 1
+  phase: Running
+  readyReplicas: 0
+  replicas: 2
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-remediation,topology.cluster.x-k8s.io/deployment-name=md-0,topology.cluster.x-k8s.io/owned=
+  upToDateReplicas: 2
+  versions:
+  - replicas: 2
+    version: v1.37.0

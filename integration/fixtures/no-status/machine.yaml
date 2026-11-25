@@ -1,0 +1,22 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-no-status
+  name: freelens-capi-no-status-machine-0
+  namespace: freelens-capi-no-status
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-no-status-machine-0
+  clusterName: freelens-capi-no-status
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-no-status-machine-0
+  version: v1.37.0

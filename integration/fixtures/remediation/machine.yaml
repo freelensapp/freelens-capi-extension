@@ -1,0 +1,563 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:58:31Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-remediation-glx8b
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-glx8b-42wn2
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-remediation-glx8b
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-remediation-glx8b-42wn2
+    dataSecretName: freelens-capi-remediation-glx8b-42wn2
+  clusterName: freelens-capi-remediation
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd1
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-remediation-glx8b-42wn2
+  providerID: docker:////freelens-capi-remediation-glx8b-42wn2
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-remediation-glx8b-42wn2
+    type: Hostname
+  - address: 172.19.0.14
+    type: InternalIP
+  - address: 172.19.0.14
+    type: ExternalIP
+  certificatesExpiryDate: "2026-12-31T23:58:46Z"
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:58:57Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Set
+    status: "True"
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:25Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:33Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:37Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: APIServerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:58:37Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: ControllerManagerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:05Z"
+        status: "True"
+        type: EtcdMemberHealthy
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: EtcdPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:25Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:58:57Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: SchedulerPodHealthy
+  failureDomain: fd1
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:04Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: 774936ac14d048c9b34dc3152c48ba60
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 774936ac14d048c9b34dc3152c48ba60
+  nodeRef:
+    name: freelens-capi-remediation-glx8b-42wn2
+  observedGeneration: 1
+  phase: Running
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    cluster.x-k8s.io/remediate-machine: ""
+    pre-drain.delete.hook.machine.cluster.x-k8s.io/test-environment: ""
+  creationTimestamp: "2025-12-31T23:58:47Z"
+  deletionTimestamp: "2025-12-31T23:59:55Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/deployment-name: freelens-capi-remediation-md-0-qrjs5
+    cluster.x-k8s.io/set-name: freelens-capi-remediation-md-0-qrjs5-t4crs
+    machine-template-hash: 3572739918-t4crs
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+    dataSecretName: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  clusterName: freelens-capi-remediation
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  providerID: docker:////freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+    type: Hostname
+  - address: 172.19.0.16
+    type: InternalIP
+  - address: 172.19.0.16
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: |-
+      * Deleting: Machine deletion in progress, stage: WaitingForPreDrainHook
+      * HealthCheckSucceeded: Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:02Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: ""
+    observedGeneration: 2
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:38Z"
+    message: ""
+    observedGeneration: 2
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: "Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation"
+    observedGeneration: 1
+    reason: HasRemediateAnnotation
+    status: "False"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: Machine is deleting
+    observedGeneration: 1
+    reason: MachineDeleting
+    status: "False"
+    type: OwnerRemediated
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:47Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:56Z"
+    message: "Waiting for pre-drain hooks to succeed (hooks: pre-drain.delete.hook.machine.cluster.x-k8s.io/test-environment)"
+    observedGeneration: 2
+    reason: WaitingForPreDrainHook
+    status: "True"
+    type: Deleting
+  deletion:
+    waitForPreDrainHookStartTime: "2025-12-31T23:59:56Z"
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Marked for remediation via remediate-machine annotation
+        reason: HasRemediateMachineAnnotation
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:03Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Marked for remediation via remediate-machine annotation
+        reason: HasRemediateMachineAnnotation
+        severity: Warning
+        status: "False"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:16Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        status: "True"
+        type: OwnerRemediated
+      - lastTransitionTime: "2025-12-31T23:59:56Z"
+        reason: WaitingExternalHook
+        severity: Info
+        status: "False"
+        type: PreDrainDeleteHookSucceeded
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:56Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: 99b6264d6f794c719d7f62e58395e0c9
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 99b6264d6f794c719d7f62e58395e0c9
+  nodeRef:
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq
+  observedGeneration: 2
+  phase: Deleting
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    cluster.x-k8s.io/remediate-machine: ""
+    pre-drain.delete.hook.machine.cluster.x-k8s.io/test-environment: ""
+  creationTimestamp: "2025-12-31T23:58:47Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-remediation
+    cluster.x-k8s.io/deployment-name: freelens-capi-remediation-md-0-qrjs5
+    cluster.x-k8s.io/set-name: freelens-capi-remediation-md-0-qrjs5-t4crs
+    machine-template-hash: 3572739918-t4crs
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  namespace: freelens-capi-remediation
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+    dataSecretName: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  clusterName: freelens-capi-remediation
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  providerID: docker:////freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+    type: Hostname
+  - address: 172.19.0.15
+    type: InternalIP
+  - address: 172.19.0.15
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: "* HealthCheckSucceeded: Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation"
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:02Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:15Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: "Health check failed: marked for remediation via cluster.x-k8s.io/remediate-machine annotation"
+    observedGeneration: 1
+    reason: HasRemediateAnnotation
+    status: "False"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:59:55Z"
+    message: |-
+      Waiting because there are already too many remediations in progress (spec.strategy.remediation.maxInFlight is 1)
+    observedGeneration: 1
+    reason: RemediationDeferred
+    status: "False"
+    type: OwnerRemediated
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:47Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:48Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Marked for remediation via remediate-machine annotation
+        reason: HasRemediateMachineAnnotation
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:03Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Marked for remediation via remediate-machine annotation
+        reason: HasRemediateMachineAnnotation
+        severity: Warning
+        status: "False"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:16Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:36Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        reason: WaitingForRemediation
+        severity: Warning
+        status: "False"
+        type: OwnerRemediated
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:15Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: 03d1fd64781740f0be99df603015f68d
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 03d1fd64781740f0be99df603015f68d
+  nodeRef:
+    name: freelens-capi-remediation-md-0-qrjs5-t4crs-bd642
+  observedGeneration: 1
+  phase: Running

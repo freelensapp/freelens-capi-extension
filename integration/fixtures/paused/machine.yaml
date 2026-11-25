@@ -1,0 +1,362 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/deployment-name: freelens-capi-paused-md-0-vzf8f
+    cluster.x-k8s.io/set-name: freelens-capi-paused-md-0-vzf8f-62l5g
+    machine-template-hash: 107852496-62l5g
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-paused-md-0-vzf8f-62l5g
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+    dataSecretName: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  clusterName: freelens-capi-paused
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  providerID: docker:////freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+    type: Hostname
+  - address: 172.19.0.16
+    type: InternalIP
+  - address: 172.19.0.16
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:06Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:06Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:42Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:20Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: NodeHealthy
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:21Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: be0d49afaf4d40459a2402781326b0f3
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: be0d49afaf4d40459a2402781326b0f3
+  nodeRef:
+    name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  observedGeneration: 1
+  phase: Running
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-paused-q6kg9
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-q6kg9-lsjbh
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-paused-q6kg9
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-paused-q6kg9-lsjbh
+    dataSecretName: freelens-capi-paused-q6kg9-lsjbh
+  clusterName: freelens-capi-paused
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd5
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-paused-q6kg9-lsjbh
+  providerID: docker:////freelens-capi-paused-q6kg9-lsjbh
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-paused-q6kg9-lsjbh
+    type: Hostname
+  - address: 172.19.0.13
+    type: InternalIP
+  - address: 172.19.0.13
+    type: ExternalIP
+  certificatesExpiryDate: "2026-12-31T23:58:48Z"
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:01Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:33Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:09Z"
+    message: ""
+    observedGeneration: 1
+    reason: Set
+    status: "True"
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:09Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:39Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: APIServerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:58:39Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: ControllerManagerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:09Z"
+        status: "True"
+        type: EtcdMemberHealthy
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: EtcdPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:42Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:01Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:31Z"
+        status: "True"
+        type: SchedulerPodHealthy
+  failureDomain: fd5
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:09Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.37.0
+    machineID: eeba0dea07f649d9862c7f7d56a76ef2
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: eeba0dea07f649d9862c7f7d56a76ef2
+  nodeRef:
+    name: freelens-capi-paused-q6kg9-lsjbh
+  observedGeneration: 1
+  phase: Running

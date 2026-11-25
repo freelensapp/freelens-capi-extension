@@ -1,0 +1,14 @@
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSet
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  name: freelens-capi-no-status
+  namespace: freelens-capi-no-status
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: kindnet
+  resources:
+  - kind: ConfigMap
+    name: freelens-capi-no-status-add-on
+  strategy: ApplyOnce

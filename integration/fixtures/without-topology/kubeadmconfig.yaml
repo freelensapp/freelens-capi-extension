@@ -1,0 +1,216 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    machine.cluster.x-k8s.io/certificates-expiry: "2026-12-31T23:59:02Z"
+  creationTimestamp: "2025-12-31T23:58:47Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-topology
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-without-topology-control-plane
+  name: freelens-capi-without-topology-control-plane-jxdks
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-without-topology-control-plane-jxdks
+spec:
+  clusterConfiguration:
+    controlPlaneEndpoint: 172.19.0.18:6443
+  initConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:51Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:51Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:58:51Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:58:50Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-without-topology-control-plane-jxdks
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:51Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:51Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:58:51Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-without-topology-md-0
+  creationTimestamp: "2025-12-31T23:59:02Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-topology
+    cluster.x-k8s.io/deployment-name: freelens-capi-without-topology-md-0
+    cluster.x-k8s.io/set-name: freelens-capi-without-topology-md-0-rpwxk
+    machine-template-hash: 4286837446-rpwxk
+  name: freelens-capi-without-topology-md-0-rpwxk-hghvs
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-without-topology-md-0-rpwxk-hghvs
+spec:
+  joinConfiguration:
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.18:6443
+        caCertHashes:
+        - sha256:f59bcca1d314971c20b0f0c7da92d0907999db45c25d89be21f02dfc4f3b8665
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:04Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-without-topology-md-0-rpwxk-hghvs
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-without-topology-md-0
+  creationTimestamp: "2025-12-31T23:59:02Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-topology
+    cluster.x-k8s.io/deployment-name: freelens-capi-without-topology-md-0
+    cluster.x-k8s.io/set-name: freelens-capi-without-topology-md-0-rpwxk
+    machine-template-hash: 4286837446-rpwxk
+  name: freelens-capi-without-topology-md-0-rpwxk-mts4f
+  namespace: freelens-capi-without-topology
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-without-topology-md-0-rpwxk-mts4f
+spec:
+  joinConfiguration:
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.18:6443
+        caCertHashes:
+        - sha256:f59bcca1d314971c20b0f0c7da92d0907999db45c25d89be21f02dfc4f3b8665
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:04Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-without-topology-md-0-rpwxk-mts4f
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:18Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1

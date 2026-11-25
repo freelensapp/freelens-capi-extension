@@ -1,0 +1,25 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  labels:
+    cni: kindnet
+  name: freelens-capi-no-status
+  namespace: freelens-capi-no-status
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-no-status-control-plane
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-no-status

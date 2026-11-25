@@ -1,0 +1,162 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-paused-md-0-vzj4p
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/deployment-name: freelens-capi-paused-md-0-vzf8f
+    cluster.x-k8s.io/set-name: freelens-capi-paused-md-0-vzf8f-62l5g
+    machine-template-hash: 107852496-62l5g
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+spec:
+  joinConfiguration:
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.11:6443
+        caCertHashes:
+        - sha256:6fcace63a21ee0e7de31d27b3d0fedf3322b4ef83ac953ea98aeda4a284c9a03
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:06Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  dataSecretName: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:06Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:05Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:06Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    machine.cluster.x-k8s.io/certificates-expiry: "2026-12-31T23:58:48Z"
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-paused-q6kg9
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-q6kg9-lsjbh
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-paused-q6kg9-lsjbh
+spec:
+  clusterConfiguration:
+    apiServer:
+      certSANs:
+      - localhost
+      - 127.0.0.1
+      - 0.0.0.0
+      - host.docker.internal
+      extraArgs:
+      - name: admission-control-config-file
+        value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+      extraVolumes:
+      - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        name: admission-pss
+        pathType: File
+        readOnly: true
+    controlPlaneEndpoint: 172.19.0.11:6443
+  files:
+  - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+  initConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:58:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  dataSecretName: freelens-capi-paused-q6kg9-lsjbh
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:38Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:38Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:58:38Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1

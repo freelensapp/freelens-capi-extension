@@ -1,0 +1,550 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:59:41Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-upgrading-52g8b
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-52g8b-2xtlv
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-upgrading-52g8b
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-upgrading-52g8b-2xtlv
+    dataSecretName: freelens-capi-upgrading-52g8b-2xtlv
+  clusterName: freelens-capi-upgrading
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd4
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-upgrading-52g8b-2xtlv
+  providerID: docker:////freelens-capi-upgrading-52g8b-2xtlv
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.37.0
+status:
+  addresses:
+  - address: freelens-capi-upgrading-52g8b-2xtlv
+    type: Hostname
+  - address: 172.19.0.12
+    type: InternalIP
+  - address: 172.19.0.12
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: |-
+      * InfrastructureReady:
+        * BootstrapCompleted: Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+      * NodeHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+      * NodeKubeadmLabelsAndTaintsSet: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+      * Control plane components: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+      * EtcdMemberHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: |-
+      * BootstrapCompleted: Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: Waiting for a Node with spec.providerID docker:////freelens-capi-upgrading-52g8b-2xtlv to exist
+    observedGeneration: 1
+    reason: InspectionFailed
+    status: Unknown
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:59:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:46Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:46Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:56Z"
+        message: |-
+          * BootstrapCompleted: Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+        reason: NotReady
+        status: "False"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:50Z"
+        message: Waiting for a node with matching ProviderID to exist
+        reason: NodeProvisioning
+        severity: Warning
+        status: "False"
+        type: NodeHealthy
+  failureDomain: fd4
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:50Z"
+  observedGeneration: 1
+  phase: Provisioned
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  annotations:
+    pre-terminate.delete.hook.machine.cluster.x-k8s.io/kcp-cleanup: ""
+  creationTimestamp: "2025-12-31T23:58:31Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-upgrading-52g8b
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-52g8b-xr8w4
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: KubeadmControlPlane
+    name: freelens-capi-upgrading-52g8b
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-upgrading-52g8b-xr8w4
+    dataSecretName: freelens-capi-upgrading-52g8b-xr8w4
+  clusterName: freelens-capi-upgrading
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  failureDomain: fd1
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-upgrading-52g8b-xr8w4
+  providerID: docker:////freelens-capi-upgrading-52g8b-xr8w4
+  readinessGates:
+  - conditionType: NodeKubeadmLabelsAndTaintsSet
+  - conditionType: APIServerPodHealthy
+  - conditionType: ControllerManagerPodHealthy
+  - conditionType: SchedulerPodHealthy
+  - conditionType: EtcdPodHealthy
+  - conditionType: EtcdMemberHealthy
+  version: v1.36.4
+status:
+  addresses:
+  - address: freelens-capi-upgrading-52g8b-xr8w4
+    type: Hostname
+  - address: 172.19.0.16
+    type: InternalIP
+  - address: 172.19.0.16
+    type: ExternalIP
+  certificatesExpiryDate: "2026-12-31T23:58:45Z"
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: |-
+      * Version v1.36.4, v1.37.0 required
+      * DevMachine is not up-to-date
+    observedGeneration: 1
+    reason: NotUpToDate
+    status: "False"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Set
+    status: "True"
+    type: NodeKubeadmLabelsAndTaintsSet
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: EtcdPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Healthy
+    status: "True"
+    type: EtcdMemberHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: APIServerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: ControllerManagerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:23Z"
+    message: ""
+    observedGeneration: 1
+    reason: Running
+    status: "True"
+    type: SchedulerPodHealthy
+  - lastTransitionTime: "2025-12-31T23:59:24Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:33Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:33Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:36Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: APIServerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:58:36Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: ControllerManagerPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:05Z"
+        status: "True"
+        type: EtcdMemberHealthy
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: EtcdPodHealthy
+      - lastTransitionTime: "2025-12-31T23:59:24Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:58:59Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: NodeHealthy
+      - lastTransitionTime: "2025-12-31T23:59:23Z"
+        status: "True"
+        type: SchedulerPodHealthy
+  failureDomain: fd1
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:04Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.36.4
+    machineID: c1d8a78256da4b41a9e92f108c45498f
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: c1d8a78256da4b41a9e92f108c45498f
+  nodeRef:
+    name: freelens-capi-upgrading-52g8b-xr8w4
+  observedGeneration: 1
+  phase: Running
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Machine
+metadata:
+  creationTimestamp: "2025-12-31T23:58:45Z"
+  finalizers:
+  - machine.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-upgrading
+    cluster.x-k8s.io/deployment-name: freelens-capi-upgrading-md-0-82krw
+    cluster.x-k8s.io/set-name: freelens-capi-upgrading-md-0-82krw-g5cdv
+    machine-template-hash: 194587976-g5cdv
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+  namespace: freelens-capi-upgrading
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineSet
+    name: freelens-capi-upgrading-md-0-82krw-g5cdv
+spec:
+  bootstrap:
+    configRef:
+      apiGroup: bootstrap.cluster.x-k8s.io
+      kind: KubeadmConfig
+      name: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+    dataSecretName: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+  clusterName: freelens-capi-upgrading
+  deletion:
+    nodeDeletionTimeoutSeconds: 10
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevMachine
+    name: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+  providerID: docker:////freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+  version: v1.36.4
+status:
+  addresses:
+  - address: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+    type: Hostname
+  - address: 172.19.0.17
+    type: InternalIP
+  - address: 172.19.0.17
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: UpToDate
+  - lastTransitionTime: "2025-12-31T23:59:02Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: BootstrapConfigReady
+  - lastTransitionTime: "2025-12-31T23:59:14Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeHealthy
+    status: "True"
+    type: NodeHealthy
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NodeReady
+    status: "True"
+    type: NodeReady
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: HealthCheckSucceeded
+    status: "True"
+    type: HealthCheckSucceeded
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotUpdating
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2025-12-31T23:58:45Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:46Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:03Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:03Z"
+        status: "True"
+        type: BootstrapReady
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        status: "True"
+        type: HealthCheckSucceeded
+      - lastTransitionTime: "2025-12-31T23:59:15Z"
+        reason: Ready
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:35Z"
+        status: "True"
+        type: NodeHealthy
+  initialization:
+    bootstrapDataSecretCreated: true
+    infrastructureProvisioned: true
+  lastUpdated: "2025-12-31T23:59:15Z"
+  nodeInfo:
+    architecture: amd64
+    bootID: 00000000-0000-4000-8000-000000000000
+    containerRuntimeVersion: containerd://2.3.4
+    kernelVersion: 6.12.0-test-environment
+    kubeProxyVersion: ""
+    kubeletVersion: v1.36.4
+    machineID: 5733cd82595d42a79a347e53d871f535
+    operatingSystem: linux
+    osImage: Debian GNU/Linux 13 (trixie)
+    systemUUID: 5733cd82595d42a79a347e53d871f535
+  nodeRef:
+    name: freelens-capi-upgrading-md-0-82krw-g5cdv-zqqm9
+  observedGeneration: 1
+  phase: Running

@@ -1,0 +1,242 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:22Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up
+  namespace: freelens-capi-scaling-up
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.11
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-scaling-up-dzqt7
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-scaling-up-kd6h4
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 3
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 2
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:37Z"
+    message: |-
+      * WorkersAvailable:
+        * MachineDeployment freelens-capi-scaling-up-md-0-474jl: 1 available replicas, at least 2 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 2)
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 2
+    reason: ProbeSucceeded
+    status: "True"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: "* 1 of 2 Machines has healthy control plane components, at least 1 required"
+    observedGeneration: 2
+    reason: Available
+    status: "True"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:37Z"
+    message: |-
+      * MachineDeployment freelens-capi-scaling-up-md-0-474jl: 1 available replicas, at least 2 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 2)
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:58:22Z"
+    message: ""
+    observedGeneration: 2
+    reason: ReconcileSucceeded
+    status: "True"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:26Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:59:37Z"
+    message: |-
+      * KubeadmControlPlane freelens-capi-scaling-up-dzqt7:
+        * Scaling up from 2 to 3 replicas is blocked because:
+          * waiting for control plane components to become healthy
+          * waiting for etcd cluster to become healthy
+    observedGeneration: 2
+    reason: ScalingUp
+    status: "True"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-dzqt7-kr7ml:
+        * InfrastructureReady:
+          * BootstrapCompleted: Running boostrap command [ /bin/sh -c echo started > /run/cluster-api/capd.bootstrap.started && kubeadm join --ignore-preflight-errors=SystemVerification,Swap,FileContent--proc-sys-net-bridge-bridge-nf-call-iptables --config /run/kubeadm/kubeadm-join-config.yaml  && echo success > /run/cluster-api/bootstrap-success.complete ] (33 of 33)
+        * NodeHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-dzqt7-kr7ml to exist
+        * NodeKubeadmLabelsAndTaintsSet: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-dzqt7-kr7ml to exist
+        * Control plane components: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-dzqt7-kr7ml to exist
+        * EtcdMemberHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-dzqt7-kr7ml to exist
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x:
+        * NodeHealthy:
+          * Node.Ready: [container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:Network plugin returns error: cni plugin not initialized, CSINode is not yet initialized]
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:23Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:24Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 1
+    desiredReplicas: 3
+    readyReplicas: 1
+    replicas: 2
+    upToDateReplicas: 2
+    versions:
+    - replicas: 2
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:38Z"
+        message: Scaling up control plane to 3 replicas (actual 2)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:59Z"
+        status: "True"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:38Z"
+        message: Scaling up control plane to 3 replicas (actual 2)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:58:27Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:58:22Z"
+        status: "True"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    controlPlaneInitialized: true
+    infrastructureProvisioned: true
+  observedGeneration: 2
+  phase: Provisioned
+  workers:
+    availableReplicas: 1
+    desiredReplicas: 2
+    readyReplicas: 1
+    replicas: 2
+    upToDateReplicas: 2
+    versions:
+    - replicas: 2
+      version: v1.37.0

@@ -1,0 +1,134 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineSet
+metadata:
+  annotations:
+    cluster.x-k8s.io/disable-machine-create: "false"
+    machinedeployment.clusters.x-k8s.io/desired-replicas: "2"
+    machinedeployment.clusters.x-k8s.io/max-replicas: "3"
+    machinedeployment.clusters.x-k8s.io/revision: "1"
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  deletionTimestamp: "2025-12-31T23:59:49Z"
+  finalizers:
+  - cluster.x-k8s.io/machineset
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+    cluster.x-k8s.io/deployment-name: freelens-capi-deleting-md-0-8dcql
+    machine-template-hash: 130548642-vp49h
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-deleting-md-0-8dcql-vp49h
+  namespace: freelens-capi-deleting
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineDeployment
+    name: freelens-capi-deleting-md-0-8dcql
+spec:
+  clusterName: freelens-capi-deleting
+  replicas: 2
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+      machine-template-hash: 130548642-vp49h
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-deleting
+        machine-template-hash: 130548642-vp49h
+        topology.cluster.x-k8s.io/deployment-name: md-0
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-deleting-md-0-nddmd
+      clusterName: freelens-capi-deleting
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-deleting-md-0-gq8t7
+      version: v1.37.0
+status:
+  availableReplicas: 0
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: Scaling down from 1 to 0 replicas
+    observedGeneration: 2
+    reason: ScalingDown
+    status: "True"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:55Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:51Z"
+    message: |-
+      * Machine freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw:
+        * Deleting: Machine deletion in progress, stage: WaitingForPreTerminateHook
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:35Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:50Z"
+    message: Deleting 1 Machine
+    observedGeneration: 2
+    reason: Deleting
+    status: "True"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 1
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Scaling down MachineSet to 0 replicas (actual 1)
+        reason: ScalingDown
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:55Z"
+        status: "True"
+        type: MachinesCreated
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        status: "True"
+        type: MachinesReady
+      - lastTransitionTime: "2025-12-31T23:59:55Z"
+        message: Scaling down MachineSet to 0 replicas (actual 1)
+        reason: ScalingDown
+        severity: Warning
+        status: "False"
+        type: Resized
+      fullyLabeledReplicas: 1
+      readyReplicas: 1
+  observedGeneration: 2
+  readyReplicas: 0
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-deleting,machine-template-hash=130548642-vp49h,topology.cluster.x-k8s.io/deployment-name=md-0,topology.cluster.x-k8s.io/owned=
+  upToDateReplicas: 1
+  versions:
+  - replicas: 1
+    version: v1.37.0

@@ -1,0 +1,243 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineSet
+metadata:
+  annotations:
+    cluster.x-k8s.io/disable-machine-create: "false"
+    machinedeployment.clusters.x-k8s.io/desired-replicas: "1"
+    machinedeployment.clusters.x-k8s.io/max-replicas: "2"
+    machinedeployment.clusters.x-k8s.io/revision: "1"
+  creationTimestamp: "2025-12-31T23:58:14Z"
+  finalizers:
+  - machineset.topology.cluster.x-k8s.io
+  - cluster.x-k8s.io/machineset
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+    cluster.x-k8s.io/deployment-name: freelens-capi-without-node-md-0-glbqj
+    machine-template-hash: 1197177853-j9nhm
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-without-node-md-0-glbqj-j9nhm
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: MachineDeployment
+    name: freelens-capi-without-node-md-0-glbqj
+spec:
+  clusterName: freelens-capi-without-node
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+      machine-template-hash: 1197177853-j9nhm
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+        machine-template-hash: 1197177853-j9nhm
+        topology.cluster.x-k8s.io/deployment-name: md-0
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-without-node-md-0-p6vwb
+      clusterName: freelens-capi-without-node
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-without-node-md-0-4hhsd
+      version: v1.37.0
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:17Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:17Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:19Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:17Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:16Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:17Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 1
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:19Z"
+        status: "True"
+        type: MachinesCreated
+      - lastTransitionTime: "2025-12-31T23:58:56Z"
+        status: "True"
+        type: MachinesReady
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: Resized
+      fullyLabeledReplicas: 1
+      readyReplicas: 1
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-without-node,machine-template-hash=1197177853-j9nhm,topology.cluster.x-k8s.io/deployment-name=md-0,topology.cluster.x-k8s.io/owned=
+  upToDateReplicas: 1
+  versions:
+  - replicas: 1
+    version: v1.37.0
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineSet
+metadata:
+  creationTimestamp: "2025-12-31T23:59:38Z"
+  finalizers:
+  - cluster.x-k8s.io/machineset
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+  name: freelens-capi-without-node-without-node
+  namespace: freelens-capi-without-node
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-without-node
+spec:
+  clusterName: freelens-capi-without-node
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+      cluster.x-k8s.io/set-name: freelens-capi-without-node-without-node
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-without-node
+        cluster.x-k8s.io/set-name: freelens-capi-without-node-without-node
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-without-node-without-node
+      clusterName: freelens-capi-without-node
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-without-node-without-node
+      version: v1.37.0
+status:
+  availableReplicas: 0
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:56Z"
+    message: |-
+      * Machine freelens-capi-without-node-without-node-h5zrd:
+        * NodeHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-without-node-without-node-h5zrd to exist
+    observedGeneration: 1
+    reason: ReadyUnknown
+    status: Unknown
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:53Z"
+    message: "* Machine freelens-capi-without-node-without-node-h5zrd: Condition UpToDate not yet reported"
+    observedGeneration: 1
+    reason: UpToDateUnknown
+    status: Unknown
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 0
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        message: Scaling up MachineSet to 1 replicas (actual 0)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        status: "True"
+        type: MachinesCreated
+      - lastTransitionTime: "2025-12-31T23:59:47Z"
+        status: "True"
+        type: MachinesReady
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        message: Scaling up MachineSet to 1 replicas (actual 0)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: Resized
+      fullyLabeledReplicas: 1
+      readyReplicas: 0
+  observedGeneration: 1
+  readyReplicas: 0
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-without-node,cluster.x-k8s.io/set-name=freelens-capi-without-node-without-node
+  upToDateReplicas: 0
+  versions:
+  - replicas: 1
+    version: v1.37.0

@@ -1,0 +1,249 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:59:34Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-provisioning
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-provisioning
+  namespace: freelens-capi-provisioning
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.11
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-provisioning-5cqww
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-provisioning-xh87n
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 1
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 1
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: |-
+      * RemoteConnectionProbe: Remote connection not established yet
+      * ControlPlaneAvailable: Control plane not yet initialized
+      * WorkersAvailable:
+        * MachineDeployment freelens-capi-provisioning-md-0-5cs96: 0 available replicas, at least 1 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 1)
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: Remote connection not established yet
+    observedGeneration: 1
+    reason: ProbeFailed
+    status: "False"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:59:38Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: Control plane not yet initialized
+    observedGeneration: 2
+    reason: NotInitialized
+    status: "False"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: Control plane not yet initialized
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: |-
+      * MachineDeployment freelens-capi-provisioning-md-0-5cs96: 0 available replicas, at least 1 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 1)
+    observedGeneration: 2
+    reason: NotAvailable
+    status: "False"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:59:34Z"
+    message: ""
+    observedGeneration: 2
+    reason: ReconcileSucceeded
+    status: "True"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:59:38Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:38Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: |-
+      * Machine freelens-capi-provisioning-5cqww-6fcc7:
+        * InfrastructureReady:
+          * BootstrapCompleted: Running boostrap command [ /bin/sh -c sleep 150 ] (33 of 34)
+        * NodeHealthy: Waiting for Cluster control plane to be initialized
+        * NodeKubeadmLabelsAndTaintsSet: Waiting for Cluster control plane to be initialized
+        * Control plane components: Waiting for Cluster control plane to be initialized
+        * EtcdMemberHealthy: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: |-
+      * Machine freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp:
+        * BootstrapConfigReady:
+          * DataSecretAvailable: Waiting for Cluster control plane to be initialized
+          * CertificatesAvailable: Condition not yet reported
+        * InfrastructureReady:
+          * CGroupsReady: WaitingForContainer
+          * ContainerProvisioned: WaitingForControlPlaneInitialized
+          * PreLoadedImagesReady: WaitingForContainer
+          * BootstrapCompleted: WaitingForContainer
+        * NodeHealthy: Waiting for Cluster control plane to be initialized
+    observedGeneration: 2
+    reason: NotReady
+    status: "False"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: UpToDate
+    status: "True"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:59:36Z"
+    message: ""
+    observedGeneration: 2
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 0
+    desiredReplicas: 1
+    readyReplicas: 0
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        message: Scaling up control plane to 1 replicas (actual 0)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:36Z"
+        message: Waiting for control plane provider to indicate the control plane has been initialized
+        reason: WaitingForControlPlaneProviderInitialized
+        severity: Info
+        status: "False"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        message: Scaling up control plane to 1 replicas (actual 0)
+        reason: ScalingUp
+        severity: Warning
+        status: "False"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:59:39Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:34Z"
+        status: "True"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    infrastructureProvisioned: true
+  observedGeneration: 2
+  phase: Provisioned
+  workers:
+    availableReplicas: 0
+    desiredReplicas: 1
+    readyReplicas: 0
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0

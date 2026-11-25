@@ -1,0 +1,151 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  creationTimestamp: "2025-12-31T23:59:40Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-provisioning
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-provisioning-5cqww
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-provisioning-5cqww-6fcc7
+  namespace: freelens-capi-provisioning
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-provisioning-5cqww-6fcc7
+spec:
+  clusterConfiguration:
+    apiServer:
+      certSANs:
+      - localhost
+      - 127.0.0.1
+      - 0.0.0.0
+      - host.docker.internal
+      extraArgs:
+      - name: admission-control-config-file
+        value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+      extraVolumes:
+      - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        name: admission-pss
+        pathType: File
+        readOnly: true
+    controlPlaneEndpoint: 172.19.0.11:6443
+  files:
+  - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+  initConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+  preKubeadmCommands:
+  - sleep 150
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-provisioning-5cqww-6fcc7
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-provisioning-md-0-j4xt9
+  creationTimestamp: "2025-12-31T23:59:41Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-provisioning
+    cluster.x-k8s.io/deployment-name: freelens-capi-provisioning-md-0-5cs96
+    cluster.x-k8s.io/set-name: freelens-capi-provisioning-md-0-5cs96-hbvpm
+    machine-template-hash: 3672718254-hbvpm
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp
+  namespace: freelens-capi-provisioning
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-provisioning-md-0-5cs96-hbvpm-c26hp
+spec:
+  joinConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: |-
+      * DataSecretAvailable: Waiting for Cluster control plane to be initialized
+      * CertificatesAvailable: Condition not yet reported
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:44Z"
+    message: Waiting for Cluster control plane to be initialized
+    observedGeneration: 1
+    reason: NotAvailable
+    status: "False"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:43Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        reason: WaitingForControlPlaneAvailable
+        severity: Info
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:44Z"
+        reason: WaitingForControlPlaneAvailable
+        severity: Info
+        status: "False"
+        type: DataSecretAvailable
+  observedGeneration: 1

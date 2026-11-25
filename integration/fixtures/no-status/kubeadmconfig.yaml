@@ -1,0 +1,25 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  name: freelens-capi-no-status-machine-0
+  namespace: freelens-capi-no-status
+spec:
+  joinConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  name: freelens-capi-no-status-mp-0
+  namespace: freelens-capi-no-status
+spec:
+  joinConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%

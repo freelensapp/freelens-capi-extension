@@ -1,0 +1,328 @@
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  creationTimestamp: "2025-12-31T23:59:36Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-scaling-up-dzqt7
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-dzqt7-kr7ml
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-dzqt7-kr7ml
+spec:
+  clusterConfiguration:
+    apiServer:
+      certSANs:
+      - localhost
+      - 127.0.0.1
+      - 0.0.0.0
+      - host.docker.internal
+      extraArgs:
+      - name: admission-control-config-file
+        value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+      extraVolumes:
+      - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        name: admission-pss
+        pathType: File
+        readOnly: true
+  files:
+  - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+  joinConfiguration:
+    controlPlane: {}
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.11:6443
+        caCertHashes:
+        - sha256:29e2ddd437e705baf2e943cb5161c56f5ff2114fac834d33a1d49a681f317faa
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-scaling-up-dzqt7-kr7ml
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    machine.cluster.x-k8s.io/certificates-expiry: "2026-12-31T23:58:43Z"
+  creationTimestamp: "2025-12-31T23:58:28Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-scaling-up-dzqt7
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-dzqt7-ph4fc
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-dzqt7-ph4fc
+spec:
+  clusterConfiguration:
+    apiServer:
+      certSANs:
+      - localhost
+      - 127.0.0.1
+      - 0.0.0.0
+      - host.docker.internal
+      extraArgs:
+      - name: admission-control-config-file
+        value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+      extraVolumes:
+      - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        name: admission-pss
+        pathType: File
+        readOnly: true
+    controlPlaneEndpoint: 172.19.0.11:6443
+  files:
+  - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+  initConfiguration:
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:58:32Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-scaling-up-dzqt7-ph4fc
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:32Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:32Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:58:32Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-md-0-m25r6
+  creationTimestamp: "2025-12-31T23:59:37Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/deployment-name: freelens-capi-scaling-up-md-0-474jl
+    cluster.x-k8s.io/set-name: freelens-capi-scaling-up-md-0-474jl-xnzdc
+    machine-template-hash: 1290635152-xnzdc
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+spec:
+  joinConfiguration:
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.11:6443
+        caCertHashes:
+        - sha256:29e2ddd437e705baf2e943cb5161c56f5ff2114fac834d33a1d49a681f317faa
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:59:39Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-scaling-up-md-0-474jl-xnzdc-6lj5x
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfig
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmConfigTemplate.bootstrap.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-scaling-up-md-0-m25r6
+  creationTimestamp: "2025-12-31T23:58:29Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up
+    cluster.x-k8s.io/deployment-name: freelens-capi-scaling-up-md-0-474jl
+    cluster.x-k8s.io/set-name: freelens-capi-scaling-up-md-0-474jl-xnzdc
+    machine-template-hash: 1290635152-xnzdc
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+  namespace: freelens-capi-scaling-up
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+spec:
+  joinConfiguration:
+    discovery:
+      bootstrapToken:
+        apiServerEndpoint: 172.19.0.11:6443
+        caCertHashes:
+        - sha256:29e2ddd437e705baf2e943cb5161c56f5ff2114fac834d33a1d49a681f317faa
+    nodeRegistration:
+      kubeletExtraArgs:
+      - name: eviction-hard
+        value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:58:59Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: DataSecretAvailable
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  dataSecretName: freelens-capi-scaling-up-md-0-474jl-xnzdc-gtgbd
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:59Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:58:59Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:58:59Z"
+        status: "True"
+        type: DataSecretAvailable
+  initialization:
+    dataSecretCreated: true
+  observedGeneration: 1

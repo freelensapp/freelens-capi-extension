@@ -1,0 +1,223 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  creationTimestamp: "2025-12-31T23:58:27Z"
+  finalizers:
+  - cluster.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cni: kindnet
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused
+  namespace: freelens-capi-paused
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.128.0.0/12
+  controlPlaneEndpoint:
+    host: 172.19.0.11
+    port: 6443
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: freelens-capi-paused-q6kg9
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: freelens-capi-paused-mb7z2
+  paused: true
+  topology:
+    classRef:
+      name: quick-start
+    controlPlane:
+      replicas: 1
+    variables:
+    - name: imageRepository
+      value: ""
+    - name: etcdImageTag
+      value: ""
+    - name: coreDNSImageTag
+      value: ""
+    - name: podSecurityStandard
+      value:
+        audit: restricted
+        enabled: true
+        enforce: baseline
+        warn: restricted
+    version: v1.37.0
+    workers:
+      machineDeployments:
+      - class: default-worker
+        name: md-0
+        replicas: 1
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:59:04Z"
+    message: ""
+    observedGeneration: 1
+    reason: ProbeSucceeded
+    status: "True"
+    type: RemoteConnectionProbe
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: InfrastructureReady
+  - lastTransitionTime: "2025-12-31T23:59:05Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: ControlPlaneInitialized
+  - lastTransitionTime: "2025-12-31T23:59:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: ControlPlaneAvailable
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: WorkersAvailable
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 2
+    reason: Paused
+    status: "False"
+    type: TopologyReconciled
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:29Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:31Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:37Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: ControlPlaneMachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: WorkerMachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:29Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: ControlPlaneMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:58:29Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: WorkerMachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 2
+    reason: Paused
+    status: "True"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:29Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  controlPlane:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:35Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:05Z"
+        status: "True"
+        type: ControlPlaneInitialized
+      - lastTransitionTime: "2025-12-31T23:59:35Z"
+        status: "True"
+        type: ControlPlaneReady
+      - lastTransitionTime: "2025-12-31T23:58:32Z"
+        status: "True"
+        type: InfrastructureReady
+      - lastTransitionTime: "2025-12-31T23:59:45Z"
+        message: Cluster spec.paused is set to true
+        reason: Paused
+        severity: Info
+        status: "False"
+        type: TopologyReconciled
+  failureDomains:
+  - controlPlane: true
+    name: fd1
+  - controlPlane: true
+    name: fd2
+  - controlPlane: true
+    name: fd3
+  - controlPlane: true
+    name: fd4
+  - controlPlane: true
+    name: fd5
+  - controlPlane: false
+    name: fd6
+  - controlPlane: false
+    name: fd7
+  - controlPlane: false
+    name: fd8
+  initialization:
+    controlPlaneInitialized: true
+    infrastructureProvisioned: true
+  observedGeneration: 1
+  phase: Provisioned
+  workers:
+    availableReplicas: 1
+    desiredReplicas: 1
+    readyReplicas: 1
+    replicas: 1
+    upToDateReplicas: 1
+    versions:
+    - replicas: 1
+      version: v1.37.0
