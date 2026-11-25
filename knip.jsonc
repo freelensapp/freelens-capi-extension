@@ -14,16 +14,16 @@
     "test/freelens-extensions.ts",
     // compiled by `type:check:environments` only, with no importer
     "environment-tests/*.ts",
-    // the parsers of SPEC-0003, which only their tests import yet: each one is
-    // a production entry until a module reached from another production entry
-    // imports it, the model if the second pull request of SPEC-0003 gives it a
-    // production entry, otherwise the first view of SPEC-0004 that imports it;
-    // the pull request that brings that import removes its line
-    "src/common/parsers/condition-message.ts!",
-    "src/common/parsers/contract-label.ts!",
-    "src/common/parsers/kubernetes-version.ts!",
-    "src/common/parsers/list-annotation.ts!",
-    "src/common/parsers/time.ts!"
+    // the status model of SPEC-0003, which only its tests import yet: its
+    // entry points are a production entry until the first view of SPEC-0004
+    // imports them, and the pull request that brings that import removes the
+    // line. The model reaches every module of src/common/status/ and the
+    // parsers it imports
+    "src/common/status/index.ts!",
+    // the one parser that the model does not import: a production entry until
+    // a module reached from another production entry imports it, and the pull
+    // request that brings that import removes its line
+    "src/common/parsers/list-annotation.ts!"
   ],
   "project": [
     "*.{js,mjs,ts}",
