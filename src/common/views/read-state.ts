@@ -44,7 +44,9 @@ export type KindFeeds =
   | "machine-pools"
   | "health-checks"
   | "cluster-class"
-  | "controllers";
+  | "controllers"
+  // The infrastructure clusters, which the details of a Cluster show, and the model of the Cluster does not take.
+  | "infrastructure";
 
 interface RunningLoad {
   readonly id: number;
@@ -386,7 +388,7 @@ function refusalLine(descriptor: KindDescriptor, failures: readonly ReadFailure[
     : [];
 }
 
-const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows">, string> = {
+const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure">, string> = {
   machines: "their activities read Unknown where their Machines count, never Idle",
   "machine-sets": "the activities of their MachineDeployments, and so their own, read Unknown, never Idle",
   parts: "their activities read Unknown, never Idle",
@@ -407,7 +409,9 @@ function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | u
   const what =
     descriptor.feeds === "rows"
       ? ""
-      : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
+      : descriptor.feeds === "infrastructure"
+        ? "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health."
+        : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
   const title =
     loadHold === undefined
       ? `The ${descriptor.noun} could not be read again, at ${TIME}`

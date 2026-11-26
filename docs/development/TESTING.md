@@ -281,16 +281,19 @@ included, so a fixture that does not pass it fails there; no schema is changed.
   with a profile that syncs the kubeconfig of the scripts alone, and to which
   it applies the fixtures of every state, `pnpm e2e:fixtures:up all`, each in
   the namespace of its state, once Freelens dev answers, as its last step
-  before the tests: the session of the list of Clusters checks the marks that
-  the fixtures give within 25 minutes of their apply (SPEC-0004, P33, "Notes
-  and deviations"). The session of the
+  before the tests: the session of the Clusters checks the marks that the
+  fixtures give within 25 minutes of their apply (SPEC-0004, P33, "Notes and
+  deviations"). The session of the
   fixtures, `integration/__tests__/fixtures.tests.ts`, opens that cluster and
   checks that the host imports the extension in the frame of the cluster with
   no error in either process, and that it lists every object of the set of
   `healthy`, in the list of its kind, by the cell of its name;
-  `TEST_FIXTURE_STATE` names another state. The session of the list of
-  Clusters, `integration/__tests__/clusters.tests.ts`, reads the fixtures of
-  every state at once in the page of the extension (`AGENTS.md`).
+  `TEST_FIXTURE_STATE` names another state. The session of the Clusters,
+  `integration/__tests__/clusters.tests.ts`, reads the fixtures of every state
+  at once in the page of the extension, its details and the panel in the
+  details of the host; it writes a label on three Clusters of the fixtures and
+  the annotation `cluster.x-k8s.io/paused` on one, and removes them, also when
+  a check failed (`AGENTS.md`).
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in

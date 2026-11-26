@@ -15,5 +15,6 @@ declare const classNames: {
   readonly state: "state";
   readonly title: "title";
   readonly tooltip: "tooltip";
+  readonly nameButton: "nameButton";
 };
 export = classNames;

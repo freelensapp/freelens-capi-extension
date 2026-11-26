@@ -7,14 +7,16 @@
 // name, and the version at which the object is read is the one that the contract label of the definition of its kind
 // gives, with the parser of SPEC-0003, never guessed; its plural is that of the definition. A reference that cannot
 // be resolved says why: its definition cannot be read, it names no version that the parser knows, or the cluster
-// serves no such kind. The reference to a ClusterClass names its namespace, or none for that of the Cluster.
+// serves no such kind. The reference to a ClusterClass names its namespace, or none for that of the Cluster. The
+// target of a reference is shown as a link only when the view read it, and otherwise says why it is not (P18): one of
+// those reasons, its kind could not be read in the namespace of the Cluster, or the object does not exist there.
 
 import { parseContractLabel } from "../parsers/contract-label";
 import { fieldsOf, namespaceOf, textOf } from "./objects";
 
 import type { ContractVersion } from "../parsers/contract-label";
 import type { KubeObjectData } from "../status/index";
-import type { ReadFailure } from "./read-state";
+import type { NamespaceRead, ReadFailure } from "./read-state";
 
 // The label of the definition of a kind of a provider that names the provider, by its manifest label
 // (SPEC-0003, P24).
@@ -151,4 +153,42 @@ export function classReferenceOf(cluster: KubeObjectData): ClassReference | unde
   const namespace = named === undefined || named === "" ? own : named;
 
   return { name, namespace, elsewhere: namespace !== own };
+}
+
+// Why the target of a reference is not shown as a link (P18): its definition refused or failed, a definition that names
+// no version that the parser knows, a kind that the cluster does not serve, its kind not read in the namespace of the
+// Cluster, or no such object in that namespace, which was read.
+export type UnreadReason =
+  | Extract<ResolvedReference, { readonly state: "unresolved" }>["reason"]
+  | "kind-not-read"
+  | "not-found";
+
+export type TargetRead =
+  | { readonly state: "found" }
+  // Its definition, or its kind in the namespace of the Cluster, is still being read.
+  | { readonly state: "pending" }
+  | { readonly state: "unread"; readonly reason: UnreadReason; readonly failures: readonly ReadFailure[] };
+
+// How the target of a reference was read: from the resolution of the reference, the read of its kind in the namespace
+// of the Cluster, which is `not-served` for a kind with no store, the failures that hold that kind back there, and
+// whether the object is in the store.
+export function targetReadOf(
+  resolution: ResolvedReference | undefined,
+  kindRead: NamespaceRead | "not-served",
+  held: readonly ReadFailure[],
+  found: boolean,
+): TargetRead {
+  if (found) return { state: "found" };
+  if (resolution === undefined || resolution.state === "pending") return { state: "pending" };
+  if (resolution.state === "unresolved") {
+    return {
+      state: "unread",
+      reason: resolution.reason,
+      failures: resolution.failure === undefined ? [] : [resolution.failure],
+    };
+  }
+  if (kindRead === "not-served") return { state: "unread", reason: "not-served", failures: [] };
+  if (kindRead.state === "held") return { state: "unread", reason: "kind-not-read", failures: held };
+  if (kindRead.state !== "read") return { state: "pending" };
+  return { state: "unread", reason: "not-found", failures: [] };
 }

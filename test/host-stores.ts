@@ -50,6 +50,7 @@ export const APIS = {
   healthChecks: api("MachineHealthCheck", "cluster.x-k8s.io", "v1beta2", "machinehealthchecks"),
   clusterClasses: api("ClusterClass", "cluster.x-k8s.io", "v1beta2", "clusterclasses"),
   coreProviders: api("CoreProvider", "operator.cluster.x-k8s.io", "v1alpha2", "coreproviders"),
+  devClusters: api("DevCluster", "infrastructure.cluster.x-k8s.io", "v1beta2", "devclusters"),
 } as const;
 
 export type ApiName = keyof typeof APIS;
@@ -141,6 +142,19 @@ export const DEFINITIONS = [
     },
   ),
 ];
+
+// The definition of the infrastructure cluster of the development provider, with the labels of the release
+// (test/infrastructure/docker/config/crd/kustomization.yaml:1-6; test/infrastructure/docker/config/default/kustomization.yaml:8).
+export const DEV_CLUSTERS = definition(
+  "devclusters.infrastructure.cluster.x-k8s.io",
+  "infrastructure.cluster.x-k8s.io",
+  "DevCluster",
+  {
+    "cluster.x-k8s.io/v1beta1": "v1beta1",
+    "cluster.x-k8s.io/v1beta2": "v1beta2",
+    "cluster.x-k8s.io/provider": "infrastructure-docker",
+  },
+);
 
 // The host of a cluster that serves Cluster API: the APIs and the stores of the kinds named, and the store of
 // definitions loaded with the definitions given.

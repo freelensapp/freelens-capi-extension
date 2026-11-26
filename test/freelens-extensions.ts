@@ -86,11 +86,18 @@ export const host = {
   // test file is one frame: `reset` keeps them, as a frame keeps what its
   // modules built.
   builtStores: [] as unknown[],
+  // What the stores of the extension's own class read of the cluster, by the
+  // base of their API.
+  cluster: new Map<string, ClusterData>(),
   registerStore: vi.fn(),
   // The APIs that the extension built itself, which it never does.
   builtApis: [] as unknown[],
   // The mounts of the list layout of the host, each of which subscribes its stores.
   layoutMounts: 0,
+  // The navigations of the frame: to an address, to the details of the host, and to a page of the extension.
+  navigate: vi.fn<(location: string) => void>(),
+  showDetails: vi.fn<(selfLink: string, resetSelected?: boolean) => void>(),
+  navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async () => undefined),
   reset() {
     runInAction(() => {
       host.apis.clear();
@@ -99,11 +106,15 @@ export const host = {
       host.crdStore.items = [];
     });
     host.stores.clear();
+    host.cluster.clear();
     host.crdGet.mockReset();
     host.context = newContext();
     host.registerStore.mockReset();
     host.builtApis.length = 0;
     host.layoutMounts = 0;
+    host.navigate.mockReset();
+    host.showDetails.mockReset();
+    host.navigateExtension.mockClear();
   },
   registerApi(api: StubApi, store?: unknown) {
     runInAction(() => host.apis.set(api.apiBase, api));
@@ -150,6 +161,15 @@ class LensExtensionKubeObject {
     return this.metadata?.uid ?? this.metadata?.selfLink ?? "";
   }
 
+  get selfLink() {
+    return this.metadata?.selfLink ?? "";
+  }
+
+  // The owners, as the host's.
+  getOwnerRefs() {
+    return (this.metadata as { ownerReferences?: { kind: string; name: string }[] } | undefined)?.ownerReferences ?? [];
+  }
+
   getCreationTimestamp() {
     return new Date(this.metadata?.creationTimestamp ?? 0).getTime();
   }
@@ -185,20 +205,72 @@ class LensExtensionKubeObject {
   }
 }
 
-// The base of the stores of the extension's own class: building one sends
-// nothing, and its getter `context` gives the context of the frame.
-class KubeObjectStore {
-  readonly api: unknown;
-  readonly loadAll = vi.fn();
-  readonly subscribe = vi.fn();
+// What a store of the extension's own class reads, by the base of its API: the
+// objects of the cluster, in every namespace, and the failures that a load
+// reports, one for each namespace that fails, through `onLoadFailure`, as the
+// store of the host reports them. A test sets it with `host.cluster`.
+interface ClusterData {
+  items: unknown[];
+  failures: unknown[];
+}
 
-  constructor(api: unknown) {
+// The base of the stores of the extension's own class: building one sends
+// nothing, and its getter `context` gives the context of the frame. A load
+// reads the objects of its namespaces from what the test set of the cluster
+// (`host.cluster`), into the items of the store, as the host merges them.
+class KubeObjectStore {
+  readonly api: { apiBase?: string };
+  readonly items = observable.array<{ metadata?: { namespace?: string; selfLink?: string } }>([], { deep: false });
+  readonly #state = observable({ isLoaded: false, isLoading: false });
+
+  readonly loadAll = vi.fn(async (opts?: { namespaces?: string[]; onLoadFailure?: (error: unknown) => void }) => {
+    const data = host.cluster.get(this.api.apiBase ?? "");
+    const namespaces = opts?.namespaces ?? [];
+
+    for (const failure of data?.failures.splice(0) ?? []) opts?.onLoadFailure?.(failure);
+    runInAction(() => {
+      const read = (data?.items ?? []).filter((item) =>
+        namespaces.includes((item as { metadata?: { namespace?: string } }).metadata?.namespace ?? ""),
+      );
+
+      this.items.replace([
+        ...this.items.filter((item) => !namespaces.includes(item.metadata?.namespace ?? "")),
+        ...(read as never[]),
+      ]);
+      this.#state.isLoaded = true;
+    });
+    return [];
+  });
+
+  readonly subscribe = vi.fn((_opts?: unknown) => () => undefined);
+
+  constructor(api: { apiBase?: string }) {
     this.api = api;
     host.builtStores.push(this);
   }
 
   get context() {
     return host.context;
+  }
+
+  get isLoaded() {
+    return this.#state.isLoaded;
+  }
+
+  get isLoading() {
+    return this.#state.isLoading;
+  }
+
+  get failedLoading() {
+    return false;
+  }
+
+  get contextItems() {
+    return [...this.items];
+  }
+
+  getByPath(path: string) {
+    return this.items.find((item) => item.metadata?.selfLink === path);
   }
 }
 
@@ -239,6 +311,8 @@ interface StubListLayoutProps {
   renderTableContents: (item: StubItem) => React.ReactNode[];
   renderItemMenu?: (item: StubItem) => React.ReactNode;
   addRemoveButtons?: { onRemove?: () => void };
+  hasDetailsView?: boolean;
+  onDetails?: (item: StubItem) => void;
 }
 
 // The parts of the host's list layout where it calls back into the extension
@@ -258,7 +332,7 @@ interface StubListLayoutProps {
 // subscription is the host's.
 const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
   const { store, items, isReady, renderHeaderTitle, customizeHeader, tableProps, renderTableContents } = props;
-  const { renderItemMenu } = props;
+  const { renderItemMenu, onDetails, hasDetailsView = true } = props;
   const rows = items ?? store.contextItems;
 
   React.useEffect(() => {
@@ -299,6 +373,7 @@ const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
       { "data-testid": "host-header" },
       header.title,
       header.info,
+      React.createElement("input", { "data-testid": "host-search", placeholder: "Search..." }),
       React.createElement("div", { "data-testid": "host-head-menu" }),
     ),
     rows.length === 0
@@ -306,7 +381,19 @@ const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
       : rows.map((item) =>
           React.createElement(
             "div",
-            { key: item.getId(), "data-testid": "host-row" },
+            {
+              key: item.getId(),
+              "data-testid": "host-row",
+              // A row opens the details, and stops the click as it handles it
+              // (freelens:packages/core/src/renderer/components/item-object-list/content.tsx).
+              onClick: hasDetailsView
+                ? (event: React.MouseEvent) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDetails?.(item);
+                  }
+                : undefined,
+            },
             ...renderTableContents(item).map((cell, index) => React.createElement("div", { key: index }, cell)),
             renderItemMenu === undefined
               ? null
@@ -348,6 +435,185 @@ function Labelled(props: {
   );
 }
 
+interface StubDrawerProps {
+  open: boolean;
+  title: React.ReactNode;
+  onClose?: () => void;
+  toolbar?: React.ReactNode;
+  children?: React.ReactNode;
+  "data-testid"?: string;
+  testIdForClose?: string;
+}
+
+// The drawer of the host as the details of a page use it: its title, its
+// close icon, and its children while it is open; it closes on its icon, on
+// Escape through a listener on the window, and on a click that the window
+// receives outside every drawer, unless the press of that click was in it or
+// the click was handled (freelens:packages/core/src/renderer/components/drawer/drawer.tsx).
+class Drawer extends React.Component<StubDrawerProps> {
+  #root: HTMLElement | null = null;
+  #pressed: EventTarget | null = null;
+
+  componentDidMount() {
+    window.addEventListener("mousedown", this.#onPress);
+    window.addEventListener("click", this.#onClick);
+    window.addEventListener("keydown", this.#onKey);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("mousedown", this.#onPress);
+    window.removeEventListener("click", this.#onClick);
+    window.removeEventListener("keydown", this.#onKey);
+  }
+
+  #close = () => {
+    if (this.props.open) this.props.onClose?.();
+  };
+
+  #onPress = (event: MouseEvent) => {
+    if (this.props.open) this.#pressed = event.target;
+  };
+
+  #onClick = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    const pressedInside = this.#pressed instanceof Node && this.#root?.contains(this.#pressed);
+
+    this.#pressed = null;
+    if (!this.props.open || event.defaultPrevented || pressedInside) return;
+    if (target.isConnected && !target.closest(".Drawer")) this.#close();
+  };
+
+  #onKey = (event: KeyboardEvent) => {
+    if (this.props.open && event.code === "Escape") this.#close();
+  };
+
+  render() {
+    if (!this.props.open) return null;
+    return React.createElement(
+      "div",
+      {
+        className: "Drawer",
+        "data-testid": this.props["data-testid"],
+        ref: (element: HTMLElement | null) => {
+          this.#root = element;
+        },
+      },
+      React.createElement(
+        "div",
+        { "data-testid": "host-drawer-title" },
+        this.props.title,
+        this.props.toolbar,
+        React.createElement("i", {
+          role: "button",
+          tabIndex: 0,
+          "data-testid": this.props.testIdForClose,
+          onClick: this.#close,
+        }),
+      ),
+      React.createElement("div", { "data-testid": "host-drawer-content" }, this.props.children),
+    );
+  }
+}
+
+function DrawerItem(props: {
+  name?: React.ReactNode;
+  hidden?: boolean;
+  children?: React.ReactNode;
+  "data-testid"?: string;
+}) {
+  if (props.hidden) return null;
+  return React.createElement(
+    "div",
+    { "data-testid": props["data-testid"], "data-drawer-item": "" },
+    React.createElement("span", { "data-drawer-item-name": "" }, props.name),
+    React.createElement("span", null, props.children),
+  );
+}
+
+function DrawerTitle(props: { children?: React.ReactNode }) {
+  return React.createElement("h6", null, props.children);
+}
+
+// The link of the host, which navigates in the frame unless its click is
+// handled.
+function MaybeLink(props: { to?: string; children?: React.ReactNode; onClick?: (event: React.MouseEvent) => void }) {
+  if (props.to === undefined) return React.createElement(React.Fragment, null, props.children);
+  return React.createElement(
+    "a",
+    {
+      href: props.to,
+      onClick: (event: React.MouseEvent) => {
+        props.onClick?.(event);
+        event.preventDefault();
+        host.navigate(props.to ?? "");
+      },
+    },
+    props.children,
+  );
+}
+
+// The metadata of the host: the fields it shows, but those of `hideFields`,
+// whose default is the three it hides, the namespace and each owner as a link
+// to the details of the host, as the host links them
+// (freelens:packages/core/src/renderer/components/kube-object-meta/kube-object-meta.tsx).
+const KubeObjectMeta = vi.fn(
+  (props: {
+    object: {
+      getName(): string;
+      getNs(): string | undefined;
+      getOwnerRefs(): { kind: string; name: string }[];
+    };
+    hideFields?: string[];
+  }) => {
+    const hidden = props.hideFields ?? ["uid", "resourceVersion", "selfLink"];
+    const namespace = props.object.getNs();
+    const owners = props.object.getOwnerRefs();
+
+    return React.createElement(
+      "div",
+      { "data-testid": "host-meta" },
+      React.createElement("span", null, props.object.getName()),
+      namespace === undefined || hidden.includes("namespace")
+        ? null
+        : React.createElement("a", { href: `?kube-details=/api/v1/namespaces/${namespace}` }, namespace),
+      hidden.includes("ownerReferences")
+        ? null
+        : owners.map((owner) =>
+            React.createElement(
+              "a",
+              { key: owner.name, href: `?kube-details=${owner.kind}/${owner.name}` },
+              owner.name,
+            ),
+          ),
+    );
+  },
+);
+
+function Table(props: { children?: React.ReactNode; "data-testid"?: string }) {
+  return React.createElement("div", { "data-testid": props["data-testid"], "data-host-table": "" }, props.children);
+}
+
+function TableHead(props: { children?: React.ReactNode }) {
+  return React.createElement("div", { "data-host-table-head": "" }, props.children);
+}
+
+function TableRow(props: { children?: React.ReactNode; "data-testid"?: string }) {
+  return React.createElement("div", { "data-testid": props["data-testid"], "data-host-table-row": "" }, props.children);
+}
+
+function TableCell(props: { children?: React.ReactNode; "data-testid"?: string }) {
+  return React.createElement("div", { "data-testid": props["data-testid"] }, props.children);
+}
+
+// The compact duration of the host, for the thresholds that the details name.
+function formatDuration(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1000);
+
+  if (seconds < 120) return `${seconds}s`;
+  if (seconds < 3600 * 3) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h`;
+}
+
 function Badge(props: {
   label?: React.ReactNode;
   className?: string;
@@ -380,19 +646,36 @@ function Badge(props: {
 export const Renderer = {
   Component: {
     Badge,
+    Drawer,
+    DrawerItem,
+    DrawerTitle,
     Icon: (props: { material?: string; svg?: string }) =>
       React.createElement("i", { "data-icon": props.material ?? "svg" }),
     KubeObjectAge: (props: { object: { metadata?: { creationTimestamp?: string } } }) =>
       React.createElement("span", { "data-testid": "host-age" }, props.object.metadata?.creationTimestamp),
     KubeObjectListLayout,
+    KubeObjectMeta,
     LocaleDate: (props: { date: string | Date }) =>
       React.createElement("time", null, props.date instanceof Date ? props.date.toISOString() : props.date),
+    MaybeLink,
     NamespaceSelectBadge: (props: { namespace: string }) =>
       React.createElement("span", { "data-testid": "host-namespace" }, props.namespace),
     ReactiveDuration: (props: { timestamp?: string }) =>
       React.createElement("span", { "data-testid": "host-duration" }, props.timestamp),
-    Spinner: () => React.createElement("span", { "data-testid": "host-cell-spinner" }),
+    Spinner: (props: { "data-testid"?: string }) =>
+      React.createElement("span", { "data-testid": props["data-testid"] ?? "host-cell-spinner" }),
+    Table,
+    TableCell,
+    TableHead,
+    TableRow,
     WithTooltip: Labelled,
+  },
+  // The navigation of the frame: the address of the details of the host keeps
+  // the parameters of the page, as `getDetailsUrl` merges them.
+  Navigation: {
+    getDetailsUrl: (selfLink: string) => `?kube-details=${encodeURIComponent(selfLink)}`,
+    showDetails: (selfLink: string, resetSelected?: boolean) => host.showDetails(selfLink, resetSelected),
+    navigate: (location: string) => host.navigate(location),
   },
   // The base of the extension's own renderer: the host gives it its name, and
   // reads the registrations it holds.
@@ -401,6 +684,11 @@ export const Renderer = {
 
     constructor(manifest: { name?: string } = {}) {
       this.name = manifest.name ?? "@freelensapp/capi-extension";
+    }
+
+    // Goes to a page of the extension, with its parameters.
+    navigate(pageId?: string, params?: object): Promise<void> {
+      return host.navigateExtension(pageId, params);
     }
   },
   K8sApi: {
@@ -413,6 +701,17 @@ export const Renderer = {
     },
     KubeObjectStore,
     apiManager,
+    // The registration of a details panel for a model class, with its kind and
+    // the versions of its `crd`, as the host's helper builds it.
+    detailsFor: (
+      model: { kind?: string; crd?: { apiVersions: string[] } },
+      registration: { Details: unknown; priority?: number },
+    ) => ({
+      kind: model.kind,
+      apiVersions: [...(model.crd?.apiVersions ?? [])],
+      components: { Details: registration.Details },
+      ...(registration.priority === undefined ? {} : { priority: registration.priority }),
+    }),
     get crdStore() {
       return host.crdStore;
     },
@@ -431,5 +730,8 @@ export const Common = {
   },
   Store: {
     ExtensionStore,
+  },
+  Util: {
+    formatDuration,
   },
 };

@@ -3,19 +3,21 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// The session of the list of Clusters (SPEC-0004, "Tests", "In Freelens, on the definitions and the fixtures"), on
-// the cluster of the definitions of Cluster API with the fixtures of every state of SPEC-0002, each state in its
-// namespace, which the integration workflow applies with `pnpm e2e:fixtures:up all` (P33). It checks what the first
-// pull request of SPEC-0004 brings: the rows of the page and their marks, A7 and the half of S5 that concerns the
-// list, a list that stays live, the Custom Resources tree of the host, and that the frame of the cluster only reads.
-// The details, the panel in the details of the host and the references come with the second pull request.
+// The session of the Clusters (SPEC-0004, "Tests", "In Freelens, on the definitions and the fixtures"), on the
+// cluster of the definitions of Cluster API with the fixtures of every state of SPEC-0002, each state in its
+// namespace, which the integration workflow applies with `pnpm e2e:fixtures:up all` (P33). It checks the rows of the
+// page and their marks, A7 and S5, the details of the extension and their focus, the panel in the details of the
+// host, the references between the objects of a Cluster, the sections of the details of the states that have their
+// own, a list and details that stay live, the Custom Resources tree of the host, and that the frame of the cluster
+// only reads.
 //
-// The session writes to the cluster of the tests alone, a label on two Clusters of the fixtures, which it removes at
-// its end, also when a check failed, and records the version that the answer to each of its writes gives, so that
-// the check of "Safety" can tell them from a write of the frame; it fails at once when a version that it records is
-// the one before the write, which a write always changes. With TEST_PLANT_WRITE set, it patches a label of a fixture
-// from the frame of the cluster, through the API of the host, and both checks of "Safety" fail: the run that shows
-// them failing once.
+// The session writes to the cluster of the tests alone: a label on three Clusters of the fixtures, which it removes
+// at its end, and the annotation `cluster.x-k8s.io/paused` on one, which it removes at the end of its step, both also
+// when a check failed. It records the version that the answer to each of its writes gives, so that the check of
+// "Safety" can tell them from a write of the frame, and fails at once when a version that it records is the one
+// before the write, which a write always changes. With TEST_PLANT_WRITE set, it patches a label of a fixture from the
+// frame of the cluster, through the API of the host, and both checks of "Safety" fail: the run that shows them
+// failing once.
 //
 // Step 1 holds while the fixtures are young: the first change of the words of a row of the fixtures comes 28 minutes
 // after their times, when three states end their Provisioning (SPEC-0004, "Notes and deviations"). The session fails
@@ -32,6 +34,7 @@ import {
   hostLists,
   installExtension,
   kubectl,
+  navigateCluster,
   openExtensionPage,
   openKindCluster,
   recordRequests,
@@ -45,27 +48,47 @@ import type { AppSession, SentRequest } from "./extension-helpers";
 
 const viewTimeout = { timeout: 60 * 1000 };
 
+// The test id of the details of the extension, the drawer over the page of the Clusters (P15).
+const DETAILS = "capi-cluster-details";
+
+// The title of a drawer of the host, without the icon that copies it, which the drawer renders after it; null while
+// the drawer is not open.
+function titleOf(drawer: Locator): Promise<string | null> {
+  return drawer.locator(".drawer-title-text").evaluateAll((elements) => elements[0]?.firstChild?.textContent ?? null);
+}
+
 const states = statesOf(["all"]);
 const namespaces = states.map((state) => state.namespace);
 
-// The Cluster of each state, from the files of the fixtures, which the page lists.
+// The objects of each state, from the files of the fixtures, and the Cluster among them, which the page lists.
 const clusters = new Map(
   states.map((state) => {
     const objects = readFixtureSet(path.resolve(import.meta.dirname, "..", "..", FIXTURES_FOLDER, state.name));
     const cluster = objects.find((object) => object.kind === "Cluster") as KubeObject;
 
-    return [state.name, { namespace: state.namespace, cluster }];
+    return [state.name, { namespace: state.namespace, cluster, objects }];
   }),
 );
 
-function clusterOf(state: string): { namespace: string; name: string; cluster: KubeObject } {
+interface FixtureCluster {
+  namespace: string;
+  name: string;
+  // The parameter `details` of the page that opens the details of the Cluster (P6).
+  address: string;
+  cluster: KubeObject;
+  objects: KubeObject[];
+}
+
+function clusterOf(state: string): FixtureCluster {
   const entry = clusters.get(state);
 
   if (!entry) {
     throw new Error(`No Cluster in the fixtures of ${state}`);
   }
 
-  return { namespace: entry.namespace, name: entry.cluster.metadata.name, cluster: entry.cluster };
+  const { namespace, cluster, objects } = entry;
+
+  return { namespace, name: cluster.metadata.name, address: `${namespace}/${cluster.metadata.name}`, cluster, objects };
 }
 
 // What the row of the Cluster of each state shows, by the table of SPEC-0003, "The fixtures of SPEC-0002 give these
@@ -266,6 +289,100 @@ function cellsOf(cluster: KubeObject) {
   };
 }
 
+// A condition of a Cluster of the fixtures, by its type.
+function conditionOf(cluster: KubeObject, type: string): Fields | undefined {
+  return ((fields(cluster.status)?.conditions as Fields[] | undefined) ?? []).find(
+    (condition) => condition.type === type,
+  );
+}
+
+// The sections of the details of a Cluster, in their order (SPEC-0004, "The details"), each shown when it has
+// something to show, from its fixture as written: the metadata and the status always, the control plane and the
+// infrastructure with their reference or a status, the workers with their counters or a part to count, the topology
+// and the network with their fields of the spec, and the conditions with one.
+const SECTIONS = [
+  "metadata",
+  "status",
+  "control-plane",
+  "workers",
+  "infrastructure",
+  "topology",
+  "network",
+  "conditions",
+];
+
+function sectionsOf({ cluster, objects }: FixtureCluster): string[] {
+  const spec = fields(cluster.spec);
+  const status = fields(cluster.status);
+  const parts = objects.some((object) => object.kind === "MachineDeployment" || object.kind === "MachinePool");
+  const shown: Record<string, boolean> = {
+    metadata: true,
+    status: true,
+    "control-plane": spec?.controlPlaneRef !== undefined || status !== undefined,
+    workers: status?.workers !== undefined || parts,
+    infrastructure: spec?.infrastructureRef !== undefined || status !== undefined,
+    topology: spec?.topology !== undefined,
+    network: spec?.clusterNetwork !== undefined,
+    conditions: ((status?.conditions as unknown[] | undefined) ?? []).length > 0,
+  };
+
+  return SECTIONS.filter((section) => shown[section]);
+}
+
+const PAUSED_ANNOTATION = "cluster.x-k8s.io/paused";
+
+// What the details say of the form of a pause (SPEC-0004, "The details", 1; SPEC-0003, P19).
+const PAUSE_WORDS = {
+  spec: "Paused by spec.paused, which reaches the Cluster and every object of it",
+  annotation: `Paused by the annotation ${PAUSED_ANNOTATION}, which reaches the Cluster alone`,
+  both: `Paused by spec.paused, which reaches the Cluster and every object of it, and by the annotation ${PAUSED_ANNOTATION}`,
+};
+
+// The words of the form of the pause of a Cluster of the fixtures, from `spec.paused` and the annotation.
+function pauseWordsOf(cluster: KubeObject): string | undefined {
+  const bySpec = fields(cluster.spec)?.paused === true;
+  const byAnnotation = cluster.metadata.annotations?.[PAUSED_ANNOTATION] !== undefined;
+
+  if (bySpec && byAnnotation) return PAUSE_WORDS.both;
+  if (bySpec) return PAUSE_WORDS.spec;
+  return byAnnotation ? PAUSE_WORDS.annotation : undefined;
+}
+
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// The definition of a kind as the cluster serves it: its plural, and the versions that its label of the contract
+// `v1beta2` lists, one of which the details of the host of an object of the kind are opened at (SPEC-0004, P18;
+// SPEC-0001, R1.16).
+async function definitionOfKind(group: string, kind: string): Promise<{ plural: string; versions: string[] }> {
+  const listed = await kubectl([
+    "get",
+    "customresourcedefinitions.apiextensions.k8s.io",
+    "--output",
+    'jsonpath={range .items[*]}{.metadata.name}{"\\t"}{.spec.group}{"\\t"}{.spec.names.kind}{"\\n"}{end}',
+  ]);
+  const name = listed
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .find(([, itemGroup, itemKind]) => itemGroup === group && itemKind === kind)?.[0];
+
+  if (name === undefined) {
+    throw new Error(`The cluster serves no definition of ${kind} of ${group}`);
+  }
+
+  const definition = JSON.parse(
+    await kubectl(["get", "customresourcedefinitions.apiextensions.k8s.io", name, "--output", "json"]),
+  ) as { metadata: { labels?: Record<string, string> }; spec: { names: { plural: string } } };
+  const label = definition.metadata.labels?.["cluster.x-k8s.io/v1beta2"];
+
+  if (!label) {
+    throw new Error(`The definition ${name} has no label of the contract v1beta2`);
+  }
+
+  return { plural: definition.spec.names.plural, versions: label.split("_") };
+}
+
 // The groups of the kinds that the view reads, whose requests the check of "Safety" reads.
 const READ_GROUPS = [
   "cluster.x-k8s.io",
@@ -317,10 +434,18 @@ async function versionOf(namespace: string, name: string): Promise<string> {
   ]);
 }
 
-// Sets or removes a label of a Cluster of the fixtures, and gives the version that the answer to the write gives it.
-// `kubectl label` prints the object as it read it before the write, so the session writes with a merge patch, whose
-// answer is the object that the write made.
-async function patchLabel(namespace: string, name: string, key: string, value: string | null): Promise<string> {
+type MetadataField = "labels" | "annotations";
+
+// Sets or removes a label or an annotation of a Cluster of the fixtures, and gives the version that the answer to the
+// write gives it. `kubectl label` and `kubectl annotate` print the object as they read it before the write, so the
+// session writes with a merge patch, whose answer is the object that the write made.
+async function patchMetadata(
+  namespace: string,
+  name: string,
+  field: MetadataField,
+  key: string,
+  value: string | null,
+): Promise<string> {
   return kubectl([
     "patch",
     "clusters.v1beta2.cluster.x-k8s.io",
@@ -330,7 +455,7 @@ async function patchLabel(namespace: string, name: string, key: string, value: s
     "--type",
     "merge",
     "--patch",
-    JSON.stringify({ metadata: { labels: { [key]: value } } }),
+    JSON.stringify({ metadata: { [field]: { [key]: value } } }),
     "--output",
     "jsonpath={.metadata.resourceVersion}",
   ]);
@@ -343,25 +468,56 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   let before: Map<string, string> | undefined;
   // The version that each write of the session itself gave an object, by kind, namespace and name.
   const ownWrites = new Map<string, string>();
-  // The labels that the session set, which it removes at its end.
-  const labelled: { namespace: string; name: string; key: string }[] = [];
+  // The labels and the annotations that the session set and did not remove yet, which its end removes.
+  const written: { namespace: string; name: string; field: MetadataField; key: string }[] = [];
 
-  async function label(state: string, key: string, value: string) {
+  // Sets or removes a label or an annotation of the Cluster of a state, and records the version that the answer to
+  // the write gives it.
+  async function write(state: string, field: MetadataField, key: string, value: string | null) {
     const { namespace, name } = clusterOf(state);
     const before = await versionOf(namespace, name);
-
-    labelled.push({ namespace, name, key });
-
-    const version = await patchLabel(namespace, name, key, value);
+    const version = await patchMetadata(namespace, name, field, key, value);
 
     // A write always changes the version: one recorded as it was before would make the check of "Safety" take the
     // write of the session for one of the frame.
     if (version === "" || version === before) {
       throw new Error(
-        `The label of ${namespace}/${name} gave the version ${version || "(none)"}, which it had before the write: the session cannot record its own write`,
+        `The write of ${field} of ${namespace}/${name} gave the version ${version || "(none)"}, which it had before the write: the session cannot record its own write`,
       );
     }
     ownWrites.set(`Cluster/${namespace}/${name}`, version);
+  }
+
+  async function label(state: string, key: string, value: string) {
+    const { namespace, name } = clusterOf(state);
+
+    written.push({ namespace, name, field: "labels", key });
+    await write(state, "labels", key, value);
+  }
+
+  // Runs a check with an annotation set on the Cluster of a state, and removes the annotation after it, also when the
+  // check failed; the end of the session removes it when that removal fails.
+  async function withAnnotation(state: string, key: string, check: () => Promise<void>) {
+    const { namespace, name } = clusterOf(state);
+    const entry = { namespace, name, field: "annotations" as const, key };
+    const failures: unknown[] = [];
+
+    written.push(entry);
+    await write(state, "annotations", key, "");
+    try {
+      await check();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await write(state, "annotations", key, null);
+      written.splice(written.indexOf(entry), 1);
+    } catch (error) {
+      failures.push(error);
+    }
+
+    if (failures.length > 1) throw new AggregateError(failures, `The check with the annotation ${key} failed`);
+    if (failures.length === 1) throw failures[0];
   }
 
   function opened(): Frame {
@@ -370,6 +526,13 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     }
 
     return frame;
+  }
+
+  // Two frames of the cluster frame, once the click or the key before them has rendered what it changes.
+  async function frames() {
+    await opened().evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
   }
 
   // The page of the Clusters, open with its list.
@@ -408,6 +571,18 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     return row;
   }
 
+  // Waits until the list shows the row of one Cluster alone, once the search applies: the search of the host filters
+  // the list 250 ms after its input changes, and until then the rows that it leaves out are still listed.
+  async function listsOnly(page: Locator, name: string) {
+    await expect
+      .poll(async () => {
+        const names = await page.getByTestId("capi-cluster-name").allTextContents();
+
+        return names.length === 1 && names[0].includes(name);
+      }, viewTimeout)
+      .toBe(true);
+  }
+
   // The tooltip that a hover of an element shows, once it is visible. The pointer leaves the frame first, so that the
   // tooltip of a hover before it is gone.
   // The tooltip of a target, once the pointer is on it: at its start when the host lays something over the rest of it,
@@ -431,6 +606,100 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   // The lines of the tooltip of a cell, each a block of its own.
   async function linesOf(target: Locator): Promise<string[]> {
     return (await (await tooltipOf(target)).locator(":scope > div > div").allTextContents()).map((line) => line.trim());
+  }
+
+  // The name of the Cluster of a row, the button that opens its details (P13).
+  function nameOf(row: Locator): Locator {
+    return row.getByTestId("capi-cluster-name").locator("button");
+  }
+
+  // The details of the extension, once they show the Cluster of a name: the drawer whose title names it (P15).
+  async function detailsOf(name: string): Promise<Locator> {
+    const drawer = opened().getByTestId(DETAILS);
+
+    await expect.poll(() => titleOf(drawer), viewTimeout).toBe(`Cluster: ${name}`);
+    return drawer;
+  }
+
+  // Waits until the details of the extension are closed: the drawer leaves the page once it has slid out.
+  async function closed() {
+    await opened()
+      .getByTestId(DETAILS)
+      .waitFor({ state: "detached", ...viewTimeout });
+  }
+
+  // The address of the Cluster whose name in the list has the focus, or null when no name has it.
+  function focusedName(): Promise<string | null> {
+    return opened().evaluate(() =>
+      document.activeElement instanceof HTMLElement ? (document.activeElement.dataset.capiCluster ?? null) : null,
+    );
+  }
+
+  // The parameters of the address of the frame: `details`, of the details of the extension (P6), and `kube-details`, of
+  // those of the host.
+  function addressOf(): { details: string | null; kubeDetails: string | null } {
+    const params = new URL(opened().url()).searchParams;
+
+    return { details: params.get("details"), kubeDetails: params.get("kube-details") };
+  }
+
+  // The drawer that shows at the middle of the details of the extension: theirs, or those of the host over them.
+  function drawerOnTop(): Promise<string> {
+    return opened().evaluate((testId) => {
+      const own = document.querySelector(`[data-testid="${testId}"]`);
+
+      if (!own) return "none";
+
+      const box = own.getBoundingClientRect();
+      const shown = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest(".Drawer");
+
+      if (shown === own) return "extension";
+      return shown?.classList.contains("KubeObjectDetails") ? "host" : "other";
+    }, DETAILS);
+  }
+
+  // The sections of the details of the extension that show, in their order.
+  function sectionsShown(drawer: Locator): Promise<string[]> {
+    return drawer
+      .locator('[data-testid^="capi-details-section-"]')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("data-testid")?.replace("capi-details-section-", "") ?? ""),
+      );
+  }
+
+  // The words of the activities of the details, in their order.
+  function activitiesShown(drawer: Locator): Promise<(string | null)[]> {
+    return drawer
+      .getByTestId("capi-details-activity")
+      .evaluateAll((marks) => marks.map((mark) => mark.getAttribute("data-word")));
+  }
+
+  // The row of an activity in the details, by its word.
+  function activityRow(drawer: Locator, word: string): Locator {
+    return drawer
+      .getByTestId("capi-details-activity-row")
+      .filter({ has: opened().locator(`[data-testid="capi-details-activity"][data-word="${word}"]`) });
+  }
+
+  // The sections of the details of the host, in their order on the page, by the first element of each: the metadata of
+  // the host, the panel of the extension, the custom resource section of the host and its events (P16).
+  function hostSections(): Promise<string[]> {
+    return opened().evaluate(() => {
+      const content = document.querySelector(".KubeObjectDetails .drawer-content");
+      const items = [...(content?.querySelectorAll(".DrawerItem") ?? [])];
+      const titles = [...(content?.querySelectorAll(".DrawerTitle") ?? [])];
+      const sections: [string, Element | null | undefined][] = [
+        ["metadata", items.find((item) => item.querySelector(":scope > .name")?.textContent === "Created")],
+        ["panel", content?.querySelector('[data-testid="capi-cluster-details-view"]')],
+        ["custom resource", content?.querySelector(".CustomResourceDetails")],
+        ["events", titles.find((title) => title.textContent?.trim() === "Events")],
+      ];
+
+      return sections
+        .filter((entry): entry is [string, Element] => entry[1] instanceof Element)
+        .sort(([, one], [, other]) => (one.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+        .map(([name]) => name);
+    });
   }
 
   beforeAll(async () => {
@@ -461,8 +730,8 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   }, 240 * 1000);
 
   afterAll(async () => {
-    // Every step of the end runs whatever failed before it: the labels go, the cluster is disconnected and the
-    // connection closed; what failed is thrown once the end is done.
+    // Every step of the end runs whatever failed before it: the labels go, with an annotation that its step could not
+    // remove, the cluster is disconnected and the connection closed; what failed is thrown once the end is done.
     const failures: unknown[] = [];
     const attempt = async <T>(step: () => Promise<T>, otherwise: T): Promise<T> => {
       try {
@@ -490,8 +759,8 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
             .filter(([key, version]) => after.get(key) !== (ownWrites.get(key) ?? version))
             .map(([key]) => key);
 
-    for (const { namespace, name, key } of labelled) {
-      await attempt(() => patchLabel(namespace, name, key, null), "");
+    for (const { namespace, name, field, key } of written) {
+      await attempt(() => patchMetadata(namespace, name, field, key, null), "");
     }
 
     if (session) {
@@ -681,15 +950,14 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     expect(await session?.errors()).toEqual([]);
   });
 
-  it("has no selection, no menu and no details of the host, on a right click or a click (2; A7, S5)", async () => {
+  it("has no selection and no menu, and a click opens the details of the extension, not those of the host (2; A7, S5, P6)", async () => {
     const cluster = opened();
+    const healthy = clusterOf("healthy");
 
-    await selectNamespaces(cluster, [clusterOf("healthy").namespace]);
+    await selectNamespaces(cluster, [healthy.namespace]);
 
     const page = await openPage();
-    const row = await rowOf(page, clusterOf("healthy").name);
-    const frames = () =>
-      cluster.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const row = await rowOf(page, healthy.name);
 
     // The rows keep the cell of the menu that the header always has, empty, so that the columns line up.
     expect(await page.locator(".TableCell.checkbox").count()).toBe(0);
@@ -702,17 +970,104 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     await frames();
     expect(await cluster.locator(".Menu.MenuActions, .KubeObjectMenu").count()).toBe(0);
 
+    // The details of the extension, titled with the name of the Cluster, which the address names in `details`.
     await row.click();
-    await frames();
-    expect(new URL(cluster.url()).searchParams.has("kube-details")).toBe(false);
+    await detailsOf(healthy.name);
+    expect(addressOf()).toEqual({ details: healthy.address, kubeDetails: null });
     expect(await cluster.locator(".KubeObjectDetails").count()).toBe(0);
     expect(await session?.errors()).toEqual([]);
   });
+
+  it(
+    "shows the Cluster of each row clicked, and closes on the title of the page and on Escape with the focus back on its name (2; P13, P15)",
+    async () => {
+      const cluster = opened();
+      const keyboard = cluster.page().keyboard;
+      const healthy = clusterOf("healthy");
+      const paused = clusterOf("paused");
+
+      await selectNamespaces(cluster, [healthy.namespace, paused.namespace]);
+
+      const page = await openPage();
+      const search = page.locator('input[placeholder^="Search"]');
+      const first = await rowOf(page, healthy.name);
+      const second = await rowOf(page, paused.name);
+
+      await search.fill("");
+      await first.waitFor(viewTimeout);
+
+      // A click on a row, then on another, which the details cover but for its start: they show the Cluster of the
+      // row clicked.
+      await first.click();
+      await detailsOf(healthy.name);
+      await second.locator(".TableCell.name").click({ position: { x: 2, y: 2 } });
+      await detailsOf(paused.name);
+      expect(addressOf()).toEqual({ details: paused.address, kubeDetails: null });
+
+      // A click on the title of the page closes them, and the focus goes back to the name.
+      await page.locator(".header .title").click();
+      await closed();
+      expect(addressOf().details).toBeNull();
+      expect(await focusedName()).toBe(paused.address);
+
+      // The search is at the end of the header, which the details cover: a click there lands in the details, which
+      // stay open, with the focus out of the search. Escape closes them, and the focus goes back to the name.
+      await first.click();
+
+      const drawer = await detailsOf(healthy.name);
+      const box = await search.boundingBox();
+
+      expect(
+        await search.evaluate((input) => {
+          const area = input.getBoundingClientRect();
+
+          return (
+            document
+              .elementFromPoint(area.x + area.width / 2, area.y + area.height / 2)
+              ?.closest(".Drawer")
+              ?.getAttribute("data-testid") ?? null
+          );
+        }),
+      ).toBe(DETAILS);
+      if (!box) throw new Error("The search has no box");
+      await cluster.page().mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await frames();
+      expect(await titleOf(drawer)).toBe(`Cluster: ${healthy.name}`);
+      expect(await search.evaluate((input) => document.activeElement === input)).toBe(false);
+      await keyboard.press("Escape");
+      await closed();
+      expect(await focusedName()).toBe(healthy.address);
+
+      // With the details closed, the search takes what is typed after a click on it, and the list shows what it keeps.
+      await search.click();
+      await keyboard.type(paused.name);
+      expect(await search.inputValue()).toBe(paused.name);
+      expect(await cluster.getByTestId(DETAILS).count()).toBe(0);
+      await listsOnly(page, paused.name);
+
+      // Tab reaches a name, and Enter opens its details.
+      let focused: string | null = null;
+
+      for (let presses = 0; presses < 20 && focused === null; presses++) {
+        await keyboard.press("Tab");
+        focused = await focusedName();
+      }
+      expect(focused).toBe(paused.address);
+      await keyboard.press("Enter");
+      await detailsOf(paused.name);
+      await keyboard.press("Escape");
+      await closed();
+      expect(await focusedName()).toBe(paused.address);
+      expect(await session?.errors()).toEqual([]);
+    },
+    240 * 1000,
+  );
 
   it("shows no remove button, with the Cluster selected in the list of the host, before or after a click (3; P19, S5)", async () => {
     const cluster = opened();
     const { namespace, name } = clusterOf("healthy");
 
+    await selectNamespaces(cluster, [namespace]);
     await hostLists(cluster, { group: "cluster.x-k8s.io", plural: "clusters" }, namespace, [name]);
 
     const hostRow = cluster
@@ -728,41 +1083,269 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
     expect(await cluster.locator(".AddRemoveButtons .remove-button").count()).toBe(0);
     await row.click();
-    await cluster.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await frames();
     expect(await cluster.locator(".AddRemoveButtons .remove-button").count()).toBe(0);
     expect(await session?.errors()).toEqual([]);
   });
 
-  it("stays live: a label that kubectl sets is found by the search, also in a namespace that the filter adds (6; P14, P19)", async () => {
-    const cluster = opened();
-    const value = `session-${Date.now()}`;
+  it(
+    "shows its panel in the details of the host after their metadata, and follows the Cluster that nothing of the host watches (3; P16, P31)",
+    async () => {
+      const cluster = opened();
+      const healthy = clusterOf("healthy");
+      const selfLink = `/apis/cluster.x-k8s.io/v1beta2/namespaces/${healthy.namespace}/clusters/${healthy.name}`;
+      const hostDetails = cluster.locator(".KubeObjectDetails");
+      const panel = hostDetails.getByTestId("capi-cluster-details-view");
+      const resourceSection = hostDetails.locator(".CustomResourceDetails");
 
-    await selectNamespaces(cluster, [clusterOf("healthy").namespace, clusterOf("paused").namespace]);
+      // The list of the host of the Clusters with `default` alone selected, so that nothing of the host reads the
+      // namespace of the Cluster, and its details opened from their address.
+      await selectNamespaces(cluster, ["default"]);
+      await hostLists(cluster, { group: "cluster.x-k8s.io", plural: "clusters" }, "default", []);
+      await navigateCluster(cluster, `?kube-details=${encodeURIComponent(selfLink)}`);
+      await panel.getByTestId("capi-details-activity").first().waitFor(viewTimeout);
+      await resourceSection.waitFor(viewTimeout);
+      expect(await hostSections()).toEqual(["metadata", "panel", "custom resource", "events"]);
 
-    const page = await openPage();
-    const search = page.locator('input[placeholder^="Search"]');
+      // The annotation that pauses the Cluster reaches the panel, which reads the namespace with stores of its own, with
+      // no reload, while the metadata and the custom resource section of the host keep the Cluster as they first read it.
+      const annotation = hostDetails.locator(`[title^="${PAUSED_ANNOTATION}"]`);
+      const resource = await resourceSection.innerText();
 
-    await rowOf(page, clusterOf("healthy").name);
-    await label("healthy", "freelens-capi-session", value);
-    await search.fill(`freelens-capi-session=${value}`);
-    await page
-      .getByTestId("capi-cluster-name")
-      .getByText(clusterOf("healthy").name, { exact: true })
-      .waitFor(viewTimeout);
+      expect(await annotation.count()).toBe(0);
+      await withAnnotation("healthy", PAUSED_ANNOTATION, async () => {
+        await activityRow(panel, "Paused").waitFor(viewTimeout);
+        expect(await panel.getByTestId("capi-details-pause").textContent()).toBe(PAUSE_WORDS.annotation);
+        expect(await annotation.count()).toBe(0);
+        expect(await resourceSection.innerText()).toBe(resource);
+      });
+      expect(await session?.errors()).toEqual([]);
+    },
+    240 * 1000,
+  );
 
-    await selectNamespaces(cluster, [
-      clusterOf("healthy").namespace,
-      clusterOf("paused").namespace,
-      clusterOf("without-topology").namespace,
-    ]);
-    await label("without-topology", "freelens-capi-session", `${value}-later`);
-    await search.fill(`freelens-capi-session=${value}-later`);
-    await page
-      .getByTestId("capi-cluster-name")
-      .getByText(clusterOf("without-topology").name, { exact: true })
-      .waitFor(viewTimeout);
-    expect(await session?.errors()).toEqual([]);
-  });
+  it(
+    "opens the details of the host of the infrastructure cluster from its link, and shows the other references as text (4; P18, P32, S2)",
+    async () => {
+      const cluster = opened();
+      const keyboard = cluster.page().keyboard;
+      const rollingOut = clusterOf("rolling-out");
+      const spec = fields(rollingOut.cluster.spec);
+      const infrastructure = fields(spec?.infrastructureRef);
+      const controlPlane = fields(spec?.controlPlaneRef);
+      const group = String(infrastructure?.apiGroup);
+      const kind = String(infrastructure?.kind);
+      const infrastructureName = String(infrastructure?.name);
+      const definition = await definitionOfKind(group, kind);
+      const hostDetails = cluster.locator(".KubeObjectDetails");
+
+      await selectNamespaces(cluster, [rollingOut.namespace]);
+
+      const page = await openPage();
+      const row = await rowOf(page, rollingOut.name);
+
+      await nameOf(row).click();
+
+      const drawer = await detailsOf(rollingOut.name);
+      const link = drawer.getByTestId("capi-details-infrastructure-reference").locator("a");
+      const openHostDetails = async () => {
+        await link.click();
+        await expect.poll(() => titleOf(hostDetails), viewTimeout).toBe(`${kind}: ${infrastructureName}`);
+        await expect.poll(drawerOnTop, viewTimeout).toBe("host");
+      };
+
+      // The link opens the details of the host of the object of the provider, at a version of the contract label of
+      // its definition, over those of the Cluster, which the address keeps.
+      await openHostDetails();
+
+      const { details, kubeDetails } = addressOf();
+      const target = new RegExp(
+        `^/apis/${escaped(group)}/([^/]+)/namespaces/${escaped(rollingOut.namespace)}/${escaped(definition.plural)}/${escaped(infrastructureName)}$`,
+      ).exec(kubeDetails ?? "");
+
+      expect(details).toBe(rollingOut.address);
+      expect(target, kubeDetails ?? "no details of the host").not.toBeNull();
+      expect(definition.versions).toContain(target?.[1]);
+
+      // The close icon of the details of the host shows those of the Cluster again.
+      await hostDetails.locator('.drawer-title [data-icon-name="close"]').click();
+      await hostDetails.waitFor({ state: "detached", ...viewTimeout });
+      await expect.poll(drawerOnTop, viewTimeout).toBe("extension");
+      expect(await titleOf(drawer)).toBe(`Cluster: ${rollingOut.name}`);
+      expect(addressOf()).toEqual({ details: rollingOut.address, kubeDetails: "" });
+
+      // One Escape closes both.
+      await openHostDetails();
+      await keyboard.press("Escape");
+      await hostDetails.waitFor({ state: "detached", ...viewTimeout });
+      await closed();
+      expect(addressOf().details).toBeNull();
+
+      // The control plane, the parts of the workers, the class and the names in the lines of a message are text; the
+      // metadata has no link, its namespace being the badge of the host (P32); and a click on one opens nothing. No
+      // Cluster of the fixtures has an owner, so the owners are left to the unit test.
+      await nameOf(row).click();
+      await detailsOf(rollingOut.name);
+
+      const controlPlaneReference = drawer.getByTestId("capi-details-control-plane-reference");
+      const parts = drawer.getByTestId("capi-details-part-name");
+      const clusterClass = drawer.getByTestId("capi-details-class");
+      const lines = drawer.getByTestId("capi-details-line");
+      const [deployment] = rollingOut.objects.filter((object) => object.kind === "MachineDeployment");
+      const named = lines.filter({ hasText: deployment.metadata.name });
+      const controls = (locator: Locator) => locator.locator("a, button").count();
+
+      await parts.first().waitFor(viewTimeout);
+      expect((await controlPlaneReference.textContent())?.trim()).toBe(`${controlPlane?.kind} ${controlPlane?.name}`);
+      expect(await controls(controlPlaneReference)).toBe(0);
+      expect(await controls(parts)).toBe(0);
+      expect(await controls(clusterClass)).toBe(0);
+      expect(await named.count()).toBeGreaterThan(0);
+      expect(await controls(lines)).toBe(0);
+      expect(rollingOut.cluster.metadata.ownerReferences).toBeUndefined();
+      expect(await drawer.getByTestId("capi-details-owners").count()).toBe(0);
+      expect(await drawer.getByTestId("capi-details-section-metadata").locator("a").count()).toBe(0);
+      expect((await drawer.getByTestId("capi-details-namespace").locator(".value").textContent())?.trim()).toBe(
+        rollingOut.namespace,
+      );
+
+      for (const target of [controlPlaneReference, parts.first(), clusterClass, named.first()]) {
+        const text = (await target.textContent()) ?? "";
+
+        await target.click();
+        await frames();
+        expect(addressOf(), text).toEqual({ details: rollingOut.address, kubeDetails: "" });
+        expect(await hostDetails.count(), text).toBe(0);
+        expect(await titleOf(drawer), text).toBe(`Cluster: ${rollingOut.name}`);
+      }
+
+      await keyboard.press("Escape");
+      await closed();
+      expect(await session?.errors()).toEqual([]);
+    },
+    240 * 1000,
+  );
+
+  it(
+    "shows the sections that the details give the Clusters of paused, deleting, upgrading, without-topology and remediation (5)",
+    async () => {
+      const cluster = opened();
+      const shown = ["paused", "deleting", "upgrading", "without-topology", "remediation"];
+
+      await selectNamespaces(
+        cluster,
+        shown.map((state) => clusterOf(state).namespace),
+      );
+
+      const page = await openPage();
+
+      for (const state of shown) {
+        const fixture = clusterOf(state);
+        const row = await rowOf(page, fixture.name);
+
+        await nameOf(row).click();
+
+        const drawer = await detailsOf(fixture.name);
+
+        await drawer.getByTestId("capi-details-activity").first().waitFor(viewTimeout);
+        expect(await sectionsShown(drawer), state).toEqual(sectionsOf(fixture));
+        expect(await activitiesShown(drawer), state).toEqual(EXPECTED.find((row) => row.state === state)?.activities);
+
+        if (state === "paused") {
+          // The form of the pause, and the instant it began.
+          const paused = activityRow(drawer, "Paused");
+
+          expect(await paused.getByTestId("capi-details-pause").textContent()).toBe(pauseWordsOf(fixture.cluster));
+          expect(await paused.getByTestId("capi-details-since").textContent()).toMatch(/^ since (?!N\/A)\S/);
+        }
+
+        if (state === "deleting") {
+          // The stage of the deletion, the reason of Deleting, and no health.
+          expect((await drawer.getByTestId("capi-details-health").textContent())?.trim()).toBe("N/A");
+          expect(await activityRow(drawer, "Deleting").getByTestId("capi-details-stage").textContent()).toMatch(
+            new RegExp(`^Stage: ${escaped(String(conditionOf(fixture.cluster, "Deleting")?.reason))}`),
+          );
+        }
+
+        if (state === "upgrading") {
+          // The reason of TopologyReconciled for the upgrade, next to the topology that the sections show.
+          expect(await activityRow(drawer, "Upgrading").getByTestId("capi-details-stage").textContent()).toMatch(
+            new RegExp(
+              `^TopologyReconciled: ${escaped(String(conditionOf(fixture.cluster, "TopologyReconciled")?.reason))}`,
+            ),
+          );
+        }
+      }
+
+      await cluster.page().keyboard.press("Escape");
+      await closed();
+      expect(await session?.errors()).toEqual([]);
+    },
+    240 * 1000,
+  );
+
+  it(
+    "stays live: a label that kubectl sets reaches the search and the details of a Cluster outside the namespaces of the page, also in a namespace that the filter adds (6; P14, P19, P31)",
+    async () => {
+      const cluster = opened();
+      const value = `session-${Date.now()}`;
+      const upgrading = clusterOf("upgrading");
+
+      await selectNamespaces(cluster, [clusterOf("healthy").namespace, clusterOf("paused").namespace]);
+
+      const page = await openPage();
+      const search = page.locator('input[placeholder^="Search"]');
+
+      await rowOf(page, clusterOf("healthy").name);
+
+      // The details of the Cluster of upgrading, opened by their address: the page does not read its namespace, so the
+      // details read it with stores of their own, which load it and then watch it (P31).
+      const sent = recorder?.requests().length ?? 0;
+
+      await navigateCluster(cluster, `?details=${encodeURIComponent(upgrading.address)}`);
+
+      const drawer = await detailsOf(upgrading.name);
+
+      await drawer.getByTestId("capi-details-activity").first().waitFor(viewTimeout);
+
+      // The loads and the watches of the Clusters of its namespace that the frame sent since the details opened.
+      const ownReads = (watch: boolean) =>
+        (recorder?.requests() ?? [])
+          .slice(sent)
+          .filter((request) => URL.canParse(request.url))
+          .map((request) => new URL(request.url))
+          .filter(
+            (url) =>
+              url.pathname.endsWith(`/apis/cluster.x-k8s.io/v1beta2/namespaces/${upgrading.namespace}/clusters`) &&
+              url.searchParams.has("watch") === watch,
+          ).length;
+
+      await expect.poll(() => ownReads(false), viewTimeout).toBeGreaterThan(0);
+      await expect.poll(() => ownReads(true), viewTimeout).toBeGreaterThan(0);
+
+      await label("healthy", "freelens-capi-session", value);
+      await search.fill(`freelens-capi-session=${value}`);
+      await listsOnly(page, clusterOf("healthy").name);
+
+      // A label set on the Cluster of upgrading reaches the metadata of its details.
+      await label("upgrading", "freelens-capi-session", `${value}-details`);
+      await drawer
+        .getByTestId("capi-details-section-metadata")
+        .locator(`[title="freelens-capi-session=${value}-details"]`)
+        .waitFor(viewTimeout);
+
+      await selectNamespaces(cluster, [
+        clusterOf("healthy").namespace,
+        clusterOf("paused").namespace,
+        clusterOf("without-topology").namespace,
+      ]);
+      await label("without-topology", "freelens-capi-session", `${value}-later`);
+      await search.fill(`freelens-capi-session=${value}-later`);
+      await listsOnly(page, clusterOf("without-topology").name);
+      expect(await session?.errors()).toEqual([]);
+    },
+    240 * 1000,
+  );
 
   it("leaves no entry for the Clusters in the Custom Resources tree of the host (7; A7, R7.13)", async () => {
     const cluster = opened();
@@ -809,7 +1392,7 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
         },
         { namespace, name },
       );
-      labelled.push({ namespace, name, key: "freelens-capi-planted" });
+      written.push({ namespace, name, field: "labels", key: "freelens-capi-planted" });
     },
   );
 });

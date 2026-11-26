@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { classReferenceOf, contractReferenceOf, definitionOf, findDefinition, resolveReference } from "./references";
+import {
+  classReferenceOf,
+  contractReferenceOf,
+  definitionOf,
+  findDefinition,
+  resolveReference,
+  targetReadOf,
+} from "./references";
 
 import type { ClusterObject, KubeObjectData } from "../status/index";
 import type { DefinitionData } from "./references";
@@ -150,5 +157,66 @@ describe("the ClusterClass of a Cluster (SPEC-0001, R3.12)", () => {
       elsewhere: true,
     });
     expect(classReferenceOf(clusterWith(undefined))).toBeUndefined();
+  });
+});
+
+describe("the target of a reference (P18)", () => {
+  const resolved = resolveReference(infrastructureRef, { state: "read", definition: DEV_CLUSTERS });
+  const read = { state: "read" } as const;
+
+  it("is found when the object is in the store that the view read", () => {
+    expect(targetReadOf(resolved, read, [], true)).toEqual({ state: "found" });
+  });
+
+  it("is text, with why, when its definition cannot be read, names no known version, or its kind is not served", () => {
+    const refused = { refused: true, message: "forbidden" };
+
+    expect(
+      targetReadOf(resolveReference(infrastructureRef, { state: "refused", failure: refused }), read, [], false),
+    ).toEqual({
+      state: "unread",
+      reason: "definition-refused",
+      failures: [refused],
+    });
+    expect(
+      targetReadOf(
+        resolveReference(infrastructureRef, { state: "read", definition: { ...DEV_CLUSTERS, labels: {} } }),
+        read,
+        [],
+        false,
+      ),
+    ).toEqual({ state: "unread", reason: "no-known-version", failures: [] });
+    expect(targetReadOf(resolveReference(infrastructureRef, { state: "not-served" }), read, [], false)).toEqual({
+      state: "unread",
+      reason: "not-served",
+      failures: [],
+    });
+    expect(targetReadOf(resolved, "not-served", [], false)).toEqual({
+      state: "unread",
+      reason: "not-served",
+      failures: [],
+    });
+  });
+
+  it("is text, with why, for an object that does not exist in the namespace, which was read", () => {
+    expect(targetReadOf(resolved, read, [], false)).toEqual({ state: "unread", reason: "not-found", failures: [] });
+  });
+
+  it("is text, with the failures, when its kind could not be read in the namespace", () => {
+    const failed = { refused: false, message: "the connection was reset" };
+
+    expect(targetReadOf(resolved, { state: "held" }, [failed], false)).toEqual({
+      state: "unread",
+      reason: "kind-not-read",
+      failures: [failed],
+    });
+  });
+
+  it("is still being read while its definition or its namespace is", () => {
+    expect(targetReadOf(resolveReference(infrastructureRef, { state: "pending" }), read, [], false)).toEqual({
+      state: "pending",
+    });
+    expect(targetReadOf(undefined, read, [], false)).toEqual({ state: "pending" });
+    expect(targetReadOf(resolved, { state: "pending" }, [], false)).toEqual({ state: "pending" });
   });
 });

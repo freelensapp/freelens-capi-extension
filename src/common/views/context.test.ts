@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CAPTURE, fixtureSet, ofKind, STATES } from "../../../test/fixture-sets";
-import { clusterContextOf, clusterRowOf, contextVersions, indexContext, StatusMemo } from "./context";
+import { clusterContextOf, clusterPartsOf, clusterRowOf, contextVersions, indexContext, StatusMemo } from "./context";
 import { NO_READS, reduceReads } from "./read-state";
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
@@ -349,6 +349,17 @@ describe("the controllers (SPEC-0003, P24; SPEC-0004, P2)", () => {
     expect(none.context.controllers).toEqual({});
     expect(row.status.notes).toContainEqual({ code: "controller-unknown", provider: "cluster-api" });
   });
+
+  it("are not given by a view of one Cluster, which reads no kind of the operator, and the model notes them as not read (SPEC-0004, P31)", () => {
+    const own = { ...objectsOf(objects, readsOf([namespace])), operator: undefined };
+    const { context, inputs } = clusterContextOf(indexContext(own), cluster, CAPTURE, new StatusMemo());
+    const row = clusterRowOf(indexContext(own), cluster, CAPTURE, new StatusMemo());
+
+    expect(context.controllers).toBeUndefined();
+    expect(inputs.controllers).toBe("not-read");
+    expect(row.status.notes).toContainEqual({ code: "input-not-given", input: "controllers" });
+    expect(row.status.notes).not.toContainEqual({ code: "controller-unknown", provider: "cluster-api" });
+  });
 });
 
 describe("the key of a result (SPEC-0003, How a view uses it)", () => {
@@ -471,5 +482,166 @@ describe("the indexes of the context", () => {
         controlPlanes: new Map([[KCP, { ...kcp, resolution: { state: "unresolved", reason: "refused" } as never }]]),
       }),
     ).not.toBe(versions);
+  });
+});
+
+describe("the parts of a Cluster in its details (P17)", () => {
+  const DEV = "infrastructure.cluster.x-k8s.io/DevCluster";
+  const DEV_RESOLVED: ResolvedReference = {
+    state: "resolved",
+    reference: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "DevCluster", name: "" },
+    apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+    plural: "devclusters",
+    contract: "v1beta2",
+    provider: "infrastructure-docker",
+  };
+  const DEV_KEY = "/apis/infrastructure.cluster.x-k8s.io/v1beta2/devclusters";
+
+  // The objects of a state, with the kind of its infrastructure cluster, read in the namespaces of the state.
+  function partsOf(objects: readonly KubeObjectData[]) {
+    const reads = readsOf(namespacesOf(objects), { keys: [...Object.values(KEYS), DEV_KEY] });
+    const contextObjects: ContextObjects = {
+      ...objectsOf(objects, reads),
+      infrastructures: new Map([
+        [
+          DEV,
+          {
+            key: DEV_KEY,
+            items: objects.filter((object) => object.kind === "DevCluster") as never[],
+            resolution: DEV_RESOLVED,
+          },
+        ],
+      ]),
+    };
+    const cluster = objects.find((object) => object.kind === "Cluster") as ClusterObject;
+
+    return clusterPartsOf(indexContext(contextObjects), cluster, CAPTURE, new StatusMemo());
+  }
+
+  // A worker Machine that the Cluster owns, from a Machine of the set, with the labels that the controller gives it.
+  function ownedMachine(objects: readonly KubeObject[], name: string, labels: Record<string, string> = {}): KubeObject {
+    const [machine] = ofKind<KubeObject>(objects, "Machine");
+    const cluster = ofKind<ClusterObject>(objects, "Cluster")[0].metadata.name;
+    const copy = structuredClone(machine) as unknown as { metadata: Record<string, unknown> };
+
+    copy.metadata.name = name;
+    copy.metadata.labels = { [NAMES_LABEL]: cluster, ...labels };
+    copy.metadata.ownerReferences = [{ apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: cluster }];
+    return copy as unknown as KubeObject;
+  }
+
+  it("are the MachineSets that the Cluster owns, apart from those of its MachineDeployments", () => {
+    const parts = partsOf(fixtureSet("machine-without-node"));
+
+    expect(
+      typeof parts.machineSets === "string"
+        ? parts.machineSets
+        : names(parts.machineSets.map((part) => part.object as never)),
+    ).toEqual(["freelens-capi-without-node-without-node"]);
+    expect(
+      typeof parts.machineDeployments === "string"
+        ? parts.machineDeployments
+        : names(parts.machineDeployments.map((part) => part.object as never)),
+    ).toEqual(["freelens-capi-without-node-md-0-glbqj"]);
+  });
+
+  it("are the worker Machines that the Cluster owns, and not those of its control plane or of a MachinePool", () => {
+    const objects = fixtureSet("machine-without-node");
+    const parts = partsOf([
+      ...objects,
+      ownedMachine(objects, "a-stand-alone-worker"),
+      ownedMachine(objects, "of-the-control-plane", { "cluster.x-k8s.io/control-plane": "" }),
+      ownedMachine(objects, "of-a-pool", { "cluster.x-k8s.io/pool-name": "a-pool" }),
+    ]);
+
+    expect(
+      typeof parts.workerMachines === "string"
+        ? parts.workerMachines
+        : parts.workerMachines.map((part) => part.object.metadata.name),
+    ).toEqual(["a-stand-alone-worker"]);
+  });
+
+  it("are the control plane Machines of a Cluster that names no control plane, and none for one that names it", () => {
+    const objects = fixtureSet("without-topology");
+    const unnamed = objects.map((object) => {
+      if (object.kind !== "Cluster") return object;
+
+      const copy = structuredClone(object) as unknown as { spec: Record<string, unknown> };
+
+      delete copy.spec.controlPlaneRef;
+      return copy as unknown as KubeObject;
+    });
+    const parts = partsOf(unnamed);
+    const expected = ofKind<KubeObject>(objects, "Machine")
+      .filter((machine) => machine.metadata.labels?.["cluster.x-k8s.io/control-plane"] !== undefined)
+      .map((machine) => machine.metadata.name);
+
+    expect(parts.controlPlane).toBeUndefined();
+    expect(
+      typeof parts.controlPlaneMachines === "string" || parts.controlPlaneMachines === undefined
+        ? parts.controlPlaneMachines
+        : parts.controlPlaneMachines.map((part) => part.object.metadata.name),
+    ).toEqual(expected);
+    expect(partsOf(objects).controlPlaneMachines).toBeUndefined();
+  });
+
+  it("are the infrastructure cluster, with the role and the contract that its reference gives, or how it is not read", () => {
+    const objects = fixtureSet("healthy");
+    const parts = partsOf(objects);
+    const devCluster = ofKind<KubeObject>(objects, "DevCluster")[0];
+
+    expect(typeof parts.infrastructure === "object" ? parts.infrastructure.object : parts.infrastructure).toBe(
+      devCluster,
+    );
+    expect(typeof parts.infrastructure === "object" ? parts.infrastructure.status.health.health : undefined).toBe(
+      "Healthy",
+    );
+    // An infrastructure cluster that the Cluster names and that is not in its namespace, which was read.
+    expect(partsOf(objects.filter((object) => object.kind !== "DevCluster")).infrastructure).toBe("not-read");
+  });
+
+  it("show the spinner while their Machines are loading", () => {
+    const objects = fixtureSet("machine-without-node");
+    const reads = readsOf(namespacesOf(objects), { keys: Object.values(KEYS).filter((key) => key !== KEYS.machines) });
+    const parts = clusterPartsOf(
+      indexContext(objectsOf(objects, reads)),
+      ofKind<ClusterObject>(objects, "Cluster")[0],
+      CAPTURE,
+      new StatusMemo(),
+    );
+
+    expect(
+      typeof parts.machineSets === "string" ? parts.machineSets : parts.machineSets.map((part) => part.pending),
+    ).toEqual([true]);
+  });
+});
+
+describe("the key of the indexes and the infrastructure clusters", () => {
+  it("changes with the objects of an infrastructure cluster and with how its reference resolves", () => {
+    const objects = fixtureSet("healthy");
+    const contextObjects = objectsOf(objects, readsOf(namespacesOf(objects)));
+    const devClusters = ofKind<KubeObject>(objects, "DevCluster");
+    const resolution: ResolvedReference = {
+      state: "resolved",
+      reference: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "DevCluster", name: "" },
+      apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+      plural: "devclusters",
+      contract: "v1beta2",
+      provider: "infrastructure-docker",
+    };
+    const withDev = (items: readonly KubeObject[], resolved: ResolvedReference = resolution): ContextObjects => ({
+      ...contextObjects,
+      infrastructures: new Map([
+        [
+          "infrastructure.cluster.x-k8s.io/DevCluster",
+          { key: "/apis/devclusters", items: items as never[], resolution: resolved },
+        ],
+      ]),
+    });
+    const versions = contextVersions(withDev(devClusters));
+
+    expect(contextVersions(withDev([...devClusters]))).toBe(versions);
+    expect(contextVersions(withDev([]))).not.toBe(versions);
+    expect(contextVersions(withDev(devClusters, { ...resolution, state: "pending" } as never))).not.toBe(versions);
   });
 });
