@@ -251,7 +251,10 @@ src/
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage
   common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
+  common/status/                 # The status model (SPEC-0003): statusOf and conditionsOf in index.ts, the rules
+                                 #   of each family of kinds, freshness, activity and tone, each with its unit test
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
+test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
 test/environment.test.ts         # Unit tests of the scripts of the test environment
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
@@ -984,19 +987,22 @@ modules are devDependencies, for their types, and are ignored.
 A file is unused when no entry reaches it: a leftover module, a barrel that
 nothing imports. The production pass starts from the `!` entries only, so it
 also reports a module that only tests import. The fix is to remove the file,
-not to ignore it. The one exception is the parsers of `src/common/parsers/`,
-which SPEC-0003 adds before any code of the bundles imports them: each is a
-production entry of its own, as the next paragraph says. The check does not
-include unused exports and types: on this tree they are mostly the exported
-spec and status types of the models.
+not to ignore it. The one exception is the status model of SPEC-0003, in
+`src/common/status/` and `src/common/parsers/`, which comes before any code of
+the bundles imports it: its entry points, and the one parser it does not
+import, are production entries of their own, as the next paragraph says. The
+check does not include unused exports and types: on this tree they are mostly
+the exported spec and status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. It also lists each module of `src/common/parsers/` by its
-name, as a production entry, until a module reached from another production
-entry imports it: the model, if the second pull request of SPEC-0003 gives it a
-production entry, otherwise the first view of SPEC-0004 that imports it
-(SPEC-0003, "Notes and deviations").
+`environment-tests/`. It also lists `src/common/status/index.ts`, the entry
+points of the model, as a production entry, until the first view of SPEC-0004
+imports them, and `src/common/parsers/list-annotation.ts`, the one parser that
+the model does not import, until a module reached from another production
+entry imports it; the pull request that brings each import removes the line
+(SPEC-0003, "Notes and deviations"). The model reaches every module of
+`src/common/status/` and the four other parsers.
 Its Vite plugin is off: it adds the renderer entry of `vite.config.mjs` as a
 development entry, which displaces `src/renderer/index.tsx!`, and the
 production pass then skips the renderer.

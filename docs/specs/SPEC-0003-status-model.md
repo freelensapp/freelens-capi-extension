@@ -496,12 +496,12 @@ Machine:
   KubeadmControlPlane included, each with its polarity (R2.46, R2.55).
   `NodeReady` is not an input, but `NodeHealthy` covers the `Ready` of the
   Node (R2.45). `Available` and `UpToDate` follow P5 and P4.
-- A Machine that waits for its Node, with bootstrap and infrastructure
-  ready, has `NodeHealthy` `Unknown`, so its `Ready` is `Unknown` and it is
-  Unknown, unless a MachineHealthCheck marks it
+- A Machine that waits for its Node, with bootstrap and infrastructure ready,
+  has `NodeHealthy` `Unknown`, so its `Ready` is `Unknown` and it is Unknown,
+  unless a MachineHealthCheck marks it
   (core/reconcilers/machine/machine_controller_status.go:398-412; R2.46,
-  R2.53). While it provisions, its health stays the project's, in the tone
-  of progress (D2).
+  R2.53). While it provisions, its health stays the project's: Unknown, which
+  keeps its own tone (D2), next to its activity Provisioning.
 - A Machine whose Node was deleted stays in the phase `Running`, and
   `NodeHealthy` `False` `NodeDeleted` makes it Unhealthy (R2.44).
 - Phase: the closed set of R2.43; a value outside it reads Unknown (R2.43),
@@ -1795,3 +1795,392 @@ second, and reads `src/common/parsers/` too.
   59; the instant counts to the millisecond, and the digits below it are
   dropped. A value that is not absent, null, empty or a string is
   Unavailable.
+- Decided while implementing the second pull request: the entry points of
+  the model, `src/common/status/index.ts`, are a production entry of
+  `knip.jsonc` until the first view of SPEC-0004 imports them, and the pull
+  request that brings that import removes the line. The model reaches every
+  module of `src/common/status/` and the parsers it imports, whose entries
+  go; each parser that the model does not import keeps its own entry, as the
+  first pull request decided.
+- Decided while implementing: the reading of every field with a check of its
+  type is a module of its own, `src/common/status/fields.ts`, next to those
+  that "Where it lives" names, since every family module and freshness read
+  through it. A field of the wrong type reads as unreadable, never as a value:
+  a status, a spec or a deletion time of the wrong type, conditions that are
+  not a list or an entry of them with no type, and a count that is negative,
+  not an integer or above 2^53 - 1 make the health Unknown, with a note that
+  names the field; a status, a reason, a message, a time, a generation or a
+  severity of the wrong type in a condition reads as absent, weighs Unknown
+  where it matters, and is noted with the type of its condition (corrected
+  while applying the review of the model): where the reason decides the weight
+  or the health, the wait of P5 on the `Available` of a Machine and the wait
+  for the core provider of P14, a reason that cannot be read gives Unknown,
+  and so does an address of an IPAddressClaim of the wrong type, noted. The
+  gates are read entry by entry: an entry that cannot be read, one with an
+  empty type included, or a list of the wrong type, is noted, and the
+  conditions that it might name weigh Unknown, every condition whose polarity
+  a gate can set but the summary that the gates feed, since both the
+  conditions of the project and those of a third party can be gates
+  (api/core/v1beta2/cluster_types.go:536-541;
+  api/core/v1beta2/machine_types.go:535-538). An input of the context that is
+  not an object reads as not given, and an entry of a list of the context that
+  is not an object is left out; so does the Cluster of a binding that is not
+  an object, and a role or a contract outside its closed set, null included
+  (P15). The objects that the unit tests start from are in
+  `test/status-objects.ts`, generated from the fixtures of SPEC-0002 at the
+  commit of their pull request, trimmed to the fields that the rules read,
+  with a generation that the fixtures leave out written as 1, as the API
+  server writes it.
+- Decided while implementing, where "What it takes and returns" is silent:
+  `now` is in milliseconds since the Unix epoch; `controllers` maps the
+  manifest label of a provider to its availability, `true`, `false` or
+  `unknown`, with the time of its last change; and the context gives
+  `provider`, the manifest label of the provider that serves an object of a
+  provider or an IPAddressClaim, which P24 reads from a definition that the
+  model does not read. Without `controllers` the result notes it; with an
+  entry missing or `unknown`, it notes the controller as unknown (P24); a kind
+  of the operator, which no provider serves, notes neither.
+- Decided while implementing, where "What it takes and returns" is wrong for
+  D2: `bindings` gives each binding with the object of its Cluster, rather
+  than the result of `statusOf` for that Cluster. The first provisioning and
+  the `RemoteConnectionProbe` of the Cluster, which the tone of a
+  ClusterResourceSet reads, are fields of the Cluster that the result does not
+  carry, and they are read by the same rule that reads `cluster` for every
+  other object.
+- Decided while implementing: the issues of a health are what point 3 counts,
+  whatever the word, so that the details can list them for an Unhealthy object
+  too; the word is Degraded only when the summary is `True`. The column
+  "Degraded from" of a kind of Cluster API names the conditions of the closed
+  set of the kind that point 3 counts, and a condition outside that set, one
+  of a third party, counts too unless it is a gate, as H1 says: the summary
+  leaves it out (corrected while applying the review of the model, where the
+  column had been read as the whole list). That holds for the Cluster, the
+  ClusterClass, the ExtensionConfig, the MachineSet, the MachineDeployment,
+  the KubeadmControlPlane and the KubeadmConfig, whose closed sets are those
+  of R2.19, R2.33, R2.37, R2.57, R2.62, R2.78 and R2.83; the row "none" of an
+  ExtensionConfig and of a KubeadmConfig names none of their own. On each of
+  them, every other condition of positive polarity counts but the inputs that
+  the summary merges, which count only through it: `RemoteConnectionProbe`,
+  `InfrastructureReady`, `ControlPlaneAvailable` and `WorkersAvailable` of the
+  `Available` of a Cluster, with its gates (R2.21), and `DataSecretAvailable`
+  and `CertificatesAvailable` of the `Ready` of a KubeadmConfig (R2.83); the
+  other kinds have none, since their other conditions are those that their
+  rows name or the pending changes of P4. A Machine counts every other
+  condition already; a MachinePool counts none of its own, since its health
+  comes from its Machines (H1); and the rules of P11 to P14 stand on what they
+  name. The gates of the availability of a Cluster, its own or those of its
+  ClusterClass, and the other inputs of its `Available` count only through
+  `Available`.
+- Decided while implementing: a kind with no status that is deleting has no
+  health because it has no status; its activity Deleting says that it is
+  deleting. A deletion time that is text makes an object deleting, an
+  unavailable time included, and an empty one does not.
+- Decided while implementing: a phase that is not written reads Unknown, as
+  the getters of the project read it, and one that is not text reads Unknown
+  with a note. The failure reason and message of P6 are read on the kinds
+  whose schema keeps them under `status.deprecated.v1beta1`: Cluster, Machine,
+  MachineSet, MachinePool, KubeadmControlPlane and KubeadmConfig; a
+  MachineDeployment keeps none.
+- Decided while implementing, where P22 is silent: the six reasons of
+  `TopologyReconciled` that the release deprecates and never sets are reasons
+  that it defines, and weigh Activity when the condition is `False`; Unknown
+  is for a reason that the release does not define.
+- Decided while implementing: P4 is read for the kinds that it names. A
+  `MachinesUpToDate` of a control plane of a provider weighs as any condition
+  of a provider (P15), since the conditions of a provider are an open set.
+- Decided while implementing, where P10 is silent: a Machine of a
+  MachinePool is "not `Ready`" when its `Ready` is `False`. One whose `Ready`
+  is `Unknown` is no issue, as it is no issue in the `MachinesReady` that a
+  MachineSet writes for its Machines (R2.90), and point 4 leaves an `Unknown`
+  out. A MachinePool with no Machine is Healthy only at 0 replicas; with
+  `spec.replicas` unset it is Unknown, with the note of P10. The Machines
+  that the view did not give are noted with or without a status, as the other
+  inputs are; with no status the MachinePool is Unknown, as point 2 says.
+- Decided while implementing, where P11 is silent: a MachineHealthCheck whose
+  `status.expectedMachines` or `status.currentHealthy` is unset is read by its
+  targets, as when the two differ.
+- Decided while implementing, where P12 is silent: the binding of a Cluster
+  that holds an entry for the ClusterResourceSet with no resource, as the
+  controller writes it before it reaches the Cluster, records each resource as
+  missing; the health is then the `ResourcesApplied` `False` of the project,
+  and the issues list the resources.
+- Decided while implementing, where P14 is ambiguous: "Degraded otherwise" is
+  read with `Ready` `True`, and a `Ready` that is `Unknown` gives Unknown, as
+  point 2 says. With `Ready` `True`, the issues are `PreflightCheckPassed` and
+  `ProviderInstalled` when either is not `True`, missing included, and a
+  `ProviderUpgraded` that is `False` while the versions differ. The versions
+  are compared as text, as the operator compares them
+  (cluster-api-operator:internal/controller/phase_lifecycle.go:49-54).
+- Decided while implementing, where P15 is silent: an object of a kind that
+  the model does not know and for which the view gave no role is Unknown with
+  one note, whether it is an object of a provider whose role is missing or an
+  object of another kind; its conditions are listed as those of an object of
+  a provider, and it carries no mark of freshness. A kind of Cluster API at a
+  version that A2 does not name is such a kind.
+- Decided while implementing, where P19 is wrong: the bootstrap config of a
+  provider other than KubeadmConfig honours the request of a pause as an
+  infrastructure machine does, since its contract asks the same of its
+  controller (docs/book/src/developer/providers/contracts/bootstrap-config.md:474-476).
+  An IPAM pool and a remediation request are paused by their `Paused` alone.
+- Decided while implementing, where "Freshness" is ambiguous: a paused object
+  carries no mark Older generation. Its controllers write no
+  `status.observedGeneration` while it is paused (R2.2, R2.5), so the pause is
+  the cause of the generation they do not observe, and the mark Paused says
+  it; the table of the fixtures gives the Cluster of `paused`, at generation 2
+  and observed at 1, the mark Paused alone. The marks are read for an object
+  that is deleting too, since they say what its status still describes. A
+  paused ClusterClass whose generation is not observed says on its mark Paused
+  that the topology of its Clusters is held, which P8 asks of its mark, since
+  the topology controller refuses a class whose generation it has not
+  observed, paused or not
+  (core/reconcilers/topology/cluster/cluster_controller.go:343-353); every
+  other mark Paused says it does not (corrected while applying the review of
+  the model). A kind with no status carries no mark, whatever its fields say,
+  a template of a provider with a generation and a status included (P16).
+- Decided while implementing, and corrected while applying the review of the
+  model, whose premise did not hold: the result and the list of the conditions
+  both note a ClusterClass that the view did not give, for a Cluster with a
+  topology and no gates of its own. Its gates can name the conditions of the
+  project as well as those of a third party
+  (api/core/v1beta2/cluster_types.go:536-541), so a gate that declares
+  `ControlPlaneMachinesReady` `Negative` changes the health, and the health
+  read without the class says so.
+- Decided while implementing: the check of Safety matches the five names under
+  which the fields of R3.36 lie wherever a module reads or declares them: as a
+  property by a dot, an optional chain or a key in brackets, as the key of an
+  object or of a type, as a name taken by destructuring, or as a quoted name,
+  which is how the rules read a field with `fieldOf` (added while applying the
+  review of the model). The paths matched from `spec` are among them, and so
+  is a read through a cast, `(spec as T).files`, which a match from `spec`
+  alone lets pass; none of the five names is read or declared anywhere in the
+  two folders. The check is three cases over every module, each seen failing
+  on a line planted in one module, a quoted name passed to `fieldOf` included.
+  It also finds the clock that `Date` called as a function and
+  `performance.now` read, and a dynamic import of a module named at run time,
+  by a template literal or a computed name, which the list of the imports
+  cannot check.
+- Decided while implementing: the result names the object it describes, and
+  its health carries what it rests on: the summary as read, or what stands for
+  one, the counters of P9 and P10, the targets of P11, the address of P13 and
+  the bindings of P12, Cluster by Cluster. The mark of remediation of P11 is a
+  field of the result, with `RemediationAllowed` and its weight.
+- Decided while implementing the second half of the model, where P1 is silent:
+  a condition of an activity that a kind of Cluster API writes leaves the
+  source unread when it is missing, as the project counts a missing input of
+  its own merges (R2.89, R2.92): `RollingOut`, `ScalingUp`, `ScalingDown` and
+  `Remediating` of a Cluster, a MachineDeployment and a KubeadmControlPlane,
+  the last three of a MachineSet, and `Updating` of a Machine. A MachinePool
+  writes neither `RollingOut` nor `Remediating`, so the same rule makes its
+  activity never Idle. A missing `Paused` or `Deleting` leaves nothing unread:
+  the pause falls back to its request, and Deleting comes from the deletion
+  timestamp. With no Node, a phase of a Machine that is not written, that is
+  outside its set, or that is `Unknown`, inside the set, leaves the source
+  unread, since the phase decides the Provisioning and `Unknown` says that the
+  project could not tell it.
+- Decided while implementing, where P1 is ambiguous: a Cluster reads Unknown
+  when its control plane or one of its MachineDeployments in `parts` reads
+  Unknown, a control plane of a provider that writes none of the three
+  conditions included: the Cluster reads its Provisioning and its Rolling out
+  from them (D3, P4). It does not read Unknown for a MachinePool, whose
+  Unknown comes from the two conditions it does not write, which the Cluster
+  leaves out of its own (R2.29), so a Cluster whose workers are MachinePools
+  reads Idle, as the table of the fixtures has it. The limit of that choice: a
+  MachinePool whose own Provisioning cannot be read, with no status yet or no
+  Machines from the view, leaves its Cluster reading no Provisioning through
+  it, while the pool's own result says Unknown and why.
+- Decided while implementing, where "What it takes and returns" is silent on
+  when each input is needed: an owner always needs its `machines`, and a
+  Cluster its `parts` and its `machinePools` (D3), noted with or without a
+  status and leaving the activity Unknown; a Cluster reads its `machines` only
+  for the threshold of its activities and for the remediation of its Machines
+  (P2, P21), and notes them only then, without Unknown; `healthChecks` are
+  noted only when the threshold of a Machine is needed, and 600 seconds stand
+  in; `cluster` only when the floor of P2 or the first provisioning of D2 is
+  needed; and `contract` for an object of a provider whose field of P17
+  depends on it, which is then unread. The bootstrap config of a MachinePool
+  has no Machine, and takes 600 seconds.
+- Decided while implementing, where D3 says it of Provisioning and Replacing
+  alone: a deleting object holds Deleting and nothing else, with Paused while
+  it is paused, since its deletion is what it does; a scale down that its
+  deletion makes, such as the `ScalingDown` of the Cluster of `deleting`, is
+  not shown, as the table of the fixtures shows that Cluster with Deleting
+  alone. A `Deleting` that is still `False` was written before the deletion
+  and gives the state Progressing; one that is `Unknown` gives the state
+  Unknown; its stages are a closed set on the five kinds that write it and an
+  open one on any other. Paused is never Blocked, and a reason outside its set
+  gives it the state Unknown (P1).
+- Decided while implementing, where P2 is ambiguous: the floor of the 30
+  minutes of a Cluster applies to the activities in progress and not to
+  Deleting, whose 15 minutes are the project's own staleness, and which waits
+  on no first provisioning: a Machine with no Node skips the stages of its
+  deletion that need one (R2.41). The floor raises a threshold counted from a
+  start that the project wrote, and gives none to an activity whose start it
+  did not write, which stays past its threshold (P34). "Younger than its
+  threshold" in D3 reads the threshold of the Machine with that floor, so a
+  Machine that has its Node and is not available is Provisioning through the
+  first 30 minutes of its Cluster, while its Node may wait for the network
+  add-on that its Cluster gets once it can be reached (P12).
+- Decided while implementing, where P2 is silent on how long: the wait of
+  `minReadySeconds` counts as within the threshold of its Machine until
+  `spec.minReadySeconds` after the transition of its `Ready` to `True`, which
+  is when the project turns `Available` `True`
+  (core/reconcilers/machine/machine_controller_status.go:874-916); a wait that
+  lasts longer outlasts it, as a stuck one should.
+- Decided while implementing, where P2 is silent on several Machines: the
+  Provisioning of an owner dates from the oldest of its Machines whose
+  Provisioning is in progress, with the threshold of that Machine; it is
+  Blocked when the owner is paused or every such Machine is. A Cluster reads
+  its parts the same way, and takes the state of that part; a hook that holds
+  its creation does so before its control plane is initialized (P18), so it
+  blocks only its own first provisioning. Replacing dates from the earliest of
+  the deletions that make it hold. Each activity takes the threshold of P2 by
+  its kind: one Machine for the Provisioning, the Updating and the Remediating
+  of a Machine; the shortest of the Machines of an owner or of a Cluster for
+  its Rolling out, Scaling up, Upgrading and Remediating, and for the scale up
+  of a MachinePool (P20), 600 seconds when it has none; 15 minutes for Scaling
+  down, Replacing and Deleting; 30 minutes for the first provisioning of a
+  Cluster; 600 seconds for what serves no Machine and for a kind of the
+  operator. A MachineHealthCheck counts for a Machine of its own namespace,
+  with an unset `nodeStartupTimeoutSeconds` read as the 600 that the project
+  defaults.
+- Decided while implementing: an activity has a threshold while it is in
+  progress, and so has Deleting, whose tone needs its 15 minutes (P31);
+  Paused, Rollout paused and an activity that is Blocked or Unknown have none.
+  An activity outlasts its threshold at the instant that the threshold ends,
+  which is the instant that the result names. With no time of the evaluation
+  that is a number, nothing is within its threshold, the Provisioning of a
+  Machine by its age cannot be told, and the result notes `now` as a field of
+  the wrong type.
+- Decided while implementing, where P31 is silent on the order of its rules:
+  an activity whose state is Unknown takes the tone vague; one that is Blocked
+  the tone of a warning, Rollout paused and Deleting included; Paused and
+  Rollout paused the tone terminated; Deleting terminated within its 15
+  minutes and a warning past them; an activity in progress that of progress
+  within its threshold and a warning past it. P33 comes before P1: an activity
+  of a paused object is Blocked whatever its reason.
+- Decided while implementing, where D2 does not say which objects belong to a
+  Cluster: those whose controllers honour the pause of their Cluster (P19): a
+  Machine, a MachineSet, a MachineDeployment, a MachinePool, a
+  MachineHealthCheck, a KubeadmControlPlane, a KubeadmConfig, an
+  IPAddressClaim, and an infrastructure cluster, machine or machine pool, a
+  control plane and a bootstrap config of a provider. An IPAM pool serves no
+  one Cluster, and a remediation request, which is always Unknown, needs no
+  tone. The first provisioning that they take is the Provisioning of their
+  Cluster while its `ControlPlaneInitialized` is `False` and nothing blocks
+  it; a paused Cluster, or one whose creation a hook holds, lends none.
+- Decided while implementing, where D2 is silent: a paused object takes
+  nothing for its tone, since its controllers stop with it and "Paused" is
+  among what gives the tone of the health. A ClusterResourceSet takes the
+  first provisioning of the Clusters of the bindings that hold an entry for
+  it, as P12 reads them, and notes a binding whose Cluster the view did not
+  give. A Cluster takes from each part, its MachinePools included, its
+  activities in progress and the activity that sets the tone of the part, so
+  that a part lends its tone, the Machine of a MachineDeployment included. Of
+  the activities in progress, own and taken, the one that sets a tone of
+  progress is the one within its threshold that lasts the longest, whose end
+  is the instant that the tone names; the one that sets a warning is the one
+  that outlasted its threshold last, an activity with no start last; on a tie,
+  the object's own comes first, then the order of H2.
+- Decided while implementing, where P4 is silent: a Cluster whose `RollingOut`
+  is `True` while none of its parts shows Rolling out, a paused rollout
+  included, carries the note, unless a part cannot be read, which may roll
+  out, and the Cluster then reads Unknown; one whose parts that roll out are
+  all Blocked reads Rolling out Blocked, as its Provisioning through its parts
+  does (both corrected while applying the review of the model); one whose view
+  gave no `parts` reads Rolling out from its condition alone, with the note
+  that the parts were not read. A MachineDeployment under `OnDelete` carries
+  the note with or without `spec.paused`, since nothing rolls out to be held;
+  a `spec.rollout`, its `strategy`, a strategy type or a `spec.paused` of the
+  wrong type is noted with its own path and leaves the source unread. A
+  Machine and a MachineSet carry the note whenever their `UpToDate` or
+  `MachinesUpToDate` is `False`.
+- Decided while implementing, where P14, P17, P20, P21 and P28 are silent: a
+  kind of the operator is Provisioning while `status.installedVersion` is
+  unset or empty, and its activity carries the condition that blocks it, or
+  `PreflightCheckPassed` while it waits for the core provider. A KubeadmConfig
+  reads `status.initialization.dataSecretCreated` with no `contract`, since
+  its kind is at `v1beta2`; a field of P17 of the wrong type is noted and
+  unread. An annotation `replicas-managed-by` with an empty value is an
+  outside count, as the project reads any value other than "false". When a
+  Machine has both `OwnerRemediated` and `ExternallyRemediated`, the first is
+  read, and a `Remediating` on a Machine, which the project does not write
+  (R2.45), is read after them as any condition of an activity (P1); the
+  message of a remediation that a rollout makes needless is matched anywhere
+  in the message; the Remediating of an owner reads the `OwnerRemediated` of
+  its Machines alone, as P21 says, and with no Machines from the view it is
+  Progressing and noted. The entries of `status.versions` are read in their
+  order, as the project reads them: the first one that `spec.version` comes
+  after, or is apart from by words of build metadata, decides Upgrading, and
+  one that does not parse stops the reading as unread, where the project
+  returns an error; with no `spec.version` there is no upgrade, and one that
+  does not parse, an empty one included, leaves the source unread. On a
+  Cluster with a topology, a `TopologyReconciled` that is missing, `Unknown`,
+  or `False` with a reason that the release does not define leaves its
+  Upgrading unread (P22).
+- Decided while implementing: the activities of an object of a kind that the
+  model does not know are Unknown, with Deleting from its deletion timestamp.
+  The activities change with time where their thresholds end, those that an
+  owner or a Cluster takes from a Machine or a part included, since each keeps
+  its own threshold: the earliest of those ahead is the instant that the
+  result names. The trial of S7 showed a KubeadmControlPlane with no endpoint
+  that writes `ScalingUp` `True` for good and creates no Machine, which the
+  row of case 3 does not name: the model reads it Scaling up, Progressing,
+  whose tone turns to a warning past its threshold, and no rule assumes that
+  such a scale ends.
+- Found while implementing, where the table of the fixtures and P14 are wrong
+  or silent: the Machine of "A remediation in progress" is 73 seconds old and
+  not available at the capture, so D3 makes it Provisioning next to
+  Remediating, and its MachineSet and MachineDeployment Provisioning through
+  it, which the two rows do not name; the Cluster of "With a managed topology,
+  upgrading" writes `ScalingDown` `True` and reads Scaling down next to
+  Upgrading, which its row does not name, and reads Rolling out through its
+  KubeadmControlPlane, which rolls out, when the view gives its parts (P4);
+  and the KubeadmControlPlane of case 3 of S7 scales up for good, as the note
+  above says. P14 says that past its 600 seconds the wait for the core
+  provider turns to a warning the mark of the activity and a health that is
+  Degraded: while the kind installs, its health is Unknown, whose tone never
+  changes, so only the mark turns; a Degraded health comes with the wait
+  during an upgrade, whose Upgrading has no start and takes the tone of a
+  warning at once (P34). Nothing in the object tells a wait that ends from one
+  with no `CoreProvider`, which only the operator looks for: the clock alone
+  tells them apart. The rows stay as they are until the third pull request,
+  whose cases on the fixtures read them.
+- Decided while applying the review of the model: a field that the activities
+  read is read level by level, so that a parent of the wrong type is noted
+  with its own path and leaves the source unread, never read as a field that
+  is not set and so as an activity in progress: the `status.initialization` of
+  P17, the `spec.rollout` of P4 and its `strategy`, and the `spec.topology` of
+  a Cluster, which would otherwise read Idle while it upgrades. A
+  MachineHealthCheck whose `status`, `status.targets`, `spec` or `spec.checks`
+  is of the wrong type is noted and left out of the threshold of a Machine. A
+  creation time that cannot be read is noted, and a Machine whose age decides
+  its Provisioning, with a Node and not available, then reads unread, as with
+  no time of the evaluation, and so does its owner. A kind of the operator
+  that is installed and has no `spec.version`, which the operator writes
+  before it installs
+  (cluster-api-operator:internal/controller/manifests_downloader.go:91-97), is
+  noted and unread, never Upgrading; a `PreflightCheckPassed` `False` whose
+  reason cannot be read leaves its activity Unknown, as it leaves its health,
+  and Blocked while the kind is paused, since P33 comes before P1. A contract
+  of the context outside `v1beta1` and `v1beta2` reads as not given, and the
+  field of P17 that depends on it is unread with the note.
+- Decided while applying the review of the model, where the code departed from
+  P7 with no decision: a Cluster with the note of P7 is never Healthy, as P7
+  says, so one whose `Available` is `True`, which only a status written by
+  hand can hold (R2.27), reads Unknown, with what it rests on and its issues;
+  one whose `Available` is `False` reads Unhealthy.
+- Decided while applying the review of the model, where P19 is silent: an
+  IPAddressClaim whose `spec.clusterName`, an optional field
+  (api/ipam/v1beta2/ipaddressclaim_types.go:44-49), is unset or empty belongs
+  to no Cluster: no pause is requested of it, its thresholds have no floor, it
+  takes no first provisioning for its tone, and nothing notes a Cluster that
+  the view did not give.
+- A question for the review of the milestone, found while applying the review
+  of the model, with no change to the model: P9 and P10 read the counters of a
+  MachineSet and of a MachinePool as the project writes them. A MachineSet
+  controller that cannot list its Machines keeps its last counters and writes
+  `MachinesReady` `Unknown` `InternalError`
+  (core/reconcilers/machineset/machineset_controller_status.go:77-81,
+  236-247), so the MachineSet reads Healthy on counters that may be stale, as
+  P9 says to the letter. Whether a `MachinesReady` `Unknown` with
+  `InternalError` should make such an owner Unknown is left to that review.
