@@ -212,6 +212,22 @@ describe("the thresholds (P2)", () => {
       expect(secondsWith([elsewhere])).toBe(600);
     });
 
+    it.each([
+      ["status", { status: "healthy" }],
+      ["status.targets", { status: { targets: "all" } }],
+      ["spec", { spec: "strict" }],
+      ["spec.checks", { spec: { checks: 300 } }],
+    ])("skips a MachineHealthCheck whose %s is of the wrong type, and notes it", (field, changes) => {
+      // A check of 300 seconds with that field of the wrong type, next to one of 450 seconds.
+      const odd = { ...check(300, "a"), ...changes } as KubeObjectData;
+
+      expect(secondsWith([odd, check(450, "b")])).toBe(450);
+      expect(statusOf(withoutNode.machine, contextOf({ healthChecks: [odd as never] })).notes).toContainEqual({
+        code: "field-unreadable",
+        field: `healthChecks.${field}`,
+      });
+    });
+
     it("is 600 seconds, noted, when the view gave no MachineHealthChecks", () => {
       expect(secondsWith(undefined)).toBe(600);
       expect(statusOf(withoutNode.machine, contextOf()).notes).toContainEqual({
@@ -611,8 +627,8 @@ describe("what an object takes for its tone (D2)", () => {
 
   it("an IPAddressClaim of a Cluster in its first provisioning", () => {
     // A claim that its provider reports not ready, written from the schema of the release, since the test
-    // environment has no IPAM provider, of the Cluster of provisioning.
-    const claim = withStatus(noStatus.ipAddressClaim, {
+    // environment has no IPAM provider, of the Cluster of provisioning, which it names.
+    const claim = withStatus(withSpec(noStatus.ipAddressClaim, { clusterName: "freelens-capi-provisioning" }), {
       conditions: [
         {
           type: "Ready",

@@ -9,6 +9,8 @@
 // - Paused: the `Paused` condition is `True`, or the pause is requested, as the controllers of the kind honour the
 //   request (P19). The pause is also the cause of the generation that its controllers do not observe meanwhile
 //   (SPEC-0001, R2.2 and R2.5), so a paused object carries no mark of an older generation: the pause is its own cause.
+//   A paused ClusterClass whose generation is not observed still holds the topology of its Clusters, which its mark
+//   Paused says (P8; core/reconcilers/topology/cluster/cluster_controller.go:343-353).
 // - Older generation: the generation that the status describes is below `metadata.generation`; for a ClusterClass,
 //   the mark says that the topology of its Clusters is not reconciled until the class is (P8).
 // - Controller not available: the view says so in `controllers`, from the object of the operator for the provider;
@@ -18,8 +20,9 @@
 
 import { parseTime } from "../parsers/time";
 import { conditionOf, weighConditions } from "./conditions";
-import { fieldOf, readCount, readEntry, readFields, readFlag, UNREADABLE } from "./fields";
+import { fieldOf, readCount, readEntry, readFields, readFlag, readText, UNREADABLE } from "./fields";
 import { summaryTypeOf } from "./health";
+import { IP_ADDRESS_CLAIM_RULE } from "./providers";
 
 import type { ParsedTime } from "../parsers/time";
 import type { ConditionsResult, WeightedCondition } from "./conditions";
@@ -33,8 +36,9 @@ export type FreshnessCause =
   | "Workload cluster unreachable";
 
 export type FreshnessMark =
-  // Since the transition of `Paused` to `True`; undefined when the pause is only requested, which has no time.
-  | { readonly cause: "Paused"; readonly since: ParsedTime | undefined }
+  // Since the transition of `Paused` to `True`; undefined when the pause is only requested, which has no time. For a
+  // ClusterClass, whether its generation is not observed, which holds the topology of its Clusters (P8).
+  | { readonly cause: "Paused"; readonly since: ParsedTime | undefined; readonly topologiesHeld: boolean }
   // No time is written for it.
   | {
       readonly cause: "Older generation";
@@ -77,6 +81,17 @@ function annotationPauses(object: KubeObjectData, prefix: string, notes: Note[])
   return value !== undefined;
 }
 
+// Whether an object names no Cluster: an IPAddressClaim may leave `spec.clusterName` unset
+// (api/ipam/v1beta2/ipaddressclaim_types.go:44-49), and it then belongs to no Cluster, whose pause, floor or first
+// provisioning it would read, so the Cluster is not needed.
+export function namesNoCluster(rule: KindRule, object: KubeObjectData): boolean {
+  if (rule !== IP_ADDRESS_CLAIM_RULE) return false;
+
+  const name = readText(fieldOf(readFields(object.spec), "clusterName"));
+
+  return name === undefined || name === "";
+}
+
 // Whether the pause of an object is requested, as its controllers honour the request: the annotation on the object
 // or `spec.paused` of its Cluster, the annotation alone, or the field or the annotation of its Cluster (P19). The
 // annotation on a Cluster pauses only the Cluster (SPEC-0001, R4.57).
@@ -86,6 +101,7 @@ function pauseRequested(rule: KindRule, object: KubeObjectData, context: StatusC
   if (rule.pause === "object") return false;
   // A Cluster is its own Cluster.
   if (rule.kind === "Cluster" && rule.role === undefined) return clusterPauses(object, false, "", notes);
+  if (namesNoCluster(rule, object)) return false;
   if (context.cluster === undefined) {
     notes.push({ code: "input-not-given", input: "cluster" });
     return false;
@@ -131,12 +147,14 @@ function observedGenerationOf(
   return summary === undefined ? undefined : conditionOf(conditions, summary)?.observedGeneration;
 }
 
+type OlderGeneration = Extract<FreshnessMark, { readonly cause: "Older generation" }>;
+
 function olderGenerationOf(
   rule: KindRule,
   object: KubeObjectData,
   conditions: readonly WeightedCondition[],
   notes: Note[],
-): FreshnessMark | undefined {
+): OlderGeneration | undefined {
   const generation = readCount(fieldOf(readFields(object.metadata), "generation"));
   const observedGeneration = observedGenerationOf(rule, object, conditions, notes);
 
@@ -208,8 +226,8 @@ export interface Freshness {
 }
 
 // The marks of an object, with its pause, which the activity Paused reads, and the notes of what was not read. A kind
-// with no status gets none: its rule requests no pause, names no provider and follows no workload cluster, and it
-// keeps no generation.
+// with no status gets none, whatever its fields say (P16): its rule requests no pause, names no provider and follows no
+// workload cluster, and its generation is not read, though a template of a provider may keep a status.
 export function freshnessOf(
   rule: KindRule,
   object: KubeObjectData,
@@ -219,9 +237,16 @@ export function freshnessOf(
   const notes: Note[] = [];
   const read = conditions.state === "read" ? conditions.conditions : [];
   const pause = pauseOf(rule, object, read, context, notes);
+  // A ClusterClass reads its generation while paused too, for its mark Paused (P8).
+  const older =
+    !rule.hasStatus || (pause.paused && rule.holdsTopologies !== true)
+      ? undefined
+      : olderGenerationOf(rule, object, read, notes);
   const marks = [
-    pause.paused ? ({ cause: "Paused", since: pause.since } as const) : undefined,
-    pause.paused ? undefined : olderGenerationOf(rule, object, read, notes),
+    pause.paused
+      ? ({ cause: "Paused", since: pause.since, topologiesHeld: older?.topologiesHeld === true } as const)
+      : undefined,
+    pause.paused ? undefined : older,
     controllerOf(rule, context, notes),
     unreachableOf(rule, context, notes),
   ];

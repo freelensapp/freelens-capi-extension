@@ -110,6 +110,9 @@ export interface WeighingRules {
   readonly kind: string | undefined;
   // The gates of the object, by condition type, with the `polarity` as written.
   readonly gates: ReadonlyMap<string, unknown>;
+  // Whether a gate, or the list of the gates, could not be read: any condition whose polarity a gate can set might
+  // be the one it names.
+  readonly gatesUnread?: boolean;
   // For a kind of the operator, whether its `status.installedVersion` is its `spec.version` (P14).
   readonly upgradeSettled: boolean;
 }
@@ -120,9 +123,19 @@ export type ConditionsResult =
   // A status or a list of conditions of the wrong type.
   | { readonly state: "unknown"; readonly notes: readonly Note[] };
 
-function polarityOf(type: string, gates: ReadonlyMap<string, unknown>): Polarity {
+// The summary that the gates of a kind feed (SPEC-0001, R2.21, R2.46): a gate is an input of it, never the summary.
+const GATED_SUMMARY: Readonly<Record<string, string>> = { Cluster: "Available", Machine: "Ready" };
+
+function polarityOf(type: string, rules: WeighingRules): Polarity {
+  const { gates } = rules;
+
   if (NEGATIVE_TYPES.includes(type)) return "negative";
-  if (!gates.has(type)) return "positive";
+  if (!gates.has(type)) {
+    // A gate that could not be read may name this condition, and declare it `Negative` (P22).
+    const summary = GATED_SUMMARY[rules.kind ?? ""];
+
+    return rules.gatesUnread === true && type !== summary ? "unknown" : "positive";
+  }
 
   const polarity = gates.get(type);
 
@@ -139,7 +152,12 @@ function weightOfPositiveFalse(type: string, reason: string | undefined, rules: 
     return reason !== undefined && TOPOLOGY_REASONS.includes(reason) ? "Activity" : "Unknown";
   }
   if (PENDING_CHANGES[kind]?.includes(type)) return "Activity";
-  if (kind === "Machine" && type === "Available" && reason === "WaitingForMinReadySeconds") return "Activity";
+  // Only the reason tells the wait of P5 from a Machine that is not available, so one that cannot be read weighs
+  // Unknown, as the reasons of `TopologyReconciled` do.
+  if (kind === "Machine" && type === "Available") {
+    if (reason === undefined) return "Unknown";
+    if (reason === "WaitingForMinReadySeconds") return "Activity";
+  }
   if (OPERATOR_KINDS.includes(kind) && type === "ProviderUpgraded" && rules.upgradeSettled) return "At rest";
   return "Issue";
 }
@@ -149,7 +167,7 @@ export function weightOf(
   condition: { readonly type: string; readonly status: string | undefined; readonly reason: string | undefined },
   rules: WeighingRules,
 ): { polarity: Polarity; weight: Weight } {
-  const polarity = polarityOf(condition.type, rules.gates);
+  const polarity = polarityOf(condition.type, rules);
   const { status } = condition;
 
   if (polarity === "unknown" || (status !== "True" && status !== "False")) return { polarity, weight: "Unknown" };
@@ -160,18 +178,21 @@ export function weightOf(
   };
 }
 
-function textOrUndefined(value: unknown): string | undefined {
-  const text = readText(value);
-
-  return text === UNREADABLE ? undefined : text;
+// Where a list of conditions is read, and where the notes of the fields of the wrong type in its entries go.
+interface ListOrigin {
+  // The field of the list, `status.conditions` or `status.v1beta2.conditions`.
+  readonly field: string;
+  readonly notes: Note[];
 }
 
-// One entry of a list of conditions: an object with a type. A status, a reason or a message of the wrong type reads
-// as absent, which weighs Unknown where it matters; a type that is not text makes the list unreadable.
+// One entry of a list of conditions: an object with a type. A status, a reason, a message, a time, a generation or
+// a severity of the wrong type reads as absent, which weighs Unknown where it matters, and is noted with the type of
+// its condition; a type that is not text makes the list unreadable.
 function readCondition(
   entry: unknown,
   generation: number | undefined,
   rules: WeighingRules,
+  origin: ListOrigin | undefined,
 ): WeightedCondition | Unreadable {
   const fields = readFields(entry);
   const type = readText(fieldOf(fields, "type"));
@@ -180,11 +201,25 @@ function readCondition(
     return UNREADABLE;
   }
 
-  const status = textOrUndefined(fields.status);
-  const reason = textOrUndefined(fields.reason);
-  const message = textOrUndefined(fields.message);
+  const unreadable = (name: string) =>
+    origin?.notes.push({ code: "field-unreadable", field: `${origin.field}[${type}].${name}` });
+  const textOf = (name: string) => {
+    const text = readText(fields[name]);
+
+    if (text === UNREADABLE) unreadable(name);
+    return text === UNREADABLE ? undefined : text;
+  };
+  const status = textOf("status");
+  const reason = textOf("reason");
+  const message = textOf("message");
+  const severity = textOf("severity");
   const observed = readCount(fields.observedGeneration);
   const observedGeneration = observed === UNREADABLE ? undefined : observed;
+
+  if (observed === UNREADABLE) unreadable("observedGeneration");
+  // A time that is text and no time of the calendar is unavailable, which the views show; only a time of another
+  // type is of the wrong type.
+  if (readText(fields.lastTransitionTime) === UNREADABLE) unreadable("lastTransitionTime");
 
   return {
     type,
@@ -196,29 +231,33 @@ function readCondition(
     observedGeneration,
     olderGeneration: observedGeneration !== undefined && generation !== undefined && observedGeneration < generation,
     ...weightOf({ type, status, reason }, rules),
-    severity: textOrUndefined(fields.severity),
+    severity,
   };
 }
 
 // A list of conditions, read and weighed in the order stored; unreadable when it is not a list or one of its
-// entries is not a condition.
+// entries is not a condition. The fields of the wrong type in its entries are noted where the origin says.
 export function weighConditions(
   value: unknown,
   generation: number | undefined,
   rules: WeighingRules,
+  origin?: ListOrigin,
 ): readonly WeightedCondition[] | undefined | Unreadable {
   const list = readList(value);
 
   if (list === undefined || list === UNREADABLE) return list;
 
   const conditions: WeightedCondition[] = [];
+  // The notes of the entries count only when the whole list can be read.
+  const notes: Note[] = [];
 
   for (const entry of list) {
-    const condition = readCondition(entry, generation, rules);
+    const condition = readCondition(entry, generation, rules, origin && { field: origin.field, notes });
 
     if (condition === UNREADABLE) return UNREADABLE;
     conditions.push(condition);
   }
+  origin?.notes.push(...notes);
   return conditions;
 }
 
@@ -227,16 +266,21 @@ export function conditionOf(conditions: readonly WeightedCondition[], type: stri
   return conditions.find((condition) => condition.type === type);
 }
 
-// The gates of an object, by condition type, with the `polarity` of each as written: those of
-// `spec.availabilityGates` of a Cluster, or of its ClusterClass when the Cluster has none (SPEC-0001, R2.21), and
-// those of `spec.readinessGates` of a Machine (R2.46).
-function gatesOf(
-  object: KubeObjectData,
-  kind: string | undefined,
-  context: StatusContext,
-  listing: boolean,
-  notes: Note[],
-): ReadonlyMap<string, unknown> {
+// The gates of an object, as read.
+interface Gates {
+  // By condition type, with the `polarity` of each as written.
+  readonly polarities: ReadonlyMap<string, unknown>;
+  // Whether the list, or one of its entries, could not be read.
+  readonly unread: boolean;
+}
+
+// The gates of an object: those of `spec.availabilityGates` of a Cluster, or of its ClusterClass when the Cluster has
+// none (SPEC-0001, R2.21), and those of `spec.readinessGates` of a Machine (R2.46). Each entry is read on its own, so
+// that one that cannot be read leaves the others; it is noted, and the conditions it might name weigh Unknown. Both
+// the conditions of the project and those of a third party can be gates
+// (api/core/v1beta2/cluster_types.go:536-541; api/core/v1beta2/machine_types.go:535-538), so a Cluster with a
+// topology and no gates of its own notes a ClusterClass that the view did not give.
+function gatesOf(object: KubeObjectData, kind: string | undefined, context: StatusContext, notes: Note[]): Gates {
   const spec = readFields(object.spec);
   let field: string | undefined;
   let value: unknown;
@@ -248,10 +292,8 @@ function gatesOf(
       const topology = fieldOf(spec, "topology");
 
       if (context.clusterClass === undefined) {
-        if (listing && topology !== undefined && topology !== null) {
-          notes.push({ code: "input-not-given", input: "clusterClass" });
-        }
-        return new Map();
+        if (topology !== undefined && topology !== null) notes.push({ code: "input-not-given", input: "clusterClass" });
+        return { polarities: new Map(), unread: false };
       }
       field = "clusterClass.spec.availabilityGates";
       value = fieldOf(readFields(context.clusterClass.spec), "availabilityGates");
@@ -261,24 +303,28 @@ function gatesOf(
     value = fieldOf(spec, "readinessGates");
   }
 
-  const gates = new Map<string, unknown>();
+  const polarities = new Map<string, unknown>();
   const list = readList(value);
+  let unread = list === UNREADABLE;
 
-  if (list === UNREADABLE) {
-    notes.push({ code: "field-unreadable", field: field ?? "" });
-    return gates;
-  }
-  for (const entry of list ?? []) {
+  for (const entry of list === UNREADABLE ? [] : (list ?? [])) {
     const gate = readFields(entry);
     const type = readText(fieldOf(gate, "conditionType"));
 
-    if (gate === UNREADABLE || type === UNREADABLE || type === undefined) {
-      notes.push({ code: "field-unreadable", field: field ?? "" });
-      return new Map();
+    if (gate === UNREADABLE || type === UNREADABLE || type === undefined || type === "") {
+      unread = true;
+    } else {
+      polarities.set(type, gate?.polarity);
     }
-    gates.set(type, gate?.polarity);
   }
-  return gates;
+  if (unread) notes.push({ code: "field-unreadable", field: field ?? "" });
+  return { polarities, unread };
+}
+
+// The condition types that the gates of an object name, those of the entries that can be read: the inputs of its
+// summary, which count only through it (H1).
+export function gateTypesOf(object: KubeObjectData, kind: string, context: StatusContext): ReadonlySet<string> {
+  return new Set(gatesOf(object, kind, context, []).polarities.keys());
 }
 
 // Whether a kind of the operator has installed the version of its spec, which makes a `ProviderUpgraded` `False`
@@ -305,13 +351,11 @@ export function generationOf(object: KubeObjectData, notes: Note[]): number | un
 // The conditions of an object with their weights. Those of a kind of Cluster API or of the operator are in
 // `status.conditions`; those of an object of a provider, whose `kind` is undefined here, are in
 // `status.v1beta2.conditions` when that list is present, taken whole, and in `status.conditions` otherwise, as the
-// project reads them (SPEC-0001, R2.93; P15). The gates of the ClusterClass of a Cluster weigh only conditions that
-// the rule of a Cluster does not count, so only the list of the conditions notes a class that the view did not give.
+// project reads them (SPEC-0001, R2.93; P15).
 export function readConditions(
   object: KubeObjectData,
   kind: string | undefined,
   context: StatusContext,
-  listing = false,
 ): ConditionsResult {
   const notes: Note[] = [];
   const status = readFields(object.status);
@@ -319,9 +363,11 @@ export function readConditions(
   if (status === UNREADABLE) return { state: "unknown", notes: [{ code: "field-unreadable", field: "status" }] };
 
   const generation = generationOf(object, notes);
+  const gates = gatesOf(object, kind, context, notes);
   const rules: WeighingRules = {
     kind,
-    gates: gatesOf(object, kind, context, listing, notes),
+    gates: gates.polarities,
+    gatesUnread: gates.unread,
     upgradeSettled: upgradeSettled(object),
   };
   let field = "status.conditions";
@@ -339,7 +385,7 @@ export function readConditions(
     }
   }
 
-  const conditions = weighConditions(value, generation, rules);
+  const conditions = weighConditions(value, generation, rules, { field, notes });
 
   if (conditions === UNREADABLE) return { state: "unknown", notes: [...notes, { code: "field-unreadable", field }] };
   return { state: "read", conditions: conditions ?? [], notes };

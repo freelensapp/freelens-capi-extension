@@ -15,6 +15,7 @@ import {
   noStatus,
   provisioning,
   rollingOut,
+  withStatus,
 } from "../../../test/status-objects";
 import { conditionsOf, statusOf } from "./index";
 
@@ -174,13 +175,17 @@ describe("the result", () => {
     expect(at(changesAt).tone.tone).toBe("warning");
   });
 
-  it("notes the ClusterClass that the view did not give only in the list of the conditions", () => {
-    expect(statusOf(healthy.cluster, contextOf({ machinePools: [], parts: { machineDeployments: [] } })).notes).toEqual(
-      [],
-    );
+  it("notes the ClusterClass that the view did not give in the result as in the list of the conditions", () => {
+    // Its gates can name a condition of the project as one of a third party, and change the health either way.
+    const context = { machinePools: [], parts: { machineDeployments: [] } };
+
+    expect(statusOf(healthy.cluster, contextOf(context)).notes).toEqual([
+      { code: "input-not-given", input: "clusterClass" },
+    ]);
     expect(conditionsOf(healthy.cluster, contextOf()).notes).toEqual([
       { code: "input-not-given", input: "clusterClass" },
     ]);
+    expect(statusOf(healthy.cluster, contextOf({ ...context, clusterClass: healthy.clusterClass })).notes).toEqual([]);
   });
 
   it("gives a kind with no status no condition, no mark and no note", () => {
@@ -228,6 +233,41 @@ describe("the result", () => {
       restsOn: { clusters: [] },
     });
     expect(statusOf(healthy.workerMachine, undefined as never).health.health).toBe("Healthy");
+  });
+
+  it("reads the Cluster of a binding that is not an object as not given, and does not throw", () => {
+    // The ClusterResourceSet of provisioning, Unhealthy, whose binding holds an entry for it: its tone reads the
+    // Cluster of that binding.
+    for (const cluster of [null, 7, "freelens-capi-provisioning", [provisioning.cluster]]) {
+      const status = statusOf(
+        provisioning.clusterResourceSet,
+        contextOf({ bindings: [{ binding: provisioning.binding, cluster: cluster as never }] }),
+      );
+
+      expect(status.health.health).toBe("Unhealthy");
+      expect(status.tone).toMatchObject({ tone: "health", notes: [{ code: "input-not-given", input: "cluster" }] });
+    }
+  });
+
+  it("reads a role or a contract outside its closed set as not given", () => {
+    // The DevCluster of healthy, which the view reads only by the role it gives.
+    for (const role of [null, "infrastructure-clustr", 5]) {
+      expect(statusOf(healthy.devCluster, contextOf({ role: role as never }))).toMatchObject({
+        health: { health: "Unknown" },
+        notes: [{ code: "kind-unknown" }],
+      });
+    }
+    // The DevMachine of healthy before it is provisioned: its `status.initialization` emptied, so that its
+    // Provisioning reads the field that the contract names.
+    const devMachine = withStatus(healthy.devMachine, { initialization: {} });
+    const asMachine = { role: "infrastructure-machine", cluster: healthy.cluster, healthChecks: [] } as const;
+
+    for (const contract of [null, "v1alpha4", 2]) {
+      const { activities, notes } = statusOf(devMachine, contextOf({ ...asMachine, contract: contract as never }));
+
+      expect(activities).toMatchObject({ activities: [], idle: false, unknown: true });
+      expect(notes).toContainEqual({ code: "input-not-given", input: "contract" });
+    }
   });
 
   it("reads a Cluster with no metadata as an object with no name", () => {

@@ -38,7 +38,7 @@ import {
   readText,
   UNREADABLE,
 } from "./fields";
-import { pauseOf } from "./freshness";
+import { namesNoCluster, pauseOf } from "./freshness";
 import { deletionOf, identityOf } from "./health";
 import { MACHINE_PHASES, MACHINE_RULE } from "./machines";
 
@@ -258,9 +258,13 @@ export function isInProgress(activity: Activity): boolean {
 
 // Whether an object belongs to a Cluster, whose first provisioning it takes for its tone and whose 30 minutes are
 // the floor of its thresholds (D2, P2): the kinds whose controllers honour the pause of their Cluster (P19), which
-// are the objects that a Cluster has, its control plane included.
-export function belongsToCluster(rule: KindRule): boolean {
-  return (rule.pause === "object-or-cluster" || rule.pause === "cluster") && !isClusterRule(rule);
+// are the objects that a Cluster has, its control plane included, but for an IPAddressClaim that names no Cluster.
+export function belongsToCluster(rule: KindRule, object: KubeObjectData): boolean {
+  return (
+    (rule.pause === "object-or-cluster" || rule.pause === "cluster") &&
+    !isClusterRule(rule) &&
+    !namesNoCluster(rule, object)
+  );
 }
 
 // Whether a rule is that of a Cluster itself.
@@ -325,7 +329,7 @@ function clockOf(object: KubeObjectData, rule: KindRule, context: StatusContext,
       if (floor === undefined) {
         if (isClusterRule(rule)) {
           floor = { value: floorOf(object) };
-        } else if (belongsToCluster(rule)) {
+        } else if (belongsToCluster(rule, object)) {
           if (context.cluster === undefined) notes.push({ code: "input-not-given", input: "cluster" });
           floor = { value: floorOf(context.cluster) };
         } else {
@@ -483,19 +487,30 @@ function machineSecondsOf(machine: KubeObjectData, context: StatusContext, notes
 
   for (const check of checks) {
     const target = identityOf(check);
-    const targets = readList(fieldOf(readFields(check.status), "targets"));
 
     if (namespace !== undefined && target.namespace !== undefined && namespace !== target.namespace) continue;
-    if (targets === UNREADABLE) {
-      notes.push({ code: "field-unreadable", field: "healthChecks.status.targets" });
+
+    // Each level is read on its own, so that a parent of the wrong type is noted as such, and the check skipped.
+    const status = readFields(check.status);
+    const targets = readList(fieldOf(status, "targets"));
+    const spec = readFields(check.spec);
+    const settings = readFields(fieldOf(spec, "checks"));
+    const timeout = readCount(fieldOf(settings, "nodeStartupTimeoutSeconds"));
+
+    if (status === UNREADABLE || targets === UNREADABLE || spec === UNREADABLE || settings === UNREADABLE) {
+      const field =
+        status === UNREADABLE
+          ? "status"
+          : targets === UNREADABLE
+            ? "status.targets"
+            : spec === UNREADABLE
+              ? "spec"
+              : "spec.checks";
+
+      notes.push({ code: "field-unreadable", field: `healthChecks.${field}` });
       continue;
     }
     if (name === undefined || !(targets ?? []).includes(name)) continue;
-
-    const timeout = readCount(
-      fieldOf(readFields(fieldOf(readFields(check.spec), "checks")), "nodeStartupTimeoutSeconds"),
-    );
-
     if (timeout === UNREADABLE) {
       notes.push({ code: "field-unreadable", field: "healthChecks.spec.checks.nodeStartupTimeoutSeconds" });
       continue;
@@ -720,16 +735,24 @@ function readConditionActivity(reading: Reading, type: string): void {
   let activity: ActivityName = name;
 
   if (type === "RollingOut" && rule.apiVersion !== undefined && rule.kind === "MachineDeployment") {
-    const strategy = readText(
-      fieldOf(readFields(fieldOf(readFields(fieldOf(reading.spec, "rollout")), "strategy")), "type"),
-    );
+    // Each level is read on its own, so that a parent of the wrong type is noted as such.
+    const rollout = readFields(fieldOf(reading.spec, "rollout"));
+    const strategyFields = readFields(fieldOf(rollout, "strategy"));
+    const strategy = readText(fieldOf(strategyFields, "type"));
     const paused = readFlag(fieldOf(reading.spec, "paused"));
+    const unreadable =
+      rollout === UNREADABLE
+        ? "spec.rollout"
+        : strategyFields === UNREADABLE
+          ? "spec.rollout.strategy"
+          : strategy === UNREADABLE
+            ? "spec.rollout.strategy.type"
+            : paused === UNREADABLE
+              ? "spec.paused"
+              : undefined;
 
-    if (strategy === UNREADABLE || paused === UNREADABLE) {
-      reading.notes.push({
-        code: "field-unreadable",
-        field: strategy === UNREADABLE ? "spec.rollout.strategy.type" : "spec.paused",
-      });
+    if (unreadable !== undefined) {
+      reading.notes.push({ code: "field-unreadable", field: unreadable });
       reading.unknown = true;
       return;
     }
@@ -740,23 +763,29 @@ function readConditionActivity(reading: Reading, type: string): void {
     }
     if (paused === true) activity = "Rollout paused";
   }
-  if (type === "RollingOut" && isClusterRule(rule) && context.parts !== undefined) {
-    const rolls = clusterPartsOf(context).rolling.some((part) =>
-      (partActivities(part) ?? []).some((each) => each.name === "Rolling out"),
-    );
+  let throughParts: readonly Activity[] | undefined;
 
+  if (type === "RollingOut" && isClusterRule(rule) && context.parts !== undefined) {
+    const { rolling } = clusterPartsOf(context);
+
+    throughParts = rolling.flatMap((part) =>
+      (partActivities(part) ?? []).filter((each) => each.name === "Rolling out"),
+    );
     // The `RollingOut` of a Cluster aggregates those of its parts: with none of them rolling out, the Machines differ
-    // from the spec while nothing rolls them out (P4).
-    if (!rolls) {
-      reading.notes.push({ code: "machines-differ-from-spec" });
+    // from the spec while nothing rolls them out (P4), which a part whose activities cannot be read leaves untold.
+    if (throughParts.length === 0) {
+      if (!rolling.some(partUnread)) reading.notes.push({ code: "machines-differ-from-spec" });
       return;
     }
   }
 
   const owner =
     type === "Remediating" && (isClusterRule(rule) || (rule.apiVersion !== undefined && OWNERS.includes(rule.kind)));
+  // A Cluster rolls out through its parts, and is held when every part that rolls out is, as its Provisioning is.
   const blocked =
-    (type === "Updating" && condition.reason === "InPlaceUpdateFailed") || (owner && ownerRemediationBlocked(reading));
+    (type === "Updating" && condition.reason === "InPlaceUpdateFailed") ||
+    (owner && ownerRemediationBlocked(reading)) ||
+    (throughParts !== undefined && throughParts.every((each) => each.state === "Blocked"));
   const state = stateOf(reading, condition, { blocked, reasons: TRUE_REASONS[type] });
 
   // A rollout held by `spec.paused` has no time of its own (P34).
@@ -809,9 +838,11 @@ function readMachineProvisioning(reading: Reading): void {
   const since = heldToCreation(reading.clock.creation, reading.clock.creation);
   const base = thresholdOf(reading.clock, "Provisioning", "Progressing", since, { seconds });
 
-  // A Machine that is not available is Provisioning while it is within its threshold; with no clock, it cannot be
-  // told.
-  if (notAvailable && !byPhase && !waiting && reading.clock.now === undefined) reading.unknown = true;
+  // A Machine that is not available is Provisioning while it is within its threshold; with no clock, or no time of
+  // its creation, it cannot be told.
+  if (notAvailable && !byPhase && !waiting && (reading.clock.now === undefined || since?.state !== "accepted")) {
+    reading.unknown = true;
+  }
 
   const byAge = notAvailable && isAhead(reading.clock, base?.passesAt);
 
@@ -1078,11 +1109,25 @@ function readContractProvisioning(reading: Reading): void {
   let ready = false;
 
   for (const path of paths) {
-    const parent = path.slice(0, -1).reduce<unknown>((fields, key) => fieldOf(readFields(fields), key), reading.status);
-    const flag = readFlag(fieldOf(readFields(parent), path[path.length - 1]));
+    // Each level is read on its own, so that a parent of the wrong type, such as `status.initialization`, is noted as
+    // such, and never taken for a field that is not set.
+    let parent: Fields | undefined = reading.status;
+    let unreadable: string | undefined;
+
+    for (const [index, key] of path.slice(0, -1).entries()) {
+      const next = readFields(fieldOf(parent, key));
+
+      if (next === UNREADABLE) {
+        unreadable = ["status", ...path.slice(0, index + 1)].join(".");
+        break;
+      }
+      parent = next;
+    }
+
+    const flag = unreadable === undefined ? readFlag(fieldOf(parent, path[path.length - 1])) : UNREADABLE;
 
     if (flag === UNREADABLE) {
-      reading.notes.push({ code: "field-unreadable", field: ["status", ...path].join(".") });
+      reading.notes.push({ code: "field-unreadable", field: unreadable ?? ["status", ...path].join(".") });
       reading.unknown = true;
       return;
     }
@@ -1112,6 +1157,17 @@ function readOperator(reading: Reading): void {
     return;
   }
 
+  const wanted = readText(fieldOf(reading.spec, "version"));
+
+  // The operator writes `spec.version` before it installs, from the default of its repository
+  // (cluster-api-operator:internal/controller/manifests_downloader.go:91-97): an installed kind without one cannot be
+  // compared, and is no upgrade by default.
+  if (installed !== undefined && installed !== "" && (wanted === undefined || wanted === UNREADABLE || wanted === "")) {
+    reading.notes.push({ code: "field-unreadable", field: "spec.version" });
+    reading.unknown = true;
+    return;
+  }
+
   const upgrading = installed !== undefined && installed !== "" && !upgradeSettled(reading.input.object);
 
   if (installed !== undefined && installed !== "" && !upgrading) return;
@@ -1120,9 +1176,18 @@ function readOperator(reading: Reading): void {
     .map((type) => conditionOf(reading.conditions, type))
     .find((condition) => condition?.status === "False");
   const preflight = conditionOf(reading.conditions, "PreflightCheckPassed");
-  const refused = preflight?.status === "False" && preflight.reason !== "WaitingForCoreProviderReady";
+  // Only the reason tells the wait for the core provider from a check that refuses: one that cannot be read leaves
+  // the state Unknown.
+  const unsure = failed === undefined && preflight?.status === "False" && preflight.reason === undefined;
+  const refused =
+    preflight?.status === "False" &&
+    preflight.reason !== undefined &&
+    preflight.reason !== "WaitingForCoreProviderReady";
   const shown = failed ?? (preflight?.status === "False" ? preflight : undefined);
-  const state = stateOf(reading, undefined, { blocked: failed !== undefined || refused });
+  const state =
+    unsure && !reading.input.pause.paused
+      ? "Unknown"
+      : stateOf(reading, undefined, { blocked: failed !== undefined || refused });
 
   if (upgrading) add(reading, "Upgrading", state, { seconds: MACHINE_SECONDS }, shown);
   else add(reading, "Provisioning", state, { start: reading.clock.creation, seconds: MACHINE_SECONDS }, shown);
@@ -1173,7 +1238,14 @@ function readClusterProvisioning(reading: Reading): void {
 // text of a hook that holds the upgrade is in its message (P18). A reason that this release does not define, like a
 // missing condition, leaves the source unread.
 function readClusterUpgrade(reading: Reading): void {
-  if (!isSet(fieldOf(reading.spec, "topology"))) return;
+  const topology = readFields(fieldOf(reading.spec, "topology"));
+
+  if (topology === UNREADABLE) {
+    reading.notes.push({ code: "field-unreadable", field: "spec.topology" });
+    reading.unknown = true;
+    return;
+  }
+  if (!isSet(topology)) return;
 
   const condition = conditionOf(reading.conditions, "TopologyReconciled");
 
@@ -1326,6 +1398,11 @@ export function activitiesOf(input: ActivityInput): Activities {
     notes,
     unknown: false,
   };
+
+  // Every start held to the creation, and the age of a Machine, read it (P34, D3).
+  if (reading.clock.creation.state === "unavailable") {
+    notes.push({ code: "field-unreadable", field: "metadata.creationTimestamp" });
+  }
 
   // A deleting object does nothing but its deletion, held while it is paused (D3, P33).
   if (deleting === true) {

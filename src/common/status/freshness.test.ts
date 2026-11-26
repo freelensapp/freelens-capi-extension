@@ -44,7 +44,8 @@ const pausedByAnnotation = { "cluster.x-k8s.io/paused": "false" };
 const pausedCluster = withSpec(healthy.cluster, { paused: true });
 
 // An ExtensionConfig and an IPAddressClaim with a status, written from the schemas of the release, since the
-// fixtures have none: the test environment runs without RuntimeSDK, and with no IPAM provider (SPEC-0002).
+// fixtures have none: the test environment runs without RuntimeSDK, and with no IPAM provider (SPEC-0002). The claim
+// of the fixtures names no Cluster; this one names the Cluster of healthy.
 const extensionConfig = {
   apiVersion: "runtime.cluster.x-k8s.io/v1beta2",
   kind: "ExtensionConfig",
@@ -63,19 +64,22 @@ const extensionConfig = {
     ],
   },
 };
-const ipAddressClaim = withStatus(withMetadata(noStatus.ipAddressClaim, { generation: 2 }), {
-  conditions: [
-    {
-      type: "Ready",
-      status: "True",
-      observedGeneration: 1,
-      lastTransitionTime: "2025-12-31T23:59:58Z",
-      reason: "Ready",
-      message: "",
-    },
-  ],
-  addressRef: { name: "freelens-capi-no-status" },
-});
+const ipAddressClaim = withStatus(
+  withMetadata(withSpec(noStatus.ipAddressClaim, { clusterName: "freelens-capi-healthy" }), { generation: 2 }),
+  {
+    conditions: [
+      {
+        type: "Ready",
+        status: "True",
+        observedGeneration: 1,
+        lastTransitionTime: "2025-12-31T23:59:58Z",
+        reason: "Ready",
+        message: "",
+      },
+    ],
+    addressRef: { name: "freelens-capi-no-status" },
+  },
+);
 
 describe("Paused", () => {
   it("is read from the condition, since its transition", () => {
@@ -83,6 +87,7 @@ describe("Paused", () => {
       {
         cause: "Paused",
         since: { state: "accepted", text: "2025-12-31T23:59:45Z", instant: Date.UTC(2025, 11, 31, 23, 59, 45) },
+        topologiesHeld: false,
       },
     ]);
     expect(causesOf(paused.workerMachine, contextOf({ cluster: paused.cluster }))).toEqual(["Paused"]);
@@ -91,15 +96,35 @@ describe("Paused", () => {
   it("is read from the annotation by its presence, its value false included, with no time", () => {
     const machine = withMetadata(healthy.workerMachine, { annotations: pausedByAnnotation });
 
-    expect(marksOf(machine, contextOf({ cluster: healthy.cluster }))).toEqual([{ cause: "Paused", since: undefined }]);
+    expect(marksOf(machine, contextOf({ cluster: healthy.cluster }))).toEqual([
+      { cause: "Paused", since: undefined, topologiesHeld: false },
+    ]);
   });
 
   it("is read from spec.paused of the Cluster, for a kind that honours both", () => {
     expect(marksOf(healthy.workerMachine, contextOf({ cluster: pausedCluster }))).toEqual([
-      { cause: "Paused", since: undefined },
+      { cause: "Paused", since: undefined, topologiesHeld: false },
     ]);
     expect(causesOf(healthy.kubeadmControlPlane, contextOf({ cluster: pausedCluster }))).toEqual(["Paused"]);
     expect(causesOf(pausedCluster)).toEqual(["Paused"]);
+  });
+
+  it.each([
+    ["a MachineSet", healthy.machineSet, {}],
+    ["a MachineDeployment", healthy.machineDeployment, {}],
+    ["a MachinePool", machinePools.machinePool, {}],
+    ["a MachineHealthCheck", healthy.machineHealthCheck, {}],
+    ["a KubeadmConfig", healthy.kubeadmConfig, {}],
+    ["an infrastructure cluster", healthy.devCluster, { role: "infrastructure-cluster" }],
+    ["an infrastructure machine", healthy.devMachine, { role: "infrastructure-machine" }],
+    ["an infrastructure machine pool", machinePools.devMachinePool, { role: "infrastructure-machine-pool" }],
+    ["a control plane of a provider", healthy.devCluster, { role: "control-plane" }],
+  ] as const)("is read from spec.paused of the Cluster for %s too", (_, object, role) => {
+    const context = (cluster: KubeObjectData) =>
+      contextOf({ ...role, provider: "infrastructure-docker", cluster: cluster as never });
+
+    expect(causesOf(object as KubeObjectData, context(pausedCluster))).toContain("Paused");
+    expect(causesOf(object as KubeObjectData, context(healthy.cluster))).not.toContain("Paused");
   });
 
   it.each([
@@ -116,6 +141,27 @@ describe("Paused", () => {
   it("follows the ClusterClass and the ClusterResourceSet of a paused Cluster, which report Paused False", () => {
     expect(causesOf(paused.clusterClass, contextOf({ cluster: paused.cluster }))).toEqual([]);
     expect(causesOf(paused.clusterResourceSet, contextOf({ cluster: paused.cluster }))).toEqual([]);
+  });
+
+  it("is not requested of an IPAddressClaim that names no Cluster, which needs none, its tone included", () => {
+    // The claim above, Unhealthy, so that its tone reads what it takes, with no Cluster named: its
+    // `spec.clusterName` unset, then empty.
+    const unhealthy = withCondition(ipAddressClaim, "Ready", { status: "False", reason: "PoolExhausted" });
+
+    for (const clusterName of [undefined, ""]) {
+      const status = statusOf(
+        withSpec(unhealthy, { clusterName }),
+        contextOf({ provider: "ipam-test", controllers: {} }),
+      );
+
+      expect(status.health.health).toBe("Unhealthy");
+      expect(status.freshness.map((mark) => mark.cause)).not.toContain("Paused");
+      expect(status.notes).not.toContainEqual({ code: "input-not-given", input: "cluster" });
+    }
+    expect(notesOf(unhealthy, contextOf({ provider: "ipam-test", controllers: {} }))).toContainEqual({
+      code: "input-not-given",
+      input: "cluster",
+    });
   });
 
   it("is read for an IPAddressClaim from the annotation of its Cluster, and not from its own", () => {
@@ -257,6 +303,15 @@ describe("Older generation", () => {
 
     expect(causesOf(resumed)).toEqual(["Older generation"]);
   });
+
+  it("is not read while the object is paused, so a generation of the wrong type is not noted then", () => {
+    // The Machine of healthy with its `status.observedGeneration` of the wrong type, paused by its Cluster.
+    const odd = withStatus(healthy.workerMachine, { observedGeneration: "2" });
+    const note = { code: "field-unreadable", field: "status.observedGeneration" };
+
+    expect(notesOf(odd, contextOf({ cluster: pausedCluster }))).not.toContainEqual(note);
+    expect(notesOf(odd, contextOf({ cluster: healthy.cluster }))).toContainEqual(note);
+  });
 });
 
 describe("Controller not available (P24)", () => {
@@ -395,6 +450,18 @@ describe("a kind with no status, and an object with no status yet", () => {
   it("marks nothing for a kind with no status", () => {
     expect(marksOf(healthy.binding, contextOf({ cluster: pausedCluster, controllers: {} }))).toEqual([]);
     expect(notesOf(healthy.binding, contextOf({ controllers: {} }))).toEqual([]);
+  });
+
+  it("marks nothing for a template of a provider, whatever its fields say (P16)", () => {
+    // The DevMachineTemplate of healthy at generation 2, with a status that says 1, annotated as paused.
+    const template = withStatus(
+      withMetadata(healthy.devMachineTemplate, { generation: 2, annotations: pausedByAnnotation }),
+      { observedGeneration: 1 },
+    );
+    const status = statusOf(template, contextOf({ role: "template", provider: "infrastructure-docker" }));
+
+    expect(status.health).toEqual({ health: "none", because: "no status" });
+    expect(status.freshness).toEqual([]);
   });
 
   it("marks the pause of an object with no status yet that is requested", () => {

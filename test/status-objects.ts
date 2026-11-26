@@ -91,6 +91,19 @@ export function withAddedCondition<T extends object>(object: T, condition: Recor
   return withStatus(object, { conditions: [...conditionsOf(object), condition] });
 }
 
+// A copy of the object with a condition of a third party, which no kind of the project writes, of the given status
+// (SPEC-0001, H1): no fixture has one.
+export function withThirdPartyCondition<T extends object>(object: T, status = "False"): T {
+  return withAddedCondition(object, {
+    type: "example.com/BackupReady",
+    status,
+    reason: status === "True" ? "BackupReady" : "BackupFailed",
+    message: "",
+    lastTransitionTime: "2025-12-31T23:59:50Z",
+    observedGeneration: 1,
+  });
+}
+
 // A copy of the object without the condition of a type; the condition must be there.
 export function withoutCondition<T extends object>(object: T, type: string): T {
   const conditions = conditionsOf(object);

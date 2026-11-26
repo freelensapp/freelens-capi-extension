@@ -15,13 +15,15 @@
 // - MachineSet: what stands for a summary is `status.availableReplicas` against `spec.replicas` (P9): Unknown while
 //   either is unset, Unhealthy while fewer Machines are available than wanted, and otherwise Degraded from
 //   `MachinesReady` or Healthy. `MachinesReady` alone would make it Unhealthy at every scale down, since it counts
-//   the deleting Machines, which the counters leave out (R2.56, R2.58).
-// - MachineDeployment: `Available` sums it up, and it is Degraded from `MachinesReady`; `MachinesUpToDate` is no
-//   issue (P4).
+//   the deleting Machines, which the counters leave out (R2.56, R2.58). A condition of a third party counts as
+//   `MachinesReady` does (H1).
+// - MachineDeployment: `Available` sums it up, and it is Degraded from `MachinesReady` and from a condition of a
+//   third party (H1); `MachinesUpToDate` is no issue (P4).
 // - MachinePool: it writes no condition of health at v1beta2 (R2.69), so its Machines stand for one, when it has
 //   them (P10): it is read as a MachineSet on its counters, which then count the `Available` of its Machines (R2.67),
 //   and is Degraded when one of its Machines that is not deleting is not `Ready`. With no Machine it is Healthy at 0
-//   replicas, and Unknown otherwise, with the reason and its deprecated `v1beta1` `Ready`.
+//   replicas, and Unknown otherwise, with the reason and its deprecated `v1beta1` `Ready`. Its health comes from its
+//   Machines (H1), so no condition of its own counts.
 
 import { conditionOf, readConditions } from "./conditions";
 import { fieldOf, readCount, UNREADABLE } from "./fields";
@@ -101,13 +103,17 @@ function fromReplicas(basis: ReplicasBasis, issues: readonly Issue[]): HealthOut
 
 function machineSetHealth(input: HealthInput): HealthOutcome {
   const { basis, notes } = replicasOf(input);
-  const issues = conditionIssues(input.conditions, undefined, (type) => type === "MachinesReady");
+  // Of its conditions, a closed set (SPEC-0001, R2.57), each of positive polarity is `MachinesReady` or the
+  // `MachinesUpToDate` of P4, so every other counts: `MachinesReady`, and one of a third party.
+  const issues = conditionIssues(input.conditions, undefined, everyOtherCondition);
 
   return { health: fromReplicas(basis, issues), notes };
 }
 
+// Of its conditions, a closed set (SPEC-0001, R2.62), `Available` merges none: each other of positive polarity is
+// `MachinesReady`, the `MachinesUpToDate` of P4, or one of a third party.
 function machineDeploymentHealth(input: HealthInput): HealthOutcome {
-  return { health: summaryHealth(input.conditions, "Available", (type) => type === "MachinesReady"), notes: [] };
+  return { health: summaryHealth(input.conditions, "Available", everyOtherCondition), notes: [] };
 }
 
 // A Machine of a MachinePool that is not deleting and whose `Ready` is `False`. A `Ready` that is `Unknown` is no

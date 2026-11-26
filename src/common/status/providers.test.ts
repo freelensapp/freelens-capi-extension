@@ -64,6 +64,18 @@ describe("an IPAddressClaim (P13)", () => {
     });
     expect(healthOf(noStatus.ipAddressClaim, context).health).toBe("Unknown");
   });
+
+  it("reads Unknown, and notes it, an address of the wrong type", () => {
+    for (const [addressRef, field] of [
+      ["freelens-capi-no-status", "status.addressRef"],
+      [{ name: 5 }, "status.addressRef.name"],
+    ] as const) {
+      const status = statusOf(claim({ addressRef }), contextOf({ cluster: healthy.cluster, ...context }));
+
+      expect(status.health).toMatchObject({ health: "Unknown", restsOn: { form: "address", address: undefined } });
+      expect(status.notes).toContainEqual({ code: "field-unreadable", field });
+    }
+  });
 });
 
 describe("a kind of the operator (P14)", () => {
@@ -135,6 +147,18 @@ describe("a kind of the operator (P14)", () => {
     expect(healthOf(operator([preflight, installed])).health).toBe("Unknown");
   });
 
+  it("reads Unknown, with no Ready, a preflight check that is False with a reason of the wrong type, and notes it", () => {
+    // Only the reason tells the wait for the core provider from a check that refuses: written as a number here.
+    const status = statusOf(operator([{ ...waiting, reason: 7 }]), contextOf());
+
+    expect(status.health).toMatchObject({ health: "Unknown", restsOn: { type: "Ready", condition: undefined } });
+    expect(status.notes).toContainEqual({
+      code: "field-unreadable",
+      field: "status.conditions[PreflightCheckPassed].reason",
+    });
+    expect(status.activities).toMatchObject({ activities: [{ name: "Provisioning", state: "Unknown" }] });
+  });
+
   it("counts a ProviderUpgraded that is False while the installed version differs from the spec", () => {
     const upgradeFailed = condition("ProviderUpgraded", "False", "ComponentsUpgradeError");
 
@@ -151,6 +175,18 @@ describe("a kind of the operator (P14)", () => {
       health: "Degraded",
       issues: [{ form: "condition", type: "ProviderInstalled" }],
     });
+  });
+
+  it("compares the two versions as text, as the operator does, so that v1.14.4 and 1.14.4 differ", () => {
+    const upgradeFailed = condition("ProviderUpgraded", "False", "ComponentsUpgradeError");
+    const status = statusOf(operator([preflight, installed, ready, upgradeFailed], "v1.14.4", "1.14.4"), contextOf());
+
+    expect(status.health).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "ProviderUpgraded" }],
+    });
+    expect(status.notes).not.toContainEqual({ code: "stale-condition", type: "ProviderUpgraded" });
+    expect(status.activities).toMatchObject({ activities: [{ name: "Upgrading" }] });
   });
 
   it("reads a ProviderUpgraded that is False once the version is set back as stale, At rest and no issue", () => {

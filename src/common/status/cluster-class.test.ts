@@ -15,6 +15,7 @@ import {
   withMetadata,
   withoutCondition,
   withStatus,
+  withThirdPartyCondition,
 } from "../../../test/status-objects";
 import { statusOf } from "./index";
 
@@ -74,6 +75,13 @@ describe("a ClusterClass", () => {
     });
   });
 
+  it("reads Degraded from a condition of a third party that is False, which VariablesReady leaves out (H1)", () => {
+    expect(statusIn(withThirdPartyCondition(healthy.clusterClass)).health).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
+    });
+  });
+
   it("reads Unhealthy when VariablesReady is False, and Unknown while it is missing or Unknown", () => {
     const failed = withCondition(healthy.clusterClass, "VariablesReady", {
       status: "False",
@@ -86,6 +94,17 @@ describe("a ClusterClass", () => {
       "Unknown",
     );
     expect(statusIn(noStatus.clusterClass).health.health).toBe("Unknown");
+  });
+
+  it("says on its mark Paused that the topology of its Clusters is held while its generation is not observed (P8)", () => {
+    // The class of healthy paused by its own annotation, which it honours; then with its spec changed while it is
+    // paused, its generation raised.
+    const pausedClass = withMetadata(healthy.clusterClass, { annotations: { "cluster.x-k8s.io/paused": "" } });
+
+    expect(statusIn(pausedClass).freshness).toEqual([{ cause: "Paused", since: undefined, topologiesHeld: false }]);
+    expect(statusIn(withMetadata(pausedClass, { generation: 2 })).freshness).toEqual([
+      { cause: "Paused", since: undefined, topologiesHeld: true },
+    ]);
   });
 
   it("keeps its health with an older generation, and marks that the topology of its Clusters is held (P8)", () => {
@@ -120,7 +139,7 @@ describe("an ExtensionConfig", () => {
     expect(statusIn({ ...extensionConfig, status: undefined }).health.health).toBe("Unknown");
   });
 
-  it("is made Degraded by nothing else", () => {
+  it("is made Degraded by none of its own conditions, and by a condition of a third party (H1)", () => {
     const another = withStatus(extensionConfig, {
       conditions: [
         ...extensionConfig.status.conditions,
@@ -134,7 +153,11 @@ describe("an ExtensionConfig", () => {
       ],
     });
 
-    expect(statusIn(another).health).toMatchObject({ health: "Healthy", issues: [] });
+    expect(statusIn(extensionConfig).health).toMatchObject({ health: "Healthy", issues: [] });
+    expect(statusIn(another).health).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/HandlersReady" }],
+    });
   });
 
   it("marks a change of its spec that Discovered has not observed, from the generation of that condition", () => {

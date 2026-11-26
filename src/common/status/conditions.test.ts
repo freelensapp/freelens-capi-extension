@@ -93,6 +93,61 @@ describe("the weight of a condition", () => {
     expect(weightOf(withCondition(healthy.workerMachine, "Paused", { status: "Maybe" }), "Paused")).toBe("Unknown");
   });
 
+  it("weighs Unknown the Available of a Machine that is False with a reason of the wrong type, and notes it", () => {
+    // The worker of healthy not available, with a reason that is not text: only the reason tells the wait of P5.
+    const unsure = withCondition(healthy.workerMachine, "Available", { status: "False", reason: 5 });
+
+    expect(conditionOf(unsure, "Available")).toMatchObject({
+      reason: undefined,
+      polarity: "positive",
+      weight: "Unknown",
+    });
+    expect(conditionsOf(unsure, contextOf()).notes).toEqual([
+      { code: "field-unreadable", field: "status.conditions[Available].reason" },
+    ]);
+    expect(weightOf(withCondition(unsure, "Available", { reason: undefined }), "Available")).toBe("Unknown");
+  });
+
+  it("notes the fields of the wrong type of a list of conditions only when the whole list can be read", () => {
+    // The worker of healthy whose `Ready` has a reason that is not text, before an entry with no type.
+    const machine = withAddedCondition(withCondition(healthy.workerMachine, "Ready", { reason: 2 }), {
+      status: "True",
+    });
+
+    expect(conditionsOf(machine, contextOf())).toEqual({
+      state: "unknown",
+      notes: [{ code: "field-unreadable", field: "status.conditions" }],
+    });
+  });
+
+  it("notes each field of the wrong type in a condition, with the type of the condition, and reads it as absent", () => {
+    // The `Ready` of the worker of healthy with each field of the wrong type.
+    const odd = withCondition(healthy.workerMachine, "Ready", {
+      status: 1,
+      reason: 2,
+      message: 3,
+      severity: 4,
+      observedGeneration: -1,
+      lastTransitionTime: 5,
+    });
+
+    expect(conditionOf(odd, "Ready")).toMatchObject({
+      status: undefined,
+      reason: undefined,
+      message: undefined,
+      severity: undefined,
+      observedGeneration: undefined,
+      lastTransitionTime: { state: "unavailable" },
+      weight: "Unknown",
+    });
+    expect(conditionsOf(odd, contextOf()).notes).toEqual(
+      ["status", "reason", "message", "severity", "observedGeneration", "lastTransitionTime"].map((name) => ({
+        code: "field-unreadable",
+        field: `status.conditions[Ready].${name}`,
+      })),
+    );
+  });
+
   it("weighs a type that the release does not define, a condition of a third party, as positive", () => {
     const machine = withAddedCondition(healthy.workerMachine, {
       type: "example.com/BackupReady",
@@ -173,19 +228,51 @@ describe("the gates", () => {
     expect(conditionsOf(withSpec(healthy.cluster, { availabilityGates: negativeGate }), contextOf()).notes).toEqual([]);
   });
 
-  it("notes gates of the wrong type, and reads no gate from them", () => {
-    const cluster = withAddedCondition(healthy.cluster, drained("True"));
+  it("reads each gate on its own: one that cannot be read is noted, and the conditions it might name weigh Unknown", () => {
+    // The Cluster of healthy with two conditions of a third party, and gates of the wrong type: a list that is not
+    // one, or an entry with no type next to one that declares `example.com/Drained` `Negative`.
+    const cluster = withAddedCondition(withAddedCondition(healthy.cluster, drained("False")), {
+      ...drained("False"),
+      type: "example.com/BackupReady",
+    });
     const notListed = withSpec(cluster, { availabilityGates: "example.com/Drained" });
-    const untyped = withSpec(cluster, { availabilityGates: [{ polarity: "Negative" }] });
+    const mixed = withSpec(cluster, { availabilityGates: [{ polarity: "Negative" }, ...negativeGate] });
     const context = contextOf({ clusterClass: healthy.clusterClass });
 
-    expect(conditionsOf(notListed, context).notes).toEqual([
+    for (const object of [notListed, mixed]) {
+      expect(conditionsOf(object, context).notes).toEqual([
+        { code: "field-unreadable", field: "spec.availabilityGates" },
+      ]);
+      expect(conditionOf(object, "example.com/BackupReady", context)).toMatchObject({
+        polarity: "unknown",
+        weight: "Unknown",
+      });
+      // A condition of the project can be a gate too; the summary, which the gates feed, and a type of negative
+      // polarity, which no gate changes, keep their weights.
+      expect(weightOf(object, "ControlPlaneMachinesReady", context)).toBe("Unknown");
+      expect(weightOf(object, "Available", context)).toBe("Ok");
+      expect(weightOf(object, "RollingOut", context)).toBe("At rest");
+    }
+    expect(weightOf(notListed, "example.com/Drained", context)).toBe("Unknown");
+    expect(weightOf(mixed, "example.com/Drained", context)).toBe("At rest");
+    // An entry whose type is empty names no condition either.
+    expect(conditionsOf(withSpec(cluster, { availabilityGates: [{ conditionType: "" }] }), context).notes).toEqual([
       { code: "field-unreadable", field: "spec.availabilityGates" },
     ]);
-    expect(conditionsOf(untyped, context).notes).toEqual([
-      { code: "field-unreadable", field: "spec.availabilityGates" },
+  });
+
+  it("weighs Unknown, on a Machine with a readiness gate that cannot be read, all but Ready, which the gates feed", () => {
+    // The worker of healthy with a condition of a third party and a readiness gate that is not an object.
+    const machine = withSpec(withAddedCondition(healthy.workerMachine, drained("False")), {
+      readinessGates: ["example.com/Drained"],
+    });
+
+    expect(weightOf(machine, "Ready")).toBe("Ok");
+    expect(weightOf(machine, "example.com/Drained")).toBe("Unknown");
+    expect(weightOf(machine, "NodeHealthy")).toBe("Unknown");
+    expect(conditionsOf(machine, contextOf()).notes).toEqual([
+      { code: "field-unreadable", field: "spec.readinessGates" },
     ]);
-    expect(weightOf(untyped, "example.com/Drained", context)).toBe("Ok");
   });
 
   it("notes no ClusterClass for a Cluster without a topology", () => {

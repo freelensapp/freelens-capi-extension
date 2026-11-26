@@ -31,11 +31,13 @@ function modules(): Module[] {
   );
 }
 
-// The modules that a source imports or exports from, statically, dynamically or with `require`.
+// The modules that a source imports or exports from, statically, dynamically or with `require`, a dynamic import of a
+// template literal included, whose module cannot be told before it runs.
 const IMPORTS = [
   /\b(?:import|export)\s[^;]*?\bfrom\s*["']([^"']+)["']/g,
   /\bimport\s*["']([^"']+)["']/g,
   /\bimport\s*\(\s*["']([^"']+)["']/g,
+  /\bimport\s*\(\s*`([^`]*)`/g,
   /\brequire\s*\(\s*["']([^"']+)["']/g,
 ];
 
@@ -43,9 +45,10 @@ function importsOf(source: string): string[] {
   return IMPORTS.flatMap((pattern) => [...source.matchAll(pattern)].map((found) => found[1]));
 }
 
-// Whether a module that a file imports lies in one of the two folders: a relative path that resolves inside them.
+// Whether a module that a file imports lies in one of the two folders: a relative path that resolves inside them, and
+// that names no part of itself at run time.
 function staysInside(file: string, specifier: string): boolean {
-  if (!specifier.startsWith(".")) return false;
+  if (!specifier.startsWith(".") || specifier.includes("${")) return false;
 
   const target = resolve(file, "..", specifier);
 
@@ -60,6 +63,11 @@ const FORBIDDEN: readonly (readonly [string, RegExp])[] = [
   ["setInterval", /\bsetInterval\b/],
   ["Date.now", /\bDate\s*\.\s*now\b/],
   ["new Date()", /\bnew\s+Date\s*\(\s*\)/],
+  // `Date` called as a function gives the current time, whatever it is given.
+  ["Date()", /(?<![\w$.])(?<!\bnew\s+)Date\s*\(/],
+  ["performance.now", /\bperformance\s*\.\s*now\b/],
+  // A dynamic import of a module named at run time, which the list of the imports cannot check.
+  ["import() of a computed name", /\bimport\s*\(\s*(?![\s"'`])/],
   ["localStorage", /\blocalStorage\b/],
   ["indexedDB", /\bindexedDB\b/],
 ];
@@ -69,16 +77,17 @@ function forbiddenIn(source: string): string[] {
 }
 
 // The fields of R3.36 lie under these names in the spec of a KubeadmConfig, of a KubeadmControlPlane and of their
-// templates. They are matched wherever they are read or declared, as a property by a dot, an optional chain or a key
-// in brackets, as the key of an object or of a type, or as a name taken by destructuring: the paths matched from
-// `spec`, `spec.files` included, are among them, and so is a read through a cast.
+// templates. They are matched wherever they are read or declared, as a property by a dot or an optional chain, as the
+// key of an object or of a type, as a name taken by destructuring, or as a quoted name, which is how the rules read a
+// field with `fieldOf`, and a key in brackets too: the paths matched from `spec`, `spec.files` included, are among
+// them, and so is a read through a cast.
 const SECRET_NAMES = "files|users|initConfiguration|joinConfiguration|kubeadmConfigSpec";
 const SECRET_FIELD = new RegExp(
   [
     `(?:\\?\\.|\\.)\\s*(?:${SECRET_NAMES})\\b`,
-    `\\[\\s*["'\`](?:${SECRET_NAMES})["'\`]\\s*\\]`,
     `\\b(?:${SECRET_NAMES})\\s*\\??\\s*:`,
     `[{,]\\s*(?:${SECRET_NAMES})\\s*[,}=]`,
+    `["'\`](?:${SECRET_NAMES})["'\`]`,
   ].join("|"),
 );
 
@@ -123,6 +132,8 @@ describe("the patterns of the check, each on a line written for it", () => {
       'import "./side-effect-of-status";',
       'import { parseTime } from "../parsers/time";',
       'import type { Note } from "./health";',
+      "const chosen = await import(`./${name}`);",
+      "const fixed = await import(`./health`);",
     ].join("\n");
 
     expect(importsOf(source).filter((specifier) => !staysInside(file, specifier))).toEqual([
@@ -130,6 +141,7 @@ describe("the patterns of the check, each on a line written for it", () => {
       "@freelensapp/extensions",
       "../../renderer/thing",
       "../main/index",
+      "./${name}",
       "electron",
     ]);
   });
@@ -142,14 +154,21 @@ describe("the patterns of the check, each on a line written for it", () => {
     ["setInterval", "const timer = setInterval(refresh, 1000);"],
     ["Date.now", "const now = Date.now();"],
     ["new Date()", "const now = new Date();"],
+    ["Date()", "const now = Date();"],
+    ["Date()", "const now = Date(0);"],
+    ["performance.now", "const now = performance.now();"],
+    ["import() of a computed name", "const module = await import(name);"],
     ["localStorage", 'localStorage.getItem("health");'],
     ["indexedDB", 'indexedDB.open("model");'],
-  ])("finds %s", (name, line) => {
+  ])("finds %s in %s", (name, line) => {
     expect(forbiddenIn(line)).toEqual([name]);
   });
 
-  it("finds no clock in a date built from a time that the project wrote", () => {
+  it("finds no clock in a date built from a time that the project wrote, nor in a name that ends in Date", () => {
     expect(forbiddenIn("const instant = new Date(text).getTime();")).toEqual([]);
+    expect(forbiddenIn("const instant = Date.parse(text) + Date.UTC(2026, 0, 1);")).toEqual([]);
+    expect(forbiddenIn('const time = parseDate(text) ?? object.lastDate("x");')).toEqual([]);
+    expect(forbiddenIn('const module = await import("./health");')).toEqual([]);
   });
 
   it.each([
@@ -162,13 +181,16 @@ describe("the patterns of the check, each on a line written for it", () => {
     "(input.spec as Spec)?.joinConfiguration",
     "readonly kubeadmConfigSpec?: unknown;",
     "const { files } = spec;",
+    'fieldOf(reading.spec, "files")',
+    'readList(fieldOf(readFields(object.spec), "users"))',
+    "fieldOf(spec, 'initConfiguration')",
   ])("finds the field of R3.36 in %s", (line) => {
     expect(line).toMatch(SECRET_FIELD);
   });
 
   it("finds no field of R3.36 in the fields that the rules read, nor in words of the comments", () => {
-    expect("spec.replicas spec.version spec.filesystem status.profiles // the users of a cluster").not.toMatch(
-      SECRET_FIELD,
-    );
+    expect(
+      'spec.replicas spec.version spec.filesystem status.profiles fieldOf(spec, "filesystem") // the users of a cluster',
+    ).not.toMatch(SECRET_FIELD);
   });
 });

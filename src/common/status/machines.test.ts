@@ -23,6 +23,7 @@ import {
   withoutNode,
   withSpec,
   withStatus,
+  withThirdPartyCondition,
 } from "../../../test/status-objects";
 import { statusOf } from "./index";
 
@@ -61,6 +62,17 @@ describe("a Machine", () => {
       health: "Degraded",
       issues: [{ form: "condition", type: "example.com/BackupReady" }],
     });
+  });
+
+  it("reads a condition of a third party as no issue, with the note, when a readiness gate that might name it cannot be read", () => {
+    // The worker of healthy with a condition of a third party `False` and a readiness gate with no type.
+    const unsure = withSpec(withThirdPartyCondition(healthy.workerMachine), {
+      readinessGates: [{ polarity: "Negative" }],
+    });
+    const status = statusOf(unsure, contextOf({ cluster: healthy.cluster }));
+
+    expect(status.health).toMatchObject({ health: "Healthy", issues: [] });
+    expect(status.notes).toContainEqual({ code: "field-unreadable", field: "spec.readinessGates" });
   });
 
   it("is made Degraded neither by UpToDate (P4) nor by an Available that waits for minReadySeconds (P5)", () => {
@@ -138,12 +150,47 @@ describe("a Machine", () => {
   });
 });
 
+describe("the deprecated failure of the owners of Machines (P6)", () => {
+  // Each owner of the fixtures with a failure written under `status.deprecated.v1beta1`.
+  const failure = { deprecated: { v1beta1: { failureReason: "UpdateError", failureMessage: "a Machine failed" } } };
+  const noted = { code: "deprecated-failure", reason: "UpdateError", message: "a Machine failed" };
+
+  it.each([
+    ["a MachineSet", healthy.machineSet, [healthy.workerMachine]],
+    ["a MachinePool", machinePools.machinePool, [machinePools.poolMachine]],
+  ] as const)("notes it for %s, whose schema keeps it", (_, owner, machines) => {
+    const status = statusOf(
+      withStatus(owner as KubeObjectData, failure),
+      contextOf({ cluster: healthy.cluster, machines }),
+    );
+
+    expect(status.notes).toContainEqual(noted);
+  });
+
+  it("notes none for a MachineDeployment, whose schema keeps none", () => {
+    const status = statusOf(
+      withStatus(healthy.machineDeployment, failure),
+      contextOf({ cluster: healthy.cluster, machines: [healthy.workerMachine] }),
+    );
+
+    expect(status.notes).not.toContainEqual(noted);
+  });
+});
+
 describe("a MachineSet (P9)", () => {
   it("reads Healthy when every wanted Machine is available, and rests on the counters", () => {
     expect(healthOf(healthy.machineSet)).toEqual({
       health: "Healthy",
       restsOn: { form: "replicas", available: 2, replicas: 2 },
       issues: [],
+    });
+  });
+
+  it("reads Healthy with more Machines available than spec.replicas, as while a scale down deletes one", () => {
+    // The MachineSet of healthy scaled down to one replica while both of its Machines are still available.
+    expect(healthOf(withSpec(healthy.machineSet, { replicas: 1 }))).toMatchObject({
+      health: "Healthy",
+      restsOn: { form: "replicas", available: 2, replicas: 1 },
     });
   });
 
@@ -162,6 +209,13 @@ describe("a MachineSet (P9)", () => {
       health: "Degraded",
       restsOn: { form: "replicas", available: 1, replicas: 1 },
       issues: [{ form: "condition", type: "MachinesReady" }],
+    });
+  });
+
+  it("reads Degraded from a condition of a third party that is False, as from MachinesReady (H1)", () => {
+    expect(healthOf(withThirdPartyCondition(healthy.machineSet))).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
     });
   });
 
@@ -192,6 +246,13 @@ describe("a MachineDeployment", () => {
     expect(healthOf(rollingOut.machineDeployment)).toMatchObject({
       health: "Degraded",
       issues: [{ form: "condition", type: "MachinesReady" }],
+    });
+  });
+
+  it("reads Degraded from a condition of a third party that is False, which Available leaves out (H1)", () => {
+    expect(healthOf(withThirdPartyCondition(healthy.machineDeployment))).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
     });
   });
 
@@ -240,6 +301,14 @@ describe("a MachinePool (P10)", () => {
       health: "Degraded",
       issues: [{ form: "machine", name: "worker-c6khcq" }],
     });
+  });
+
+  it("counts no condition of its own, a third party's included, since its health comes from its Machines (H1)", () => {
+    // The pool of machine-pools with its Machine `Ready`, available, and a condition of a third party `False`.
+    const ready = withCondition(machinePools.poolMachine, "Ready", { status: "True", reason: "Ready" });
+    const pool = withThirdPartyCondition(withStatus(machinePools.machinePool, { availableReplicas: 1 }));
+
+    expect(healthOf(pool, { machines: [ready] })).toMatchObject({ health: "Healthy", issues: [] });
   });
 
   it("does not count a Machine that is deleting, nor one whose Ready is Unknown", () => {

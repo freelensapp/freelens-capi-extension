@@ -111,6 +111,7 @@ function takeBindings(object: KubeObjectData, context: StatusContext, sources: S
       entries.some((entry) => readText(fieldOf(readFields(entry), "clusterResourceSetName")) === owner);
 
     if (!holds) continue;
+    // A Cluster that is not an object reaches this as not given: contextOf (index.ts) makes it so.
     if (cluster === undefined) {
       notes.push({ code: "input-not-given", input: "cluster" });
       continue;
@@ -203,7 +204,7 @@ export function toneOf(input: ToneInput): Tone {
     .filter(isInProgress)
     .map((activity) => ({ activity, heldBy: own, own: true }));
 
-  if (belongsToCluster(rule)) takeFirstProvisioning(context, sources, notes);
+  if (belongsToCluster(rule, object)) takeFirstProvisioning(context, sources, notes);
   if (rule.apiVersion !== undefined && rule.kind === "ClusterResourceSet")
     takeBindings(object, context, sources, notes);
   if (isOwnerRule(rule)) takeMachines(context, sources, notes);

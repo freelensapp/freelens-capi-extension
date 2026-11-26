@@ -18,6 +18,7 @@
 // that the context gives. An object of a kind the model does not know is Unknown, with a note. The model reads no
 // clock and sends no request, keeps no state, and never throws.
 
+import { CONTRACT_LABELS } from "../parsers/contract-label";
 import { activitiesOf } from "./activity";
 import { CLUSTER_RESOURCE_SET_BINDING_RULE, CLUSTER_RESOURCE_SET_RULE } from "./add-ons";
 import { CLUSTER_RULE } from "./cluster";
@@ -39,6 +40,7 @@ import {
   IP_ADDRESS_CLAIM_RULE,
   IP_ADDRESS_RULE,
   OPERATOR_RULES,
+  PROVIDER_ROLES,
   providerRule,
 } from "./providers";
 import { toneOf } from "./tone";
@@ -84,6 +86,9 @@ export interface ObjectStatus {
   // of time alone; undefined when nothing in it depends on time.
   readonly changesAt: number | undefined;
 }
+
+// The versions of the contract of a provider that the model reads (P17).
+const CONTRACTS = Object.keys(CONTRACT_LABELS) as (keyof typeof CONTRACT_LABELS)[];
 
 // The kinds of Cluster API, of `clusterctl` and of the operator, by the group and version that A2 names.
 const RULES: ReadonlyMap<string, KindRule> = new Map(
@@ -149,13 +154,16 @@ function objectsOf<T>(list: readonly T[] | undefined): readonly T[] | undefined 
 }
 
 // The context as the rules read it: an input that is not an object reads as not given, and an entry of a list that is
-// not an object is left out, so that no rule throws on a context that a view built wrong.
+// not an object is left out, so that no rule throws on a context that a view built wrong. A binding whose Cluster is
+// not an object has its Cluster not given, and a role or a contract outside its closed set is not given either.
 function contextOf(given: StatusContext): StatusContext {
   const context = isFields(given) ? given : ({} as StatusContext);
   const parts = isFields(context.parts) ? context.parts : undefined;
 
   return {
     ...context,
+    role: PROVIDER_ROLES.find((each) => each === context.role),
+    contract: CONTRACTS.find((each) => each === context.contract),
     cluster: isFields(context.cluster) ? context.cluster : undefined,
     healthChecks: objectsOf(context.healthChecks),
     machines: objectsOf(context.machines),
@@ -165,7 +173,9 @@ function contextOf(given: StatusContext): StatusContext {
     },
     machinePools: objectsOf(context.machinePools),
     clusterClass: isFields(context.clusterClass) ? context.clusterClass : undefined,
-    bindings: objectsOf(context.bindings)?.filter((input) => isFields(input.binding)),
+    bindings: objectsOf(context.bindings)
+      ?.filter((input) => isFields(input.binding))
+      .map((input) => ({ binding: input.binding, cluster: isFields(input.cluster) ? input.cluster : undefined })),
     controllers: isFields(context.controllers) ? context.controllers : undefined,
   };
 }
@@ -245,5 +255,5 @@ export function conditionsOf(object: KubeObjectData, given: StatusContext): Cond
   const { rule } = ruleOf(identityOf(read), context);
 
   if (!rule.hasStatus) return { state: "read", conditions: [], notes: [] };
-  return readConditions(read, conditionsKindOf(rule), context, true);
+  return readConditions(read, conditionsKindOf(rule), context);
 }
