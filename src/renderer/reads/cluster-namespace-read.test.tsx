@@ -1044,6 +1044,59 @@ describe("the refresh of the tree (SPEC-0005, P23)", () => {
 });
 
 describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
+  it("have not ended before the read starts, asked as a first render asks before its effect runs, nor while they run after it", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    const release = host.deferLoads();
+    const stop = read.start();
+
+    await settle();
+
+    // The stores are built, and their first loads run.
+    expect(byKind(read).has("Cluster")).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    release();
+    await settle();
+
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
+  it("have not ended while the host has registered no API, as while it checks, nor while they run once the APIs arrive", async () => {
+    // The objects of the cluster, and no API registered: the view has no store yet (P19).
+    serveOwn(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(read.stores).toEqual([]);
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    // The host registers the APIs, and the stores that they give start their first loads.
+    const release = host.deferLoads();
+
+    act(() => {
+      serveTree(objectsOfStates(["healthy"]));
+    });
+    await settle();
+
+    expect(byKind(read).has("Cluster")).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    release();
+    await settle();
+
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
   it("have not ended while a definition that a reference names is still read, with the store of definitions failed, its stores loaded", async () => {
     serveTree(objectsOfStates(["healthy"]));
     runInAction(() => {

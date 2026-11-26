@@ -3066,8 +3066,13 @@ the contract label of the definition for a control plane of a provider; and
   `firstLoadsEnded` of `cluster-namespace-read.test.tsx` and of
   `read-state.test.ts`, since the read decides it, with the definitions still
   read when the store of definitions failed; the page shows the spinner until
-  then in the second part. The read keeps its first loads ended once they have
-  all ended, for its life: a load that starts later, of a kind that a reference
+  then in the second part. The first loads end with the first load of the store
+  of Clusters of the read, which it builds once it starts and the host has
+  registered the API of the Clusters: before the read starts, as a first render
+  of the page asks before its effect runs, and while the host has registered no
+  API, as while it checks (P19), they have not ended, though no store of the
+  read is loading. The read keeps its first loads ended once they have all
+  ended, for its life: a load that starts later, of a kind that a reference
   names later, of the namespace that the class reference names now, or of a
   definition that a refresh asks again, is no first load of the tree, which
   stays shown, and its nodes show their own loading (P6, P19, P23). The refresh

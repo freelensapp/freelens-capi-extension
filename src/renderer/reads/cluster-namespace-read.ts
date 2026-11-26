@@ -297,7 +297,8 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
   #index: { readonly reads: ReadsState; readonly versions: string; readonly index: ContextIndex } | undefined;
   // What a refresh does while the effect runs.
   #restart: (() => void) | undefined;
-  // The first loads of the view have all ended once, which they stay for the life of the read (SPEC-0005, P13).
+  // The first loads of the view have all ended once, its store of Clusters among them, which they stay for the life of
+  // the read (SPEC-0005, P13).
   #firstLoadsEnded = false;
 
   constructor(
@@ -548,13 +549,17 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
     return [...models, ...providers].filter((kind) => !seen.has(kind.key) && Boolean(seen.add(kind.key)));
   }
 
-  // Whether the first load of every store that the view reads has ended, loaded or failed, and every reference to a
-  // kind of a provider has been resolved, or cannot be (SPEC-0005, P13): the tree shows no row before. Once they have
+  // Whether the first loads of the view have ended (SPEC-0005, P13): the first load of its store of Clusters has ended,
+  // loaded or failed, and so has the first load of every other store that the view reads, and every reference to a kind
+  // of a provider has been resolved, or cannot be; the tree shows no row before. The view builds its store of Clusters
+  // in `start`, once the host has registered the API of the Clusters, so they have not ended before the read starts,
+  // nor while the host has registered no API, as while it checks (P19) and the view has no store yet. Once they have
   // all ended, they stay so for the life of the read: a load that starts later, of a kind that a reference names later,
   // of the namespace that the class reference names now, or of a definition that a refresh asks again, is no first load
   // of the tree, which stays shown, and its nodes show their own loading (P6, P19, P23).
   firstLoadsEnded(): boolean {
     this.#firstLoadsEnded ||=
+      this.clusters().key !== undefined &&
       this.#allProviders().every(({ resolution }) => resolution.state !== "pending") &&
       firstLoadsEnded(
         this.reads,
