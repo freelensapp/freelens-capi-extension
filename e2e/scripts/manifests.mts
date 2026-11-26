@@ -430,3 +430,81 @@ export function objectsWithoutStatus(
     },
   ];
 }
+
+// The trial of S7 of SPEC-0001 on the real project (SPEC-0003, "With the real project: S7", P32): a namespace of its
+// own, and two workload clusters in it, named as the scripts name theirs, which `down` deletes with the others.
+export const S7 = {
+  namespace: "freelens-capi-s7",
+  // Case 1: a Cluster with neither reference nor topology, only ever sent as a server-side dry run.
+  noReference: "freelens-capi-s7-no-reference",
+  // Case 2: an infrastructure reference only, and one control plane Machine of its own.
+  infrastructureOnly: "freelens-capi-s7-infra-only",
+  // Case 3: a control plane reference only, to a KubeadmControlPlane of one replica.
+  controlPlaneOnly: "freelens-capi-s7-cp-only",
+} as const;
+
+// Case 1 of S7: a Cluster with neither `spec.controlPlaneRef`, `spec.infrastructureRef` nor `spec.topology`, which
+// the webhook of Cluster refuses (core/webhooks/admission/cluster.go:183-191). Its `spec` has a field, its network:
+// one with no field is refused before, by the schema, whose `spec` has `minProperties: 1`.
+export function s7ClusterWithNoReference(): unknown {
+  return object(CORE, "Cluster", S7.noReference, S7.namespace, { spec: { clusterNetwork: CLUSTER_NETWORK } });
+}
+
+// Cases 2 and 3 of S7, written from the schemas of the release, with the end-to-end test of the project that adopts
+// a control plane Machine as a reference for their shape only
+// (test/e2e/data/infrastructure-docker/main/cluster-template-kcp-adoption/step1/cluster-with-cp0.yaml):
+// - a Cluster with `spec.infrastructureRef` to a DevCluster, no `spec.controlPlaneRef` and no topology, with the label
+//   of kindnet, and one control plane Machine with its KubeadmConfig and its DevMachine;
+// - a Cluster with `spec.controlPlaneRef` to a KubeadmControlPlane of one replica, no `spec.infrastructureRef` and no
+//   topology.
+export function s7Clusters(version: string): unknown[] {
+  const { namespace, infrastructureOnly: infrastructure, controlPlaneOnly: controlPlane } = S7;
+  const machine = `${infrastructure}-control-plane-0`;
+  const controlPlaneLabel = { [`${CORE}/control-plane`]: "" };
+  const nodeRegistration = { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } };
+
+  return [
+    object(INFRASTRUCTURE, "DevCluster", infrastructure, namespace, { spec: { backend: { docker: {} } } }),
+    object(CORE, "Cluster", infrastructure, namespace, {
+      metadata: { name: infrastructure, namespace, labels: { [KINDNET_LABEL.key]: KINDNET_LABEL.value } },
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        infrastructureRef: reference(INFRASTRUCTURE, "DevCluster", infrastructure),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachine", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: { backend: { docker: {} } },
+    }),
+    object(BOOTSTRAP, "KubeadmConfig", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: { initConfiguration: nodeRegistration },
+    }),
+    object(CORE, "Machine", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: {
+        clusterName: infrastructure,
+        version,
+        bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfig", machine) },
+        infrastructureRef: reference(INFRASTRUCTURE, "DevMachine", machine),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachineTemplate", controlPlane, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(CONTROL_PLANE, "KubeadmControlPlane", controlPlane, namespace, {
+      spec: {
+        replicas: 1,
+        version,
+        machineTemplate: { spec: { infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", controlPlane) } },
+        kubeadmConfigSpec: { initConfiguration: nodeRegistration, joinConfiguration: nodeRegistration },
+      },
+    }),
+    object(CORE, "Cluster", controlPlane, namespace, {
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        controlPlaneRef: reference(CONTROL_PLANE, "KubeadmControlPlane", controlPlane),
+      },
+    }),
+  ];
+}

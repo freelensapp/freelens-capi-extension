@@ -1,9 +1,13 @@
 name: Test environment
 
 # The two tiers of the test environment (docs/development/TESTING.md): the fixtures on the definitions alone,
-# read back as their files, and the real project, brought up, checked, brought up again and taken down. They
-# run when what they run changes, on main, and every night, when an image that a pinned manifest names by its
-# tag may have moved. Nothing of the private state of the scripts, a kubeconfig above all, leaves the runner.
+# read back as their files, and the real project, brought up, checked, brought up again, tried by the tests of
+# the real tier, and taken down. They run when what they run changes, on main, and every night, when an image
+# that a pinned manifest names by its tag may have moved. What they run includes the code of the status model
+# that the tests of the real tier load, src/common/status and src/common/parsers, their unit tests left out; the
+# pull request of SPEC-0004 that adds its sessions to the job of the real project widens the paths to what those
+# load. The paths start both jobs of the workflow, the fixtures too. Nothing of the private state of the
+# scripts, a kubeconfig above all, leaves the runner.
 
 on:
   push:
@@ -20,6 +24,13 @@ on:
       - integration/fixtures/**
       - package.json
       - pnpm-lock.yaml
+      - src/common/status/**
+      - src/common/parsers/**
+      - "!src/common/**/*.test.ts"
+      - test/real-project/**
+      - "!test/real-project/**/*.test.ts"
+      - test/status-*.ts
+      - vitest.real-project.config.ts
   schedule:
     - cron: 17 3 * * *
   workflow_dispatch: {}
@@ -105,11 +116,13 @@ jobs:
   real-project:
     name: test environment real project
 
+    # The hour that the real project had, and the quarter of an hour of the step of the tests of the real tier.
+    # The first run with that step took about 8 minutes in all, on a warm cache.
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
 
-    # A new push to a pull request cancels the job of the real project that still runs for it, which takes
-    # up to an hour. The runs of main and of the night each have a group of their own, and none is cancelled.
+    # A new push to a pull request cancels the job of the real project that still runs for it. The runs of main
+    # and of the night each have a group of their own, and none is cancelled.
     concurrency:
       group: ${{ github.event_name == 'pull_request' && format('test-environment-real-project-pr-{0}', github.event.pull_request.number) || format('test-environment-real-project-run-{0}', github.run_id) }}
       cancel-in-progress: true
@@ -183,6 +196,15 @@ jobs:
       # Run again, it resumes: it uses the kind cluster it created and creates nothing that exists.
       - name: Bring the real project up again
         run: pnpm e2e:cluster:up
+
+      # The tests of the real tier, which run here alone: S7 of SPEC-0001 (SPEC-0003, P32), which writes only to
+      # the cluster of the real project, through the scripts, in a namespace of its own that it deletes at the end.
+      # It reads the namespace for ten minutes at most, and deletes it in the rest of its quarter of an hour; the
+      # trial by hand saw its workload clusters gone in 19 seconds. A step cut by its limit leaves them to the
+      # step that takes the environment down, which deletes them with the others.
+      - name: Run the tests of the real tier
+        timeout-minutes: 15
+        run: pnpm test:real-project
 
       # What the objects of the workload clusters say, without the kubeconfig or any Secret.
       - name: Show the workload clusters

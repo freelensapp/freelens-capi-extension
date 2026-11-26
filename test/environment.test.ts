@@ -29,7 +29,13 @@ import {
   sha256,
   workloadContainerIds,
 } from "../e2e/scripts/checks.mts";
-import { COMMAND_NAMES, parseCommand, providersAgainstPins, takeDown } from "../e2e/scripts/commands.mts";
+import {
+  COMMAND_NAMES,
+  DOWN_WORKLOADS,
+  parseCommand,
+  providersAgainstPins,
+  takeDown,
+} from "../e2e/scripts/commands.mts";
 import { everyPinnedFile, pinnedContent } from "../e2e/scripts/downloads.mts";
 import {
   applyPlan,
@@ -57,6 +63,9 @@ import {
   kindnetLabelArgument,
   kindnetManifest,
   kindnetResources,
+  S7,
+  s7Clusters,
+  s7ClusterWithNoReference,
 } from "../e2e/scripts/manifests.mts";
 import { kubernetesMinor, PINS_FILE, parsePins, parseWorkflowPins, readPins } from "../e2e/scripts/pins.mts";
 import {
@@ -2127,5 +2136,101 @@ describe("the fixture sets of the repository", () => {
         .filter((entry) => !entry.startsWith("."))
         .sort(),
     ).toEqual(FIXTURE_STATES.map((state) => state.name).sort());
+  });
+});
+
+describe("the trial of S7", () => {
+  const objects = s7Clusters("v1.37.0") as KubeObject[];
+  const find = (kind: string, name: string) =>
+    objects.find((object) => object.kind === kind && object.metadata.name === name) as KubeObject;
+  // The fields of a spec of a Cluster that name its parts or its topology.
+  const parts = (spec: Record<string, unknown> | undefined) =>
+    ["controlPlaneRef", "infrastructureRef", "topology"].filter((key) => spec?.[key] !== undefined);
+
+  it("has a namespace of its own, and workload clusters named as the scripts name theirs, which down deletes", () => {
+    expect(S7.namespace).toMatch(/^freelens-capi-[a-z0-9-]+$/);
+    expect(FIXTURE_STATES.map((state) => state.namespace)).not.toContain(S7.namespace);
+    for (const name of [S7.noReference, S7.infrastructureOnly, S7.controlPlaneOnly]) {
+      expect(name).toMatch(/^freelens-capi-s7-[a-z-]+$/);
+    }
+    expect(DOWN_WORKLOADS.map((workload) => workload.name)).toEqual(
+      expect.arrayContaining([S7.infrastructureOnly, S7.controlPlaneOnly, "freelens-capi-md", "freelens-capi-healthy"]),
+    );
+  });
+
+  it("writes case 1 with neither reference nor topology, and one field of its spec, which the schema asks", () => {
+    const cluster = s7ClusterWithNoReference() as KubeObject;
+
+    expect(cluster.metadata).toEqual({ name: S7.noReference, namespace: S7.namespace });
+    expect(parts(cluster.spec)).toEqual([]);
+    expect(Object.keys(cluster.spec ?? {})).toEqual(["clusterNetwork"]);
+  });
+
+  it("writes case 2 with an infrastructure reference only, labelled for kindnet, and one control plane Machine", () => {
+    const cluster = find("Cluster", S7.infrastructureOnly);
+    const machine = find("Machine", `${S7.infrastructureOnly}-control-plane-0`);
+
+    expect(parts(cluster.spec)).toEqual(["infrastructureRef"]);
+    expect(cluster.metadata.labels).toEqual({ [KINDNET_LABEL.key]: KINDNET_LABEL.value });
+    expect(cluster.spec?.infrastructureRef).toMatchObject({ kind: "DevCluster", name: S7.infrastructureOnly });
+    expect(find("DevCluster", S7.infrastructureOnly)).toBeDefined();
+    expect(machine.metadata.labels).toEqual({ "cluster.x-k8s.io/control-plane": "" });
+    expect(machine.spec).toMatchObject({
+      clusterName: S7.infrastructureOnly,
+      version: "v1.37.0",
+      bootstrap: { configRef: { kind: "KubeadmConfig", name: machine.metadata.name } },
+      infrastructureRef: { kind: "DevMachine", name: machine.metadata.name },
+    });
+    expect(find("KubeadmConfig", machine.metadata.name).spec).toHaveProperty("initConfiguration");
+    expect(find("DevMachine", machine.metadata.name)).toBeDefined();
+  });
+
+  it("writes case 3 with a control plane reference only, to a KubeadmControlPlane of one replica", () => {
+    const cluster = find("Cluster", S7.controlPlaneOnly);
+
+    expect(parts(cluster.spec)).toEqual(["controlPlaneRef"]);
+    expect(cluster.spec?.controlPlaneRef).toMatchObject({ kind: "KubeadmControlPlane", name: S7.controlPlaneOnly });
+    expect(find("KubeadmControlPlane", S7.controlPlaneOnly).spec).toMatchObject({
+      replicas: 1,
+      version: "v1.37.0",
+      machineTemplate: { spec: { infrastructureRef: { kind: "DevMachineTemplate", name: S7.controlPlaneOnly } } },
+    });
+    expect(find("DevMachineTemplate", S7.controlPlaneOnly)).toBeDefined();
+  });
+
+  it("names the containers of case 2 as down takes them: its load balancer, and the node of its Machine", () => {
+    // The development provider names the node of a Machine that is not of a MachinePool after the Machine, which is
+    // the name of the Cluster with what follows when it starts with it, and the load balancer after the Cluster
+    // (test/infrastructure/docker/internal/controllers/backends/docker/dockermachine_backend.go:809-814;
+    // test/infrastructure/docker/internal/docker/util.go:47-53; loadbalancer.go:103).
+    const machine = find("Machine", `${S7.infrastructureOnly}-control-plane-0`).metadata.name;
+    const labels = (role: string) => ({
+      Labels: { "io.x-k8s.kind.cluster": S7.infrastructureOnly, "io.x-k8s.kind.role": role },
+    });
+    const containers = [
+      { Id: "load-balancer", Name: `/${S7.infrastructureOnly}-lb`, Config: labels("external-load-balancer") },
+      { Id: "node", Name: `/${machine}`, Config: labels("control-plane") },
+    ];
+
+    expect(machine.startsWith(`${S7.infrastructureOnly}-`)).toBe(true);
+    expect(workloadContainerIds(containers, S7.infrastructureOnly)).toEqual(["load-balancer", "node"]);
+    // One character shorter, it would be the name that kind gives a node, and down would leave every container.
+    expect(() =>
+      workloadContainerIds(
+        [
+          ...containers,
+          { Id: "kind", Name: `/${S7.infrastructureOnly}-control-plane`, Config: labels("control-plane") },
+        ],
+        S7.infrastructureOnly,
+      ),
+    ).toThrow(/is not one that the development provider makes/);
+  });
+
+  it("writes every object in the namespace of the trial, at v1beta2", () => {
+    expect(objects).toHaveLength(8);
+    for (const object of objects) {
+      expect(object.metadata.namespace, `${object.kind} ${object.metadata.name}`).toBe(S7.namespace);
+      expect(object.apiVersion).toMatch(/\/v1beta2$/);
+    }
   });
 });
