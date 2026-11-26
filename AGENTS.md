@@ -259,7 +259,8 @@ src/
                                  #   the view of one Cluster and the panel in the details of the host
   renderer/reads/                # How a view reads the stores of the host: the adapter of each store, the reads of a
                                  #   mount, the stores of the page, the definitions, the context of the frame, and the
-                                 #   stores of its own that the view of one Cluster reads outside the page
+                                 #   stores of its own that a view of one Cluster reads outside the page, with the
+                                 #   kinds of that view, the details or the tree
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage, the marks of state, notices
   renderer/icons/                # The icon of the root entry of the sidebar
   common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
@@ -380,7 +381,11 @@ each on the namespace of the Cluster alone, under an `AbortController` of its
 own, subscribes it once that load has ended, stops the stores built on the APIs
 that the host registers again, ends every subscription when it closes, and never
 registers them with the API manager of the host, whose own views would then read
-them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
+them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`). The
+kinds of the view are a parameter of that read: the details and the panel pass
+those of SPEC-0004, and the tree of a Cluster its own, with the kinds of a
+provider that the references of what it read name and its ClusterClass in the
+namespace that the class reference of its Cluster names (SPEC-0005, P6).
 
 `src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
 and its sidebar entries (`clusterPageMenus`). The details panel and the menu

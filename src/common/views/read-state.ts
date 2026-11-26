@@ -4,11 +4,12 @@
  */
 
 // The state of the reads of a page (SPEC-0004, P19, P25, P26, P34), as pure functions of what the adapters of its
-// stores tell it: the start of each load, with its namespaces, each failure of a load and of the reload after a 410,
-// the end of each load, with whether it read its namespaces over the whole cluster and whether the host follows it, a
-// load that the host aborts, and a reload that a store starts on its own. From these, the page knows which namespaces
-// of each kind are loaded, which kinds it holds back and where, and what it says: Restricted, Partial, Failed, a
-// refresh that failed, and a list that the host reads once and does not follow.
+// stores tell it: the start of each load, with its namespaces and whether a refresh of the view started it (SPEC-0005,
+// P23), each failure of a load and of the reload after a 410, the end of each load, with whether it read its
+// namespaces over the whole cluster and whether the host follows it, a load that the host aborts, and a reload that a
+// store starts on its own. From these, the page knows which namespaces of each kind are loaded, which kinds it holds
+// back and where, and what it says: Restricted, Partial, Failed, a refresh that failed, and a list that the host reads
+// once and does not follow.
 //
 // A failure is told from the code of its answer, never from a text: the client of the host throws the `Status` of
 // Kubernetes itself for a refused read, whose `code` is 403, and the store hands it on as the cause of its failure.
@@ -46,12 +47,21 @@ export type KindFeeds =
   | "cluster-class"
   | "controllers"
   // The infrastructure clusters, which the details of a Cluster show, and the model of the Cluster does not take.
-  | "infrastructure";
+  | "infrastructure"
+  // A kind that gives the tree of a Cluster its nodes and no input of the model of another node: the bootstrap configs,
+  // the infrastructure machines and machine pools, the templates, the ClusterResourceSets, the IPAddressClaims and the
+  // IPAddresses (SPEC-0005, P6).
+  | "nodes"
+  // The ClusterResourceSetBindings, which the model of a ClusterResourceSet takes (SPEC-0003, "What it takes and
+  // returns"; SPEC-0005, P6).
+  | "bindings";
 
 interface RunningLoad {
   readonly id: number;
   readonly namespaces: readonly string[];
   readonly failures: readonly ReadFailure[];
+  // A load that a refresh of the view started (SPEC-0005, P23).
+  readonly refresh: boolean;
 }
 
 // The last load of a kind that ended in this mount of the page.
@@ -103,6 +113,8 @@ export type ReadEvent =
       readonly kind: string;
       readonly id: number;
       readonly namespaces: readonly string[];
+      // True for a load that a refresh of the view starts, which ends as the reload after a 410 does (SPEC-0005, P23).
+      readonly refresh?: boolean;
     }
   | { readonly type: "load-failed"; readonly kind: string; readonly id: number; readonly failure: ReadFailure }
   | {
@@ -197,6 +209,21 @@ function endLoad(state: ReadsState, event: Extract<ReadEvent, { type: "load-ende
   if (load === undefined) return state;
 
   const failed = load.failures.length > 0;
+
+  // A refresh that fails is no first load that failed: it holds the kind back in the namespaces of that load, as the
+  // reload after a 410 that fails does, and leaves the last load and the hold of a load as they were, so that the
+  // outcome of the list still reads the first load of the mount (SPEC-0005, P23).
+  if (load.refresh && failed) {
+    return withKind(state, kind, () => ({
+      ...reads,
+      running: reads.running.filter((running) => running.id !== id),
+      refreshHold: {
+        namespaces: unique([...(reads.refreshHold?.namespaces ?? []), ...load.namespaces]),
+        failures: [...(reads.refreshHold?.failures ?? []), ...load.failures],
+        at,
+      },
+    }));
+  }
   const last: EndedLoad = {
     namespaces: load.namespaces,
     overWholeCluster,
@@ -239,7 +266,10 @@ export function reduceReads(state: ReadsState, event: ReadEvent): ReadsState {
     case "load-started":
       return withKind(state, event.kind, (reads) => ({
         ...reads,
-        running: [...reads.running, { id: event.id, namespaces: event.namespaces, failures: [] }],
+        running: [
+          ...reads.running,
+          { id: event.id, namespaces: event.namespaces, failures: [], refresh: event.refresh === true },
+        ],
       }));
     case "load-failed":
       return withKind(state, event.kind, (reads) => ({
@@ -335,6 +365,12 @@ export function isNotFollowed(state: ReadsState, kind: string): boolean {
   return last !== undefined && last.overWholeCluster && last.failures.length === 0 && !last.followed;
 }
 
+// Whether the first load of every kind of these keys has ended in this mount of the page, loaded or failed: a kind
+// whose first load runs, or that has not started one, has not (SPEC-0005, P13, P23).
+export function firstLoadsEnded(state: ReadsState, kinds: readonly string[]): boolean {
+  return kinds.every((kind) => kindOf(state, kind).last !== undefined);
+}
+
 // Whether the list is ready to show its rows, or its empty list (P19): not before the first load of the Clusters in
 // this mount of the page has ended, and not while a load of the Clusters runs and no row is listed.
 export function isListReady(state: ReadsState, clusters: string, rows: number): boolean {
@@ -396,7 +432,7 @@ function refusalLine(descriptor: KindDescriptor, failures: readonly ReadFailure[
     : [];
 }
 
-const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure">, string> = {
+const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure" | "nodes" | "bindings">, string> = {
   machines: "their activities read Unknown where their Machines count, never Idle",
   "machine-sets": "the activities of their MachineDeployments, and so their own, read Unknown, never Idle",
   parts: "their activities read Unknown, never Idle",
@@ -406,6 +442,23 @@ const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure">, string>
   controllers: "the availability of the controllers of their providers is not known",
 };
 
+// What a kind that cannot be read leaves unread or out of the model, as its value of `KindFeeds` says (P25; SPEC-0005,
+// P6): nothing more for the Clusters, whose notice says it.
+function whatItLeavesOut(feeds: KindFeeds): string {
+  switch (feeds) {
+    case "rows":
+      return "";
+    case "infrastructure":
+      return "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health.";
+    case "nodes":
+      return "Until they can be read, their nodes in the tree read as not read.";
+    case "bindings":
+      return "Until they can be read, the ClusterResourceSets of those namespaces rest on ResourcesApplied alone, which the status model notes.";
+    default:
+      return `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[feeds]}.`;
+  }
+}
+
 // The notice of a kind of the context that the page holds back (P25): after a load that failed, after a refresh that
 // failed, or after both, with the failures of each.
 function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | undefined {
@@ -414,12 +467,7 @@ function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | u
   if (loadHold === undefined && refreshHold === undefined) return undefined;
 
   const failures = [...(loadHold?.failures ?? []), ...(refreshHold?.failures ?? [])];
-  const what =
-    descriptor.feeds === "rows"
-      ? ""
-      : descriptor.feeds === "infrastructure"
-        ? "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health."
-        : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
+  const what = whatItLeavesOut(descriptor.feeds);
   const title =
     loadHold === undefined
       ? `The ${descriptor.noun} could not be read again, at ${TIME}`

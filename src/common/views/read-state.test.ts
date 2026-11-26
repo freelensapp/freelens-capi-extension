@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   failureOf,
+  firstLoadsEnded,
   isListReady,
   isLoaded,
   listNotices,
@@ -461,5 +462,153 @@ describe("the readiness of the list (P19)", () => {
     expect(isListReady(ended, CLUSTERS, 0)).toBe(true);
     expect(isListReady(again, CLUSTERS, 0)).toBe(false);
     expect(isListReady(again, CLUSTERS, 2)).toBe(true);
+  });
+});
+
+// The cases of SPEC-0005, "Tests", "Unit", `read-state.test.ts` (P6, P23): the kinds that the tree adds, the namespace
+// of a class read elsewhere, and the refresh of the tree.
+
+const CONFIGS = "/apis/bootstrap.cluster.x-k8s.io/v1beta2/kubeadmconfigs";
+const BINDINGS = "/apis/addons.cluster.x-k8s.io/v1beta2/clusterresourcesetbindings";
+const CLASSES = "/apis/cluster.x-k8s.io/v1beta2/clusterclasses";
+
+const configs: KindDescriptor & { key: string } = {
+  key: CONFIGS,
+  kind: "KubeadmConfig",
+  noun: "KubeadmConfigs",
+  resource: "kubeadmconfigs",
+  group: "bootstrap.cluster.x-k8s.io",
+  feeds: "nodes",
+};
+
+const bindings: KindDescriptor & { key: string } = {
+  key: BINDINGS,
+  kind: "ClusterResourceSetBinding",
+  noun: "ClusterResourceSetBindings",
+  resource: "clusterresourcesetbindings",
+  group: "addons.cluster.x-k8s.io",
+  feeds: "bindings",
+};
+
+// A refresh of a kind: a load that the refresh starts, its failures and its end.
+function refresh(kind: string, id: number, namespaces: string[], failures: ReadFailure[] = [], at = 9000): ReadEvent[] {
+  const [started, ...rest] = load(kind, id, namespaces, failures, { at });
+
+  return [{ ...(started as Extract<ReadEvent, { type: "load-started" }>), refresh: true }, ...rest];
+}
+
+describe("the kinds that the tree adds (SPEC-0005, P6)", () => {
+  it("say, refused, that their nodes read as not read, or that the ClusterResourceSets rest on ResourcesApplied alone", () => {
+    const FILTER_A: ReadEvent = { type: "filter-changed", namespaces: ["a"], selectedAll: false };
+    const state = run([FILTER_A, ...load(CONFIGS, 1, ["a"], [REFUSED_A]), ...load(BINDINGS, 2, ["a"], [FAILED])]);
+    const [nodes, bound] = listNotices(state, clusters, [configs, bindings], 1).overList;
+
+    expect(nodes.title).toBe("The KubeadmConfigs could not all be read");
+    expect(nodes.lines).toEqual([
+      "Reading them takes get, list and watch on kubeadmconfigs of bootstrap.cluster.x-k8s.io, in those namespaces or over the whole cluster.",
+      "Until they can be read, their nodes in the tree read as not read.",
+    ]);
+    expect(bound.title).toBe("The ClusterResourceSetBindings could not all be read");
+    expect(bound.lines).toEqual([
+      "Until they can be read, the ClusterResourceSets of those namespaces rest on ResourcesApplied alone, which the status model notes.",
+    ]);
+  });
+});
+
+describe("a class read in another namespace (SPEC-0005, P6)", () => {
+  it("is read for its kind alone in the second namespace of the filter, and no longer once the filter drops it", () => {
+    const both: ReadEvent = { type: "filter-changed", namespaces: ["a", "classes"], selectedAll: false };
+    const state = run([both, ...load(MACHINES, 1, ["a"]), ...load(CLASSES, 2, ["classes"])]);
+
+    expect(namespaceRead(state, CLASSES, "classes").state).toBe("read");
+    expect(namespaceRead(state, MACHINES, "classes").state).toBe("pending");
+    expect(namespaceRead(state, MACHINES, "a").state).toBe("read");
+
+    const moved = run(
+      [{ type: "filter-changed", namespaces: ["a", "other"], selectedAll: false }, ...load(CLASSES, 3, ["other"])],
+      state,
+    );
+
+    expect(namespaceRead(moved, CLASSES, "classes").state).toBe("outside");
+    expect(namespaceRead(moved, CLASSES, "other").state).toBe("read");
+    expect(moved.kinds[CLASSES]?.loaded).toEqual(["other"]);
+  });
+});
+
+describe("a refresh of the tree (SPEC-0005, P23)", () => {
+  const read = run([FILTER_AB, ...load(CLUSTERS, 1, ["a", "b"]), ...load(MACHINES, 2, ["a", "b"])]);
+
+  it("that fails holds its kind back in the namespaces of its load, as a reload after a 410 that failed, and leaves the first load as it was", () => {
+    const failed = run(refresh(MACHINES, 3, ["a"], [REFUSED_A], 9000), read);
+    const reads = failed.kinds[MACHINES];
+
+    expect(namespaceRead(failed, MACHINES, "a").state).toBe("held");
+    expect(namespaceRead(failed, MACHINES, "b").state).toBe("read");
+    expect(reads?.refreshHold).toEqual({ namespaces: ["a"], failures: [REFUSED_A], at: 9000 });
+    expect(reads?.last).toBe(read.kinds[MACHINES]?.last);
+    expect(reads?.loadHold).toBeUndefined();
+    expect(reads?.running).toEqual([]);
+    expect(listNotices(failed, clusters, [machines], 2).overList[0]).toMatchObject({
+      title: "The Machines could not be read again, at {time}",
+      messages: [REFUSED_A.message],
+      at: 9000,
+    });
+  });
+
+  it("of the Clusters that fails is said as one, never Restricted or Failed, which say the first load", () => {
+    const failed = run(refresh(CLUSTERS, 3, ["a", "b"], [REFUSED_A, REFUSED_B], 9000), read);
+
+    expect(listOutcome(failed, CLUSTERS)).toEqual({ state: "read" });
+    expect(listNotices(failed, clusters, [], 0).inPlaceOfRows).toMatchObject({
+      id: "list:refresh",
+      title: "The Clusters could not be read again, at {time}",
+      at: 9000,
+    });
+  });
+
+  it("that ends with no failure releases the hold of a load and that of a refresh, and is the last load", () => {
+    const held = run(
+      [...load(MACHINES, 3, ["a", "b"], [REFUSED_A], { at: 5000 }), ...refresh(MACHINES, 4, ["b"], [FAILED], 6000)],
+      read,
+    );
+
+    expect(held.kinds[MACHINES]?.loadHold?.namespaces).toEqual(["a", "b"]);
+    expect(held.kinds[MACHINES]?.refreshHold?.namespaces).toEqual(["b"]);
+
+    const released = run(refresh(MACHINES, 5, ["a", "b"], [], 7000), held);
+
+    expect(released.kinds[MACHINES]?.loadHold).toBeUndefined();
+    expect(released.kinds[MACHINES]?.refreshHold).toBeUndefined();
+    expect(released.kinds[MACHINES]?.last?.endedAt).toBe(7000);
+    expect(namespaceRead(released, MACHINES, "a").state).toBe("read");
+  });
+
+  it("marks the loads that it starts, and no other", () => {
+    const running = run([{ type: "load-started", kind: MACHINES, id: 3, namespaces: ["a"], refresh: true }], read);
+    const first = run([{ type: "load-started", kind: CLUSTERS, id: 4, namespaces: ["a"] }], read);
+
+    expect(running.kinds[MACHINES]?.running.map((entry) => entry.refresh)).toEqual([true]);
+    expect(first.kinds[CLUSTERS]?.running.map((entry) => entry.refresh)).toEqual([false]);
+  });
+});
+
+describe("the first loads of a view (SPEC-0005, P13)", () => {
+  it("have ended once every kind has ended one, loaded or failed, and not while one runs or has not started", () => {
+    const started: ReadEvent = { type: "load-started", kind: MACHINES, id: 2, namespaces: ["a"] };
+    const clustersRead = run([FILTER_AB, ...load(CLUSTERS, 1, ["a"])]);
+    const machinesRunning = run([started], clustersRead);
+    const machinesFailed = run(
+      [
+        { type: "load-failed", kind: MACHINES, id: 2, failure: FAILED },
+        { type: "load-ended", kind: MACHINES, id: 2, overWholeCluster: false, followed: true, at: 2 },
+      ],
+      machinesRunning,
+    );
+
+    expect(firstLoadsEnded(clustersRead, [CLUSTERS])).toBe(true);
+    expect(firstLoadsEnded(clustersRead, [CLUSTERS, MACHINES])).toBe(false);
+    expect(firstLoadsEnded(machinesRunning, [CLUSTERS, MACHINES])).toBe(false);
+    expect(firstLoadsEnded(machinesFailed, [CLUSTERS, MACHINES])).toBe(true);
+    expect(firstLoadsEnded(run([started], machinesFailed), [CLUSTERS, MACHINES])).toBe(true);
   });
 });

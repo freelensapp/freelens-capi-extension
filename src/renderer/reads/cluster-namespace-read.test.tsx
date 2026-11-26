@@ -1,15 +1,30 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
 import { Common, host, Renderer } from "../../../test/freelens-extensions";
-import { APIS, DEFINITIONS, DEV_CLUSTERS, hostObject, serve } from "../../../test/host-stores";
+import {
+  APIS,
+  DEFINITIONS,
+  DEV_CLUSTERS,
+  DEV_DEFINITIONS,
+  hostObject,
+  serve,
+  TREE_APIS,
+} from "../../../test/host-stores";
 import { hostObjects, objectsOfStates, sourceOf } from "../../../test/view-sources";
 import { ClusterStore } from "../api/cluster/cluster-v1beta2";
 import {
   ClusterClassStore,
+  ClusterResourceSetBindingStore,
+  ClusterResourceSetStore,
+  IPAddressClaimStore,
+  IPAddressStore,
+  KubeadmConfigStore,
+  KubeadmConfigTemplateStore,
   KubeadmControlPlaneStore,
   MachineDeploymentStore,
   MachineHealthCheckStore,
@@ -18,7 +33,7 @@ import {
   MachineStore,
 } from "../api/context/context-models";
 import { ClusterPanel, SourcedClusterView } from "../details/cluster-details-v1beta2";
-import { ClusterNamespaceRead } from "./cluster-namespace-read";
+import { CLUSTER_VIEW_KINDS, ClusterNamespaceRead, TREE_VIEW_KINDS } from "./cluster-namespace-read";
 import { publishPageSource } from "./cluster-source";
 import { ProviderObjectStore } from "./provider-object-store";
 
@@ -50,7 +65,7 @@ interface OwnStore {
 // The objects that the stores of the extension's own class read of the cluster, by the base of their API, with the
 // failures that a load of a kind reports.
 function serveOwn(objects: readonly HostObject[], failures: Partial<Record<string, unknown[]>> = {}) {
-  for (const api of Object.values(APIS)) {
+  for (const api of [...Object.values(APIS), ...Object.values(TREE_APIS)]) {
     host.cluster.set(api.apiBase, {
       items: objects.filter((object) => object.kind === api.kind),
       failures: [...(failures[api.kind] ?? [])],
@@ -338,7 +353,7 @@ describe("the reads of one Cluster, as a source of the view", () => {
   it("build the indexes of the context again only when what they read changes", async () => {
     serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
 
-    const read = new ClusterNamespaceRead(NAMESPACE, NAME);
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, CLUSTER_VIEW_KINDS);
 
     serveOwn(objectsOfStates(["healthy"]));
 
@@ -370,7 +385,7 @@ describe("the reads of one Cluster, as a source of the view", () => {
   it("give the model the objects of the namespace alone, and no object of the operator", async () => {
     serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
 
-    const read = new ClusterNamespaceRead(NAMESPACE, NAME);
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, CLUSTER_VIEW_KINDS);
 
     serveOwn(hostObjects([...fixtureSet("healthy"), ...fixtureSet("paused")] as KubeObject[]));
 
@@ -383,6 +398,360 @@ describe("the reads of one Cluster, as a source of the view", () => {
     expect(new Set(objects.machines.items.map((machine) => machine.metadata.namespace))).toEqual(new Set([NAMESPACE]));
     expect(objects.operator).toBeUndefined();
     expect([...(objects.infrastructures ?? new Map()).keys()]).toEqual(["infrastructure.cluster.x-k8s.io/DevCluster"]);
+    stop();
+  });
+});
+
+// The cases of SPEC-0005, "Tests", "Unit", `cluster-namespace-read.test.tsx` (P6, P23): the read of one Cluster takes
+// the kinds of its view as a parameter. The details and the panel read the kinds that SPEC-0004 gives them; the tree
+// reads its own, the kinds of a provider that a reference of what it read names, and its ClusterClass in the namespace
+// that the class reference of its Cluster names; a refresh reads every store again.
+
+// The host of a cluster that serves the kinds of the tree too, with the definitions of the kinds of the development
+// provider that the fixtures name.
+function serveTree(objects: readonly HostObject[], failures: Partial<Record<string, unknown[]>> = {}) {
+  const stores = serve(undefined, [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS]);
+
+  for (const api of Object.values(TREE_APIS)) host.registerApi(api);
+  serveOwn(objects, failures);
+  return stores;
+}
+
+// The stores of a read by the kind of their API.
+function byKind(read: ClusterNamespaceRead): Map<string, OwnStore> {
+  return new Map(read.stores.map((store) => [store.api.kind, store as unknown as OwnStore]));
+}
+
+// Lets the loads, their ends and the subscriptions that follow them run.
+async function settle() {
+  for (let turn = 0; turn < 4; turn++) await act(async () => undefined);
+}
+
+const TREE_KINDS = [
+  "Cluster",
+  "Machine",
+  "MachineSet",
+  "MachineDeployment",
+  "MachinePool",
+  "KubeadmControlPlane",
+  "MachineHealthCheck",
+  "ClusterClass",
+  "KubeadmConfig",
+  "KubeadmConfigTemplate",
+  "ClusterResourceSet",
+  "ClusterResourceSetBinding",
+  "IPAddressClaim",
+  "IPAddress",
+];
+
+describe("the kinds of a view of one Cluster (SPEC-0005, P6)", () => {
+  it("are those of SPEC-0004 for the details and the panel, also with the kinds of the tree served", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const built = host.builtStores.length;
+
+    view(own());
+    view(
+      <ClusterPanel
+        object={objectsOfStates(["healthy"]).find((object) => object.kind === "Cluster") as unknown as Cluster}
+        extension={EXTENSION}
+        openCluster={vi.fn()}
+      />,
+    );
+    await settle();
+
+    const kinds = builtSince(built).map((store) => store.api.kind);
+    const expected = [
+      "Cluster",
+      "ClusterClass",
+      "DevCluster",
+      "KubeadmControlPlane",
+      "Machine",
+      "MachineDeployment",
+      "MachineHealthCheck",
+      "MachinePool",
+      "MachineSet",
+    ];
+
+    // Two views, each with its own read of the same kinds.
+    expect(kinds.sort()).toEqual([...expected, ...expected].sort());
+  });
+
+  it("are those of the tree for the tree: a store of the class of each model, and one ProviderObjectStore for each kind of a provider that a reference names, never registered", async () => {
+    const stores = serveTree(objectsOfStates(["healthy"]));
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    const kinds = byKind(read);
+
+    expect([...kinds.keys()].sort()).toEqual([...TREE_KINDS, "DevCluster", "DevMachine", "DevMachineTemplate"].sort());
+    expect(kinds.get("Cluster")).toBeInstanceOf(ClusterStore);
+    expect(kinds.get("KubeadmConfig")).toBeInstanceOf(KubeadmConfigStore);
+    expect(kinds.get("KubeadmConfigTemplate")).toBeInstanceOf(KubeadmConfigTemplateStore);
+    expect(kinds.get("ClusterResourceSet")).toBeInstanceOf(ClusterResourceSetStore);
+    expect(kinds.get("ClusterResourceSetBinding")).toBeInstanceOf(ClusterResourceSetBindingStore);
+    expect(kinds.get("IPAddressClaim")).toBeInstanceOf(IPAddressClaimStore);
+    expect(kinds.get("IPAddress")).toBeInstanceOf(IPAddressStore);
+    for (const kind of ["DevCluster", "DevMachine", "DevMachineTemplate"]) {
+      expect(kinds.get(kind), kind).toBeInstanceOf(ProviderObjectStore);
+    }
+    expect(kinds.get("DevMachine")?.api).toBe(TREE_APIS.devMachines);
+    // Each loaded on the namespace of the Cluster, then subscribed.
+    for (const [kind, store] of kinds) {
+      expect(
+        store.loadAll.mock.calls.map(([opts]) => opts.namespaces),
+        kind,
+      ).toEqual([[NAMESPACE]]);
+      expect(store.subscribe, kind).toHaveBeenCalledTimes(1);
+      expect(store.loadAll.mock.invocationCallOrder[0]).toBeLessThan(store.subscribe.mock.invocationCallOrder[0]);
+    }
+    // Never registered: the store that the host returns for each API stays its own.
+    expect(host.registerStore).not.toHaveBeenCalled();
+    for (const [name, api] of Object.entries(APIS)) {
+      expect(Renderer.K8sApi.apiManager.getStore(api), name).toBe(stores[name as keyof typeof stores]);
+    }
+    // The model takes the kinds of the tree, the KubeadmControlPlanes of the namespace among them, and the kinds of a
+    // provider that only the tree reads.
+    expect(read.objects().tree?.kubeadmControlPlanes.items).toHaveLength(1);
+    expect(read.objects().tree?.kubeadmConfigs.items).toHaveLength(3);
+    expect([...(read.objects().tree?.providers.keys() ?? [])].sort()).toEqual([
+      "infrastructure.cluster.x-k8s.io/DevMachine",
+      "infrastructure.cluster.x-k8s.io/DevMachineTemplate",
+    ]);
+    stop();
+  });
+
+  it("read a kind of a provider once an object that the tree read names it, and wait for its first load", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const release = host.deferLoads();
+    const stop = read.start();
+
+    await settle();
+
+    // Nothing is read yet that names a kind of a provider.
+    expect([...byKind(read).keys()].sort()).toEqual([...TREE_KINDS].filter((kind) => kind !== "ClusterClass").sort());
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    release();
+    await settle();
+
+    expect(byKind(read).has("DevMachine")).toBe(true);
+    expect(byKind(read).has("ClusterClass")).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
+  it("read the ClusterClass in the namespace that the reference of the Cluster names, and no other, and follow a change of that namespace", async () => {
+    const CLASSES = "freelens-capi-classes";
+    const OTHER = "freelens-capi-other-classes";
+    const objects = fixtureSet("healthy").map((object) => structuredClone(object)) as KubeObject[];
+    const cluster = objects.find((object) => object.kind === "Cluster") as unknown as {
+      spec: { topology: { classRef: { name: string; namespace?: string } } };
+    };
+    const clusterClass = objects.find((object) => object.kind === "ClusterClass") as KubeObject;
+
+    cluster.spec.topology.classRef.namespace = CLASSES;
+    serveTree(
+      hostObjects([
+        ...objects.filter((object) => object.kind !== "ClusterClass"),
+        { ...clusterClass, metadata: { ...clusterClass.metadata, namespace: CLASSES } },
+        { ...clusterClass, metadata: { ...clusterClass.metadata, namespace: OTHER } },
+      ] as KubeObject[]),
+    );
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    const classes = byKind(read).get("ClusterClass") as OwnStore;
+
+    expect(classes.loadAll.mock.calls.map(([opts]) => opts.namespaces)).toEqual([[CLASSES]]);
+    for (const [kind, store] of byKind(read)) {
+      if (kind !== "ClusterClass") expect(store.loadAll.mock.calls[0][0].namespaces, kind).toEqual([NAMESPACE]);
+    }
+    expect(read.reads.filter?.namespaces).toEqual([NAMESPACE, CLASSES]);
+    expect(read.objects().clusterClasses.items.map((item) => item.metadata.namespace)).toEqual([CLASSES]);
+
+    // The Cluster names another namespace: the store of that one stops, and a new one reads the namespace now named.
+    const clusters = byKind(read).get("Cluster") as unknown as {
+      items: { replace(items: unknown[]): void } & HostObject[];
+    };
+
+    act(() => {
+      const [current] = [...clusters.items];
+      const moved = structuredClone({ ...current }) as unknown as Record<string, unknown> & {
+        spec: { topology: { classRef: { namespace?: string } } };
+      };
+
+      moved.spec.topology.classRef.namespace = OTHER;
+      clusters.items.replace([hostObject({ ...moved, metadata: { ...current.metadata, resourceVersion: "2" } })]);
+    });
+    await settle();
+
+    const moved = byKind(read).get("ClusterClass") as OwnStore;
+
+    expect(moved).not.toBe(classes);
+    expect(read.stores).not.toContain(classes);
+    expect(classes.subscribe.mock.calls[0][0].abortController.signal.aborted).toBe(true);
+    expect(moved.loadAll.mock.calls.map(([opts]) => opts.namespaces)).toEqual([[OTHER]]);
+    expect(read.reads.filter?.namespaces).toEqual([NAMESPACE, OTHER]);
+    expect(read.objects().clusterClasses.items.map((item) => item.metadata.namespace)).toEqual([OTHER]);
+    stop();
+  });
+
+  it("give the state of the tree alone when a kind is refused, its notice saying what its nodes read", async () => {
+    const page = sourceOf([], { filter: ["default"], loaded: ["default"] });
+    const reads = page.reads;
+    const unpublish = publishPageSource(page);
+    const refused = new Error("Failed to load /apis/bootstrap.cluster.x-k8s.io/v1beta2/kubeadmconfigs", {
+      cause: {
+        kind: "Status",
+        code: 403,
+        message: `kubeadmconfigs.bootstrap.cluster.x-k8s.io is forbidden in "${NAMESPACE}"`,
+      },
+    });
+
+    serveTree(objectsOfStates(["healthy"]), { KubeadmConfig: [refused] });
+
+    try {
+      const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+      const stop = read.start();
+
+      await settle();
+
+      const configs = read.kinds().find((kind) => kind.kind === "KubeadmConfig");
+
+      expect(configs).toMatchObject({ noun: "KubeadmConfigs", feeds: "nodes" });
+      expect(read.reads.kinds[configs?.key ?? ""]?.loadHold?.failures).toEqual([
+        { refused: true, message: `kubeadmconfigs.bootstrap.cluster.x-k8s.io is forbidden in "${NAMESPACE}"` },
+      ]);
+      expect(page.reads).toBe(reads);
+      stop();
+    } finally {
+      unpublish();
+    }
+  });
+
+  it("leave one read of the tree running when the effect runs twice, and end every read when the view closes", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+
+    read.start()();
+
+    const stop = read.start();
+
+    await settle();
+
+    for (const [kind, store] of byKind(read)) {
+      const loads = store.loadAll.mock.calls.filter(([opts]) => !(opts.reqInit.signal as AbortSignal).aborted);
+      const subscriptions = store.subscribe.mock.calls.filter(
+        ([opts]) => !(opts.abortController as AbortController).signal.aborted,
+      );
+
+      expect(loads, kind).toHaveLength(1);
+      expect(subscriptions, kind).toHaveLength(1);
+    }
+    stop();
+    for (const [kind, store] of byKind(read)) {
+      const open = store.subscribe.mock.calls.filter(
+        ([opts]) => !(opts.abortController as AbortController).signal.aborted,
+      );
+
+      expect(open, kind).toEqual([]);
+    }
+  });
+});
+
+describe("the refresh of the tree (SPEC-0005, P23)", () => {
+  it("ends every read and starts it again on the same stores, which keep their objects meanwhile, each load a refresh", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    const before = byKind(read);
+    const first = new Map([...before].map(([kind, store]) => [kind, store.subscribe.mock.calls[0][0].abortController]));
+    const release = host.deferLoads();
+
+    act(() => read.refresh());
+    await settle();
+
+    // While the loads of the refresh run, the stores keep their objects, and each load is a refresh.
+    expect(byKind(read)).toEqual(before);
+    expect((read.objects().tree?.kubeadmConfigs.items ?? []).length).toBe(3);
+    for (const kind of read.kinds()) {
+      expect(
+        read.reads.kinds[kind.key]?.running.map((load) => load.refresh),
+        kind.kind,
+      ).toEqual([true]);
+    }
+
+    release();
+    await settle();
+
+    for (const [kind, store] of byKind(read)) {
+      expect(store.loadAll, kind).toHaveBeenCalledTimes(2);
+      expect(store.subscribe, kind).toHaveBeenCalledTimes(2);
+      expect((first.get(kind) as AbortController).signal.aborted, kind).toBe(true);
+      expect(store.subscribe.mock.calls[1][0].abortController.signal.aborted, kind).toBe(false);
+    }
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
+  it("asks again for a definition whose read was refused, and for no other", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+    runInAction(() => {
+      host.crdStore.items = [];
+      host.crdStore.failedLoading = true;
+    });
+
+    const refusal = new Error("Failed to get", {
+      cause: {
+        kind: "Status",
+        code: 403,
+        message: 'customresourcedefinitions.apiextensions.k8s.io "devmachines" is forbidden',
+      },
+    });
+    const definitions = new Map(
+      [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS].map((definition) => [definition.metadata?.name, definition]),
+    );
+
+    host.crdGet.mockImplementation(async (name) => {
+      if (name === "devmachines.infrastructure.cluster.x-k8s.io") throw refusal;
+      return definitions.get(name) ?? null;
+    });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    const asked = host.crdGet.mock.calls.map(([name]) => name);
+
+    expect(asked.sort()).toEqual(
+      [
+        "devclusters.infrastructure.cluster.x-k8s.io",
+        "devmachines.infrastructure.cluster.x-k8s.io",
+        "devmachinetemplates.infrastructure.cluster.x-k8s.io",
+        "kubeadmcontrolplanes.controlplane.cluster.x-k8s.io",
+      ].sort(),
+    );
+    expect(read.definitions.readOf("infrastructure.cluster.x-k8s.io", "DevMachine").state).toBe("refused");
+    host.crdGet.mockClear();
+
+    act(() => read.refresh());
+    await settle();
+
+    expect(host.crdGet.mock.calls).toEqual([["devmachines.infrastructure.cluster.x-k8s.io"]]);
     stop();
   });
 });

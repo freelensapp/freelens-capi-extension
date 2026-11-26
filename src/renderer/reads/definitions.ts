@@ -84,6 +84,18 @@ export class DefinitionReads {
     return this.#fetched.get(name) ?? { state: "pending" };
   }
 
+  // Forgets the reads by GET that were refused or failed, so that the next request asks for them again, for the
+  // refresh of a view (SPEC-0005, P23); a definition that was read keeps its read, and one that the cluster does not
+  // serve is not asked again either. The store of definitions of the host, which the host subscribes, is not loaded
+  // again.
+  forgetFailures(): void {
+    runInAction(() =>
+      this.#fetched.replace(
+        [...this.#fetched].filter(([, read]) => read.state !== "refused" && read.state !== "failed"),
+      ),
+    );
+  }
+
   // Starts the GET of the definitions that the store of definitions does not give, once each, for an effect of the
   // page. A result that arrives after the page closed lands in this object alone.
   request(kinds: readonly { readonly group: string; readonly kind: string }[]): void {

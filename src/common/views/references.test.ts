@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { fixtureSet } from "../../../test/fixture-sets";
 import {
   classReferenceOf,
+  clusterReferencesOf,
   contractReferenceOf,
+  controlPlaneTemplateOf,
   definitionOf,
   findDefinition,
+  isClusterApiKind,
+  isTemplateKind,
+  machineReferencesOf,
+  objectReferenceOf,
+  referencesOf,
   resolveReference,
   targetReadOf,
+  templateReferencesOf,
 } from "./references";
 
 import type { ClusterObject, KubeObjectData } from "../status/index";
@@ -219,5 +228,181 @@ describe("the target of a reference (P18)", () => {
     });
     expect(targetReadOf(undefined, read, [], false)).toEqual({ state: "pending" });
     expect(targetReadOf(resolved, { state: "pending" }, [], false)).toEqual({ state: "pending" });
+  });
+});
+
+// The cases of SPEC-0005, "Tests", "Unit", `references.test.ts` (P5, P6): what is of Cluster API, the references that
+// the tree follows, and a reference of the `v1beta1` contract of a control plane.
+
+describe("the kinds of Cluster API (SPEC-0005, P5)", () => {
+  it.each([
+    ["cluster.x-k8s.io", "Cluster"],
+    ["cluster.x-k8s.io", "ClusterClass"],
+    ["cluster.x-k8s.io", "Machine"],
+    ["cluster.x-k8s.io", "MachineSet"],
+    ["cluster.x-k8s.io", "MachineDeployment"],
+    ["cluster.x-k8s.io", "MachinePool"],
+    ["cluster.x-k8s.io", "MachineHealthCheck"],
+    ["cluster.x-k8s.io", "MachineDrainRule"],
+    ["addons.cluster.x-k8s.io", "ClusterResourceSet"],
+    ["addons.cluster.x-k8s.io", "ClusterResourceSetBinding"],
+    ["bootstrap.cluster.x-k8s.io", "KubeadmConfig"],
+    ["bootstrap.cluster.x-k8s.io", "KubeadmConfigTemplate"],
+    ["controlplane.cluster.x-k8s.io", "KubeadmControlPlane"],
+    ["controlplane.cluster.x-k8s.io", "KubeadmControlPlaneTemplate"],
+    ["ipam.cluster.x-k8s.io", "IPAddress"],
+    ["ipam.cluster.x-k8s.io", "IPAddressClaim"],
+    ["runtime.cluster.x-k8s.io", "ExtensionConfig"],
+    ["clusterctl.cluster.x-k8s.io", "Provider"],
+    ["operator.cluster.x-k8s.io", "CoreProvider"],
+    ["operator.cluster.x-k8s.io", "BootstrapProvider"],
+    ["operator.cluster.x-k8s.io", "ControlPlaneProvider"],
+    ["operator.cluster.x-k8s.io", "InfrastructureProvider"],
+    ["operator.cluster.x-k8s.io", "AddonProvider"],
+    ["operator.cluster.x-k8s.io", "IPAMProvider"],
+    ["operator.cluster.x-k8s.io", "RuntimeExtensionProvider"],
+  ])("%s %s is of Cluster API", (group, kind) => {
+    expect(isClusterApiKind(group, kind)).toBe(true);
+  });
+
+  it.each([
+    ["bootstrap.cluster.x-k8s.io", "ExampleConfig"],
+    ["controlplane.cluster.x-k8s.io", "ExampleControlPlane"],
+    ["ipam.cluster.x-k8s.io", "InClusterIPPool"],
+    ["infrastructure.cluster.x-k8s.io", "DevCluster"],
+    ["infrastructure.cluster.x-k8s.io", "DevMachineTemplate"],
+    ["operator.cluster.x-k8s.io", "Machine"],
+  ])("%s %s is of a provider, whatever its group", (group, kind) => {
+    expect(isClusterApiKind(group, kind)).toBe(false);
+  });
+});
+
+describe("the references that the tree follows (SPEC-0005, P6, P7, P8)", () => {
+  const healthy = fixtureSet("healthy") as unknown as KubeObjectData[];
+  const pools = fixtureSet("machine-pools") as unknown as KubeObjectData[];
+  const named = (objects: KubeObjectData[], kind: string, name?: string) =>
+    objects.find(
+      (object) => object.kind === kind && (name === undefined || (object.metadata as { name: string }).name === name),
+    ) as KubeObjectData;
+  const summary = (entries: ReturnType<typeof referencesOf>) =>
+    entries.map(
+      ({ reference, field, role }) => `${field} ${role} ${reference.apiGroup}/${reference.kind}/${reference.name}`,
+    );
+
+  it("are the infrastructure cluster and the control plane of a Cluster", () => {
+    expect(summary(clusterReferencesOf(named(healthy, "Cluster")))).toEqual([
+      "spec.infrastructureRef infrastructure-cluster infrastructure.cluster.x-k8s.io/DevCluster/freelens-capi-healthy-8fgcf",
+      "spec.controlPlaneRef control-plane controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+    ]);
+  });
+
+  it("are the infrastructure machine and the bootstrap config of a Machine", () => {
+    expect(summary(machineReferencesOf(named(healthy, "Machine", "freelens-capi-healthy-d2lgq-zqlcx")))).toEqual([
+      "spec.infrastructureRef infrastructure-machine infrastructure.cluster.x-k8s.io/DevMachine/freelens-capi-healthy-d2lgq-zqlcx",
+      "spec.bootstrap.configRef bootstrap-config bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-healthy-d2lgq-zqlcx",
+    ]);
+  });
+
+  it("are the templates of a MachineDeployment and of a MachineSet, kinds whose names end in Template", () => {
+    const expected = [
+      "spec.template.spec.infrastructureRef template infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-md-0-xp9c7",
+      "spec.template.spec.bootstrap.configRef template bootstrap.cluster.x-k8s.io/KubeadmConfigTemplate/freelens-capi-healthy-md-0-2wh2v",
+    ];
+
+    expect(summary(templateReferencesOf(named(healthy, "MachineDeployment")))).toEqual(expected);
+    expect(summary(templateReferencesOf(named(healthy, "MachineSet")))).toEqual(expected);
+    expect(isTemplateKind("DevMachineTemplate")).toBe(true);
+    expect(isTemplateKind("DevMachine")).toBe(false);
+  });
+
+  it("are the infrastructure machine pool and the bootstrap config of a MachinePool, which name no template", () => {
+    expect(summary(templateReferencesOf(named(pools, "MachinePool")))).toEqual([
+      "spec.template.spec.infrastructureRef infrastructure-machine-pool infrastructure.cluster.x-k8s.io/DevMachinePool/freelens-capi-machine-pools-mp-0-6cl2n",
+      "spec.template.spec.bootstrap.configRef bootstrap-config bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-machine-pools-mp-0-wl6nx",
+    ]);
+  });
+
+  it("are none of a MachineDeployment for a kind that is no template", () => {
+    const deployment = structuredClone(named(healthy, "MachineDeployment")) as KubeObjectData & {
+      spec: { template: { spec: { infrastructureRef: { kind: string } } } };
+    };
+
+    deployment.spec.template.spec.infrastructureRef.kind = "DevMachine";
+    expect(summary(templateReferencesOf(deployment)).map((line) => line.split(" ")[0])).toEqual([
+      "spec.template.spec.bootstrap.configRef",
+    ]);
+  });
+
+  it("are the template of the Machines of a control plane, by the field of its contract", () => {
+    const controlPlane = named(healthy, "KubeadmControlPlane");
+
+    expect(summary(controlPlaneTemplateOf(controlPlane, "v1beta2"))).toEqual([
+      "spec.machineTemplate.spec.infrastructureRef template infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-rclml",
+    ]);
+
+    // At v1beta1 the contract names an object reference, with `apiVersion` in the place of `apiGroup`.
+    const v1beta1 = {
+      ...controlPlane,
+      spec: {
+        machineTemplate: {
+          infrastructureRef: {
+            apiVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
+            kind: "DevMachineTemplate",
+            name: "old-contract",
+          },
+        },
+      },
+    };
+
+    expect(summary(controlPlaneTemplateOf(v1beta1, "v1beta1"))).toEqual([
+      "spec.machineTemplate.infrastructureRef template infrastructure.cluster.x-k8s.io/DevMachineTemplate/old-contract",
+    ]);
+    expect(controlPlaneTemplateOf(v1beta1, "v1beta2")).toEqual([]);
+    expect(referencesOf(v1beta1, { contract: "v1beta1" })).toHaveLength(1);
+  });
+
+  it("give the group of an object reference of v1beta1, and never its version", () => {
+    const reference = objectReferenceOf({
+      apiVersion: "controlplane.example.test/v1beta1",
+      kind: "ExampleMachineTemplate",
+      name: "one",
+    });
+
+    expect(reference).toEqual({ apiGroup: "controlplane.example.test", kind: "ExampleMachineTemplate", name: "one" });
+    expect(Object.values(reference ?? {}).some((value) => value.includes("v1beta1"))).toBe(false);
+    expect(objectReferenceOf({ apiVersion: "v1", kind: "ConfigMap", name: "one" })).toBeUndefined();
+    expect(objectReferenceOf({ kind: "ExampleMachineTemplate", name: "one" })).toBeUndefined();
+  });
+
+  it("are none of the objects whose references the tree never follows: a MachineHealthCheck, an IPAddressClaim, an IPAddress and a ClusterClass", () => {
+    const noStatus = fixtureSet("no-status") as unknown as KubeObjectData[];
+    const check = {
+      ...named(noStatus, "MachineHealthCheck"),
+      spec: {
+        clusterName: "freelens-capi-no-status",
+        remediation: {
+          templateRef: {
+            apiVersion: "infrastructure.example.test/v1beta2",
+            kind: "ExampleRemediationTemplate",
+            name: "one",
+          },
+        },
+      },
+    };
+
+    for (const object of [
+      check,
+      named(noStatus, "IPAddressClaim"),
+      named(noStatus, "IPAddress"),
+      named(healthy, "ClusterClass"),
+      named(noStatus, "MachineDrainRule"),
+    ]) {
+      expect(referencesOf(object), String(object.kind)).toEqual([]);
+    }
+    // The Node of a Machine is no reference that the tree follows.
+    expect(summary(referencesOf(named(healthy, "Machine"))).map((line) => line.split(" ")[0])).toEqual([
+      "spec.infrastructureRef",
+      "spec.bootstrap.configRef",
+    ]);
   });
 });

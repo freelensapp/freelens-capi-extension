@@ -55,6 +55,30 @@ export const APIS = {
 
 export type ApiName = keyof typeof APIS;
 
+// The APIs of the kinds that the tree of a Cluster reads beside those of the page (SPEC-0005, P6): the kinds that it
+// adds, and the kinds of the development provider that the references of the fixtures name.
+export const TREE_APIS = {
+  kubeadmConfigs: api("KubeadmConfig", "bootstrap.cluster.x-k8s.io", "v1beta2", "kubeadmconfigs"),
+  kubeadmConfigTemplates: api(
+    "KubeadmConfigTemplate",
+    "bootstrap.cluster.x-k8s.io",
+    "v1beta2",
+    "kubeadmconfigtemplates",
+  ),
+  clusterResourceSets: api("ClusterResourceSet", "addons.cluster.x-k8s.io", "v1beta2", "clusterresourcesets"),
+  clusterResourceSetBindings: api(
+    "ClusterResourceSetBinding",
+    "addons.cluster.x-k8s.io",
+    "v1beta2",
+    "clusterresourcesetbindings",
+  ),
+  ipAddressClaims: api("IPAddressClaim", "ipam.cluster.x-k8s.io", "v1beta2", "ipaddressclaims"),
+  ipAddresses: api("IPAddress", "ipam.cluster.x-k8s.io", "v1beta2", "ipaddresses"),
+  devMachines: api("DevMachine", "infrastructure.cluster.x-k8s.io", "v1beta2", "devmachines"),
+  devMachineTemplates: api("DevMachineTemplate", "infrastructure.cluster.x-k8s.io", "v1beta2", "devmachinetemplates"),
+  devMachinePools: api("DevMachinePool", "infrastructure.cluster.x-k8s.io", "v1beta2", "devmachinepools"),
+} as const;
+
 // A store of the host for one API.
 export class FakeStore {
   readonly api: StubApi;
@@ -154,6 +178,20 @@ export const DEV_CLUSTERS = definition(
     "cluster.x-k8s.io/v1beta2": "v1beta2",
     "cluster.x-k8s.io/provider": "infrastructure-docker",
   },
+);
+
+// The definitions of the kinds of the development provider that the tree reads beside its infrastructure cluster, with
+// the same labels.
+export const DEV_DEFINITIONS = [
+  ["devmachines", "DevMachine"],
+  ["devmachinetemplates", "DevMachineTemplate"],
+  ["devmachinepools", "DevMachinePool"],
+].map(([plural, kind]) =>
+  definition(`${plural}.infrastructure.cluster.x-k8s.io`, "infrastructure.cluster.x-k8s.io", kind, {
+    "cluster.x-k8s.io/v1beta1": "v1beta1",
+    "cluster.x-k8s.io/v1beta2": "v1beta2",
+    "cluster.x-k8s.io/provider": "infrastructure-docker",
+  }),
 );
 
 // The host of a cluster that serves Cluster API: the APIs and the stores of the kinds named, and the store of

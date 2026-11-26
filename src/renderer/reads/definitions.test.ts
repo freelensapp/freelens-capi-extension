@@ -104,3 +104,51 @@ describe("the definitions of the references (P3)", () => {
     expect(get.mock.calls).toEqual([[KCP_DEFINITION]]);
   });
 });
+
+// The case of SPEC-0005, "Tests", "Unit", `definitions.test.ts` (P23): the refresh of the tree forgets the reads that
+// were refused or failed, and asks again for those alone.
+describe("the definitions after a refresh (SPEC-0005, P23)", () => {
+  const DEV_CLUSTER = { group: "infrastructure.cluster.x-k8s.io", kind: "DevCluster" };
+  const DEV_MACHINE = { group: "infrastructure.cluster.x-k8s.io", kind: "DevMachine" };
+  const APIS: Record<string, { apiBase: string }> = {
+    [`${KCP.group}/${KCP.kind}`]: KCP_API,
+    [`${DEV_CLUSTER.group}/${DEV_CLUSTER.kind}`]: {
+      apiBase: "/apis/infrastructure.cluster.x-k8s.io/v1beta2/devclusters",
+    },
+    [`${DEV_MACHINE.group}/${DEV_MACHINE.kind}`]: {
+      apiBase: "/apis/infrastructure.cluster.x-k8s.io/v1beta2/devmachines",
+    },
+  };
+
+  it("are asked again when they were refused or failed, and a definition that was read keeps its read", async () => {
+    const { host: definitionsHost, get, findApi } = host({ isLoaded: false, failedLoading: true, items: [] });
+
+    findApi.mockImplementation((group, kind) => APIS[`${group}/${kind}`]);
+    get.mockImplementation(async (name) => {
+      if (name.startsWith("devclusters.")) throw REFUSED;
+      if (name.startsWith("devmachines.")) throw new Error("Failed to get: connection reset");
+      return DEFINITIONS[1] as unknown as HostObject;
+    });
+
+    const reads = new DefinitionReads(definitionsHost);
+
+    reads.request([KCP, DEV_CLUSTER, DEV_MACHINE]);
+    await vi.waitFor(() => expect(reads.readOf(DEV_MACHINE.group, DEV_MACHINE.kind).state).toBe("failed"));
+    expect(reads.readOf(DEV_CLUSTER.group, DEV_CLUSTER.kind).state).toBe("refused");
+    expect(reads.readOf(KCP.group, KCP.kind).state).toBe("read");
+    get.mockClear();
+
+    reads.forgetFailures();
+
+    expect(reads.readOf(KCP.group, KCP.kind).state).toBe("read");
+    expect(reads.readOf(DEV_CLUSTER.group, DEV_CLUSTER.kind).state).toBe("pending");
+
+    reads.request([KCP, DEV_CLUSTER, DEV_MACHINE]);
+    await vi.waitFor(() => expect(reads.readOf(DEV_CLUSTER.group, DEV_CLUSTER.kind).state).toBe("refused"));
+
+    expect(get.mock.calls.map(([name]) => name).sort()).toEqual([
+      "devclusters.infrastructure.cluster.x-k8s.io",
+      "devmachines.infrastructure.cluster.x-k8s.io",
+    ]);
+  });
+});

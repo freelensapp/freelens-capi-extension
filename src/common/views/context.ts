@@ -44,9 +44,14 @@ import { classReferenceOf, contractReferenceOf } from "./references";
 import type {
   ClusterClassObject,
   ClusterObject,
+  ClusterResourceSetBindingObject,
+  ClusterResourceSetObject,
   ConditionsResult,
   ContextInput,
   ControllerAvailability,
+  IPAddressClaimObject,
+  KubeadmConfigObject,
+  KubeadmControlPlaneObject,
   KubeObjectData,
   MachineDeploymentObject,
   MachineHealthCheckObject,
@@ -78,6 +83,22 @@ export interface ProviderKindObjects extends KindObjects {
 
 export type ControlPlaneObjects = ProviderKindObjects;
 
+// The objects of the kinds that the tree of a Cluster reads beside those of the context (SPEC-0005, P6), which no other
+// view reads.
+export interface TreeKindObjects {
+  // The KubeadmControlPlanes of the namespace, which the context takes from the reference of each Cluster alone.
+  readonly kubeadmControlPlanes: KindObjects<KubeadmControlPlaneObject>;
+  readonly kubeadmConfigs: KindObjects<KubeadmConfigObject>;
+  readonly kubeadmConfigTemplates: KindObjects;
+  readonly clusterResourceSets: KindObjects<ClusterResourceSetObject>;
+  readonly clusterResourceSetBindings: KindObjects<ClusterResourceSetBindingObject>;
+  readonly ipAddressClaims: KindObjects<IPAddressClaimObject>;
+  readonly ipAddresses: KindObjects;
+  // The kinds of a provider that the references that the tree follows name, beside those of the Cluster, by
+  // `group/kind`: its infrastructure machines and machine pools, the bootstrap configs of a provider and the templates.
+  readonly providers: ReadonlyMap<string, ProviderKindObjects>;
+}
+
 export interface ContextObjects {
   readonly reads: ReadsState;
   readonly machines: KindObjects<MachineObject>;
@@ -94,6 +115,8 @@ export interface ContextObjects {
   // The kinds of infrastructure cluster that the references of the Clusters name, by `group/kind`, which the details
   // read (SPEC-0004, "What the view reads").
   readonly infrastructures?: ReadonlyMap<string, ProviderKindObjects>;
+  // The kinds that the tree adds, for a view of the tree alone (SPEC-0005, P6).
+  readonly tree?: TreeKindObjects;
 }
 
 // How an input of the context of a Cluster was given.
@@ -321,6 +344,8 @@ export function indexContext(objects: ContextObjects): ContextIndex {
 // stores are no key, since the host changes them in place (AGENTS.md, "Rules That Fail Silently").
 export function contextVersions(objects: ContextObjects): string {
   const infrastructures = objects.infrastructures ?? new Map<string, ProviderKindObjects>();
+  const { tree } = objects;
+  const providers = tree?.providers ?? new Map<string, ProviderKindObjects>();
   const kinds: readonly KindObjects[] = [
     objects.machines,
     objects.machineSets,
@@ -331,8 +356,20 @@ export function contextVersions(objects: ContextObjects): string {
     ...(objects.operator ?? []),
     ...objects.controlPlanes.values(),
     ...infrastructures.values(),
+    ...(tree === undefined
+      ? []
+      : [
+          tree.kubeadmControlPlanes,
+          tree.kubeadmConfigs,
+          tree.kubeadmConfigTemplates,
+          tree.clusterResourceSets,
+          tree.clusterResourceSetBindings,
+          tree.ipAddressClaims,
+          tree.ipAddresses,
+          ...providers.values(),
+        ]),
   ];
-  const resolutions = [...objects.controlPlanes, ...infrastructures].map(
+  const resolutions = [...objects.controlPlanes, ...infrastructures, ...providers].map(
     ([id, kind]) => `${id}=${JSON.stringify(kind.resolution)}`,
   );
 
