@@ -14,11 +14,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
-import { API_KUBE_PREFIX, isExpectedRefusal } from "./expected-refusals";
+import { API_KUBE_PREFIX, isExpectedRefusal, isExpectedThrottling } from "./expected-refusals";
 
 import type { Browser, ConsoleMessage, Frame, Locator, Page, Request } from "playwright";
 
-import type { ExpectedRefusal } from "./expected-refusals";
+import type { ExpectedRefusal, ExpectedThrottling, FailedResponse } from "./expected-refusals";
 
 export const extensionName = "@freelensapp/capi-extension";
 
@@ -115,7 +115,12 @@ export interface AppSession {
    * called (`expected-refusals.ts`); each refusal left out is kept, which `refusalsLeftOut` gives.
    */
   expectRefusals(refusals: readonly ExpectedRefusal[]): () => void;
-  /** The refusals left out so far, each as its status and its address. */
+  /**
+   * Leaves out of the errors the throttling of the requests of another extension that a session expects, from now
+   * until the returned function is called (`expected-refusals.ts`).
+   */
+  expectThrottling(throttling: readonly ExpectedThrottling[]): () => void;
+  /** The refusals and the throttling left out so far, each as its status and its address. */
   refusalsLeftOut(): string[];
   /** Stops collecting errors; returns every error logged until then. */
   stopCollecting(): Promise<string[]>;
@@ -226,8 +231,9 @@ function collectErrors(window: Page) {
   const badGatewayErrors: { path: string; text: string }[] = [];
   // The paths of the requests that the dev file route failed.
   const devFileRouteFailures: string[] = [];
-  // The refusals that a step of the session expects, while it runs, and those left out.
+  // The refusals and the throttling that a step of the session expects, while it runs, and those left out.
   const expectedRefusals = new Set<readonly ExpectedRefusal[]>();
+  const expectedThrottling = new Set<readonly ExpectedThrottling[]>();
   const refusalsLeftOut: string[] = [];
   // The methods of the requests that the renderer sent to each address of the API of a cluster: Playwright reports a
   // request before the answer to it, and so before the message of a refusal.
@@ -242,20 +248,25 @@ function collectErrors(window: Page) {
     }
   };
 
-  // Whether a request that the server refused is one that a step expects (`isExpectedRefusal`): by its status and its
-  // address, by the methods of the requests sent there, GETs alone, and by the frame that sent it, found by the host of
-  // the address, with the page that this frame shows, as Playwright last saw its address.
+  // Whether a request that the server refused or throttled is one that a step expects (`isExpectedRefusal`,
+  // `isExpectedThrottling`): by its status and its address, by the methods of the requests sent there, GETs alone, and
+  // by the frame that sent it, found by the host of the address, with the page that this frame shows, as Playwright
+  // last saw its address.
   const isExpected = (status: string, url: string) => {
     const address = sameAddress(url);
     const host = URL.canParse(address) ? new URL(address).host : undefined;
     const frame = window.frames().find((item) => URL.canParse(item.url()) && new URL(item.url()).host === host);
-
-    return isExpectedRefusal([...expectedRefusals].flat(), {
+    const response: FailedResponse = {
       status,
       url: address,
       methods: methodsByAddress.get(address) ?? [],
       page: frame === undefined ? undefined : new URL(frame.url()).pathname,
-    });
+    };
+
+    return (
+      isExpectedRefusal([...expectedRefusals].flat(), response) ||
+      isExpectedThrottling([...expectedThrottling].flat(), response)
+    );
   };
 
   // Chromium logs every response that is not a success as "Failed to load
@@ -440,6 +451,15 @@ function collectErrors(window: Page) {
         expectedRefusals.delete(entry);
       };
     },
+    expectThrottling: (throttling: readonly ExpectedThrottling[]) => {
+      const entry = [...throttling];
+
+      expectedThrottling.add(entry);
+
+      return () => {
+        expectedThrottling.delete(entry);
+      };
+    },
     refusalsLeftOut: () => [...refusalsLeftOut],
     // Waits until no description and no decision is pending, those that start
     // while it waits included.
@@ -493,6 +513,7 @@ export async function connectApp(): Promise<AppSession> {
       },
       devFileRouteFailures: collector.devFileRouteFailures,
       expectRefusals: collector.expectRefusals,
+      expectThrottling: collector.expectThrottling,
       refusalsLeftOut: collector.refusalsLeftOut,
       stopCollecting,
       close: async () => {

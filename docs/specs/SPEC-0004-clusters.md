@@ -2843,6 +2843,27 @@ No question is open.
   freelens:packages/core/src/extensions/lens-extension.ts:125-127, the same at
   `v2.0.0`), and `openExtensionPage` takes the name of the extension, this one
   unless another is named.
+- Seen in the second run of the third part in CI, on both releases, and decided
+  after it: the API server answered three GETs of the Sveltos extension to the
+  group of its own kinds, `config.projectsveltos.io`, at `clusterconfigurations`
+  and `clustersummaries`, with a 429, and Chromium logged them, so S6 failed on
+  errors that are not of this view, from its second case on. S6 judges the two
+  views by their rows and by the failed watches of `cluster.x-k8s.io`, so it
+  leaves out, from the start of its cases, a 429 of a GET, a list or a watch, to
+  a group whose name ends with `.projectsveltos.io`, from the frame of the
+  cluster of the real project alone, and never one to a group that this view
+  reads, `cluster.x-k8s.io` and its subgroups or `apiextensions.k8s.io`,
+  whatever a session expects (`isExpectedThrottling` of
+  `integration/__tests__/expected-refusals.ts`, with its unit test). Every other
+  429 counts.
+- Seen in the second run of the third part in CI, on both releases, and changed:
+  in case 3 of the restricted session, Escape left open the details that the
+  session had opened at their address in a frame loaded again. The drawer of
+  the host closes on the keys that the window of its frame receives
+  (drawer.tsx:93, 138-145 at `v2.1.0`; 94, 139-146 at `v2.0.0`), and no click in
+  that frame had given it the keyboard. The session closes those details by the
+  close icon of their drawer, as a person would; case 2, which opens the details
+  with a click on the name, closes them with Escape.
 - Decided while implementing the third part, for S6, and corrected after its
   first review: a failed watch of `cluster.x-k8s.io` is told from the console of
   the renderer, where the client of the host logs a watch that the server
@@ -2871,30 +2892,23 @@ No question is open.
   that window, the step undoes its write and makes it again, three times at
   most, and says so. A page that follows a write through its watch shows it
   within 20 seconds.
-- Decided while implementing the third part, where P33 does not fit what came
-  after it, and corrected after the first review of the third part: the job of
-  the real project has 195 minutes, and not 120, and the limits of the steps of
-  the sessions hold their worst case, each hook and each case of their sessions
-  at its own limit. P33 gave the job the sum of the budgets of the two jobs that
-  it joins, 120 when it was written; the pull request of the cases of SPEC-0003
-  then gave the job of the real project the quarter of an hour of the tests of
-  the real tier. The job now has the hour of the real project, that quarter of
-  an hour, the 50 minutes that the integration tests give their steps before
-  the tests to build and start Freelens dev, their hour less their 10 minutes
-  of tests before this spec, and the 70 minutes of the step of the sessions of
-  the real tier: 33 minutes for the session against clusterctl, its hooks 4
-  each and its cases 8, 10 and 7, with its waits of five minutes, 31 for S6,
-  its hooks 5 each and its cases 2, 2, 2 and 15, and 5 for Vitest to start and
-  for each session to reach the real project through the scripts. S7 runs in
-  each job of the matrix, where that pull request put it, under the limit that
-  it gave it, and the steps of Freelens dev come after it.
-- Decided while implementing the third part, and corrected after its first
-  review: the step of the tests of the integration workflow holds the worst
-  case of its sessions, 120 minutes, and its job 170, the 50 minutes of its
-  steps before the tests and that limit: 6 minutes for the install test, 42 for
-  the session of the fixtures of `healthy`, its hooks and one case for each of
-  its 17 kinds, 40 for the session of the list, 30 for the restricted one, its
-  hooks and its four cases 5 each, and 2 for Vitest to start and collect them.
+- Decided under the delegation for M1, after the second run of the third part
+  in CI, where the first review had asked the limits of time to hold the sum of
+  every wait at its maximum: the limits of the jobs and of their steps of the
+  tests are set from the durations of the runs. Measured in CI on 2026-11-26:
+  the integration job took 5 minutes, and its step of the tests 3.3, with a case
+  that waited its 60 seconds; the job of the real project took 8 to 10 minutes
+  with sessions that settled at once, the real project up in 2.5 and the tests
+  of the real tier, S7 among them, in 4.5, and 22 when its sessions waited their
+  polls of 10 minutes. So the integration job has 60 minutes, with its step of
+  the tests under `timeout 1500`, and the job of the real project 120, as P33
+  says, with the step of the sessions of the real tier under `timeout 2400`, and
+  that of S7 at the 15 minutes that the pull request of the cases of SPEC-0003
+  gave it. A step that reaches its limit fails, as a case that reaches its own
+  does; the job then loses the report of the sessions after it, which a run of
+  that one file gives again. The waits of the session against clusterctl stay
+  at five minutes each. S7 runs in each job of the matrix, where that pull
+  request put it, and the steps of Freelens dev come after it.
 - Decided while implementing the third part, and widened after its first
   review: the paths that start the workflow of the test environment on a pull
   request are those of P33, `src/main/**`, `src/common/**` and the two

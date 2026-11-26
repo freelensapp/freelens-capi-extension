@@ -304,6 +304,14 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     );
   }
 
+  // Closes the details of the extension by the close icon of their drawer, as a person closes details that opened at
+  // their address: no click in the frame gave it the keyboard, which stays where it was before the frame was loaded
+  // again, so an Escape would not reach the frame, whose drawer closes on the keys that its own window receives.
+  async function closeDetails(details: Locator) {
+    await details.getByTestId("capi-cluster-details-close").click();
+    await details.waitFor({ state: "detached", ...viewTimeout });
+  }
+
   // Checks that every refusal that a case waits for arrived since the case started, so that a refusal that the case
   // expects is never one that the frame no longer sends.
   function expectRefusalsSeen(paths: readonly string[], leftOutBefore: number) {
@@ -637,6 +645,7 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
           expect(await failure.first().textContent()).toContain(
             "Reading them takes get, list and watch on machines of cluster.x-k8s.io.",
           );
+          // The click on the name gave the frame the keyboard, so Escape reaches its drawer.
           await frame.page().keyboard.press("Escape");
           await frame.getByTestId("capi-cluster-details").waitFor({ state: "detached", ...viewTimeout });
           // The loads of the refused namespaces end before the next step, or before the refusals stop being expected.
@@ -726,8 +735,7 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
         await navigateCluster(frame, `${PAGE}?details=${encodeURIComponent(address)}`);
         await reference.locator("a").waitFor(viewTimeout);
         expect((await reference.textContent())?.trim()).toMatch(/^DevCluster \S+$/);
-        await frame.page().keyboard.press("Escape");
-        await details.waitFor({ state: "detached", ...viewTimeout });
+        await closeDetails(details);
 
         // The definition of the infrastructure cluster refused: text, with the reason, the permission and the message
         // of the answer.
@@ -745,8 +753,7 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
         expect(await unread.textContent()).toContain(
           refusalMessage(`${DEFINITIONS_PATH}/${INFRASTRUCTURE_DEFINITION}`),
         );
-        await frame.page().keyboard.press("Escape");
-        await details.waitFor({ state: "detached", ...viewTimeout });
+        await closeDetails(details);
         expectRefusalsSeen([DEFINITIONS_PATH, `${DEFINITIONS_PATH}/${INFRASTRUCTURE_DEFINITION}`], leftOutBefore);
         expect(await session.errors()).toEqual([]);
       } finally {

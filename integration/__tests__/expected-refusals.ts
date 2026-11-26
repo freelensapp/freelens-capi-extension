@@ -3,9 +3,9 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// The refusals that a session expects, and whether a response that Chromium reports as a failure is one of them
-// (SPEC-0004, P23, "Notes and deviations"), as pure data and a function, which their unit test checks with no app.
-// The error collector of the sessions, in `extension-helpers.ts`, leaves out of the errors the refusals that a step
+// The refusals and the throttling that a session expects, and whether a response that Chromium reports as a failure is
+// one of them (SPEC-0004, P23, P29, "Notes and deviations"), as pure data and functions, which their unit test checks
+// with no app. The error collector of the sessions, in `extension-helpers.ts`, leaves out of the errors what a step
 // expects, and counts every other. Its name does not match `*.tests.ts`, so Vitest does not collect it as a session.
 
 // The prefix under which a frame of a cluster sends the requests of the API of the cluster, on its own origin
@@ -67,6 +67,44 @@ export function isExpectedRefusal(expected: readonly ExpectedRefusal[], response
       refusal.frameHost === request.host &&
       refusal.path === path &&
       (refusal.page === undefined || refusal.page === response.page),
+  );
+}
+
+/**
+ * A throttling that a session expects: the 429 of a GET that another extension sends to the groups of its own kinds,
+ * whose names end with `groupSuffix`, such as `.projectsveltos.io`, from the frame of one cluster.
+ */
+export interface ExpectedThrottling {
+  /** The host of the frame of the cluster, `<id>.renderer.freelens.app` with its port. */
+  readonly frameHost: string;
+  /** The end of the names of the groups, such as `.projectsveltos.io`. */
+  readonly groupSuffix: string;
+}
+
+// The groups that this view reads, whose throttling is never left out, whatever a session expects: those of Cluster
+// API and of its providers, `cluster.x-k8s.io` and its subgroups, and that of the definitions.
+const VIEW_GROUPS = /^(?:(?:.+\.)?cluster\.x-k8s\.io|apiextensions\.k8s\.io)$/;
+
+/**
+ * Whether a failed response is a throttling that one of the expectations names: a 429 of the API of a cluster, under
+ * its prefix, to requests that were all GETs, at the path of a group whose name ends as the expectation says and that
+ * this view does not read, from the frame that the expectation names.
+ */
+export function isExpectedThrottling(expected: readonly ExpectedThrottling[], response: FailedResponse): boolean {
+  if (response.status !== "429" || !URL.canParse(response.url)) {
+    return false;
+  }
+  if (response.methods.length === 0 || response.methods.some((method) => method !== "GET")) {
+    return false;
+  }
+
+  const request = new URL(response.url);
+  const group = new RegExp(`^${API_KUBE_PREFIX}/apis/([^/]+)/`).exec(request.pathname)?.[1];
+
+  return (
+    group !== undefined &&
+    !VIEW_GROUPS.test(group) &&
+    expected.some((throttling) => throttling.frameHost === request.host && group.endsWith(throttling.groupSuffix))
   );
 }
 

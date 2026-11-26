@@ -26,7 +26,8 @@
 //
 // It writes to the cluster of the real project alone, through the scripts of the test environment, which check the
 // target before every request, and fails on any error that either process logs, a failed watch of `cluster.x-k8s.io`
-// included, which the client of the host logs as a warning.
+// included, which the client of the host logs as a warning, but a 429 that the API server answers to a GET of the
+// Sveltos extension to the groups of its own kinds.
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -251,6 +252,11 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
     );
 
     frame = await openKindCluster(session);
+    // The API server answers some GETs of the Sveltos extension to the groups of its own kinds with a 429, which say
+    // nothing about this view: S6 judges the two views by their rows and by the failed watches of `cluster.x-k8s.io`.
+    // They are left out from the frame of this cluster alone, and never one to a group that this view reads
+    // (SPEC-0004, "Notes and deviations").
+    session.expectThrottling([{ frameHost: new URL(frame.url()).host, groupSuffix: ".projectsveltos.io" }]);
     await selectNamespaces(frame, [NAMESPACE]);
   }, 300 * 1000);
 

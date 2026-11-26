@@ -141,11 +141,11 @@ jobs:
           - freelens_version: v2.0.0
           - freelens_version: v2.1.0
 
-    # The budgets of what it joins (SPEC-0004, P33, "Notes and deviations"): the hour of the real project, the quarter of
-    # an hour of the step of the tests of the real tier, the 50 minutes that the steps of the integration tests before
-    # their tests have to build and start Freelens dev, and the 70 minutes of the step of the sessions of the real tier.
+    # The two hours of P33, from the durations of the runs (SPEC-0004, "Notes and deviations"): the job took 8 to 10
+    # minutes in CI with sessions that settled at once, the real project up in 2.5 and the tests of the real tier in 4.5,
+    # and 22 when its sessions waited their polls of 10 minutes.
     runs-on: ubuntu-24.04
-    timeout-minutes: 195
+    timeout-minutes: 120
 
     # A new push to a pull request cancels the jobs of the real project that still run for it, each release in a group
     # of its own, so that the two jobs of a run do not cancel each other. The runs of main and of the night each have
@@ -461,11 +461,10 @@ jobs:
       # and reach it through the scripts, which check the target before every request. They write only to that
       # cluster: a label on freelens-capi-md and the definitions of Sveltos, which they remove at their end. The
       # sessions are deterministic, so a failure is not retried; they wait for the objects of the real project that
-      # its controllers still write, five minutes at most for each wait. The limit holds their worst case, each hook
-      # and each case at its own limit: 33 minutes for the session against clusterctl, 31 for S6, and 5 for Vitest to
-      # start and for each to reach the real project through the scripts.
+      # its controllers still write, five minutes at most for each wait. A step that reaches its limit fails, as a case
+      # that reaches its own does, and loses the report of the sessions after it, which a run of one file gives again.
       - name: Run the sessions of the real tier in Freelens dev
-        run: timeout 4200 pnpm --color=always test:integration:real-project --reporter=verbose --reporter=github-actions --includeTaskLocation
+        run: timeout 2400 pnpm --color=always test:integration:real-project --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:
           FREELENS_MAIN_LOG: ${{ runner.temp }}/freelens-dev.log
           TEST_KIND_CLUSTER_NAME: freelens-capi-management

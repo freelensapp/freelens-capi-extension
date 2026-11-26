@@ -373,7 +373,10 @@ leaves them out (SPEC-0004, "With the real project"; P29, P33).
   Cluster API. The page of the Sveltos extension reloads its lists every 30
   seconds, so an update that it shows counts only when no list of the Clusters
   without a watch went between the write and the update; when one did, the step
-  makes its write again, three times at most, and says so.
+  makes its write again, three times at most, and says so. A 429 that the API
+  server answers to a GET of the Sveltos extension to the groups of its own
+  kinds, `*.projectsveltos.io`, is not an error of this view, and S6 leaves it
+  out; one to a group that this view reads counts.
 
 They write only to the cluster of the real project, through the scripts, and
 undo what they write at their end, also when a step failed: the session of S6
@@ -410,12 +413,12 @@ extension that the profile of Freelens dev has, and leaves none.
   a check failed (`AGENTS.md`). The restricted session,
   `integration/__tests__/clusters-restricted.tests.ts`, opens the same page as
   a second identity that it makes on that cluster, which may read part of it,
-  and deletes it at its end ("Safety"). The step of the tests holds the worst
-  case of its sessions, each hook and each case at its own limit, 120 minutes:
-  6 for the session of the template, 42 for the session of the fixtures of
-  `healthy`, one case for each of its 17 kinds, 40 for the session of the
-  Clusters, 30 for the restricted one, and 2 for Vitest to start and collect
-  them; the job has 170, the 50 of its steps before the tests and that limit.
+  and deletes it at its end ("Safety"). The job has an hour, and its step of
+  the tests 25 minutes, limits set from the durations of the runs: in CI the
+  job took 5 minutes, and its step of the tests 3.3, with a case that waited
+  its 60 seconds. A step that reaches its limit fails, as a case that reaches
+  its own does, and loses the report of the sessions after it, which a run of
+  one file gives again.
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in
@@ -445,15 +448,15 @@ extension that the profile of Freelens dev has, and leaves none.
   `integration-tests.yaml` builds it, starts it with a profile that syncs a
   copy of the kubeconfig of the scripts for the cluster of the real project
   alone, and runs the sessions of the real tier in Freelens,
-  `pnpm test:integration:real-project`, within a limit that holds their worst
-  case, each hook and each case at its own limit, 70 minutes: 33 for the session
-  against clusterctl, 31 for S6, and 5 for Vitest to start and for each session
-  to reach the real project through the scripts; then
+  `pnpm test:integration:real-project`, within 40 minutes; then
   `pnpm e2e:cluster:down`, and it checks that no kind cluster and no container
-  of the scripts is left. Each job has 195 minutes: the hour of the real
-  project, the quarter of an hour of the tests of the real tier, the 50 minutes
-  that the integration tests give their steps before the tests to build and
-  start Freelens dev, and the 70 of the sessions. A step of the tests cut by its limit leaves their
+  of the scripts is left. Each job has the two hours of SPEC-0004, P33, limits
+  set from the durations of the runs: in CI a job took 8 to 10 minutes with
+  sessions that settled at once, the real project up in 2.5 and the tests of
+  the real tier in 4.5, and 22 when its sessions waited their polls of 10
+  minutes. A step that reaches its limit fails, as a case that reaches its own
+  does, and loses the report of the sessions after it, which a run of one file
+  gives again. A step of the tests cut by its limit leaves their
   workload clusters to `pnpm e2e:cluster:down`, which deletes them with the
   others. A new push to a pull request cancels the jobs of the real project
   that still run for it, each release in a group of its own, so that the two

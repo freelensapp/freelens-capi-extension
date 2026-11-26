@@ -1292,15 +1292,20 @@ kubeconfig of the scripts for that cluster alone:
   Sveltos extension also reloads its lists every 30 seconds, so the session
   records the requests, and an update counts only when no list of the Clusters
   without a watch went between the write and the update; when one did, the step
-  makes its write again, three times at most. Its end removes the label,
-  uninstalls the Sveltos extension and deletes the definitions by their names,
-  also when a step failed.
+  makes its write again, three times at most. It leaves out of the errors a 429
+  that the API server answers to a GET of the Sveltos extension to the groups of
+  its own kinds, `*.projectsveltos.io`, from the frame of that cluster, never one
+  to a group that this view reads (`expectThrottling` of the session of the
+  app). Its end removes the label, uninstalls the Sveltos extension and deletes
+  the definitions by their names, also when a step failed.
 
 The tests are deterministic, so nothing retries them: the config sets no
-`retry`, and the workflow runs the step once, under `timeout 7200`, and the job
-of the real project its sessions under `timeout 4200`, limits that hold the
-worst case of their sessions, each hook and each case at its own limit
-(docs/development/TESTING.md, "Continuous integration"). A retry
+`retry`, and the workflow runs the step once, under `timeout 1500`, and the job
+of the real project its sessions under `timeout 2400`, limits set from the
+durations of the runs (docs/development/TESTING.md, "Continuous integration"):
+a step that reaches its limit fails, as a case that reaches its own does, and
+loses the report of the sessions after it, which a run of one file gives
+again. A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
 loads a second time when it did not render and the dev file route of Freelens
