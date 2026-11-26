@@ -304,13 +304,20 @@ export function rowsOf(tree: ClusterTree, expanded: ReadonlySet<string>, search?
   return rows;
 }
 
+// The word that P12 puts in the cells Activity and Condition of a node that cannot be read.
+function cellWords(state: "not-read" | "not-found"): string {
+  return state === "not-found" ? "Not found" : "Not read";
+}
+
 // The words that a row shows and that the search matches, those of its name and of its marks of state: the kind and the
 // name, the role of an object of a provider, `namespace/name` for the class read in another namespace than its Cluster,
 // which its name shows, the name of a virtual node and the noun of the node of a kind; the word of the health, "stale"
 // and the words of the activities and their states, as the cells of the list show them (SPEC-0004, P14), unless the
-// result still waits for an input; and, for a node that cannot be read, the words of P12. Never the counts, a label, an
-// id or the namespace of the Cluster, which every row would match. The words of the cells Version and Status join them
-// with those cells (SPEC-0005, "Notes and deviations").
+// result still waits for an input; and, for a node that cannot be read, the words that P12 puts in its cells: "Not
+// read", or "Not found" for an object that its namespace does not hold, in its cells Activity and Condition, and the
+// reason in its cell Status. Never the counts, a label, an id or the namespace of the Cluster, which every row would
+// match. The words of the cells Version and Status of an object join them with those cells (SPEC-0005, "Notes and
+// deviations").
 export function nodeWords(tree: ClusterTree, node: TreeNode, status: NodeStatus | undefined): string[] {
   switch (node.form) {
     case "object":
@@ -326,7 +333,9 @@ export function nodeWords(tree: ClusterTree, node: TreeNode, status: NodeStatus 
         ...(node.role === undefined ? [] : [ROLE_WORDS[node.role]]),
       ];
 
-      if (node.form === "reference") return node.read.state === "pending" ? words : [...words, unreadWords(node.read)];
+      if (node.form === "reference") {
+        return node.read.state === "pending" ? words : [...words, cellWords(node.read.state), unreadWords(node.read)];
+      }
       if (status === undefined || status.pending) return words;
 
       const health = healthCell(status.status);
@@ -342,9 +351,13 @@ export function nodeWords(tree: ClusterTree, node: TreeNode, status: NodeStatus 
     case "virtual":
       return [VIRTUAL_NAMES[node.role]];
     case "kind":
-      return [node.noun, kindWords(node)];
+      return [node.noun, cellWords(node.unread.state), kindWords(node)];
     case "entry":
-      return [node.kind, node.name, ...(node.unread === undefined ? [] : [unreadWords(node.unread)])];
+      return [
+        node.kind,
+        node.name,
+        ...(node.unread === undefined ? [] : [cellWords(node.unread.state), unreadWords(node.unread)]),
+      ];
   }
 }
 

@@ -243,6 +243,53 @@ describe("the expansion at first (P13)", () => {
   });
 });
 
+describe("whether an object needs a look, each clause of the rule alone (P13)", () => {
+  // The MachineDeployment of healthy, Healthy and Idle with no mark of freshness, which needs no look, with one clause
+  // of the rule changed by each case.
+  const view = stateView("healthy");
+  const id = "cluster.x-k8s.io/MachineDeployment/freelens-capi-healthy-md-0-m9x7h";
+  const node = view.tree.nodes.get(id) as TreeNode;
+  const status = view.statuses.get(id) as NodeStatus;
+  const changed = (change: Partial<NodeStatus["status"]>): NodeStatus => ({
+    ...status,
+    status: { ...status.status, ...change },
+  });
+
+  it("needs none, Healthy, Idle and fresh", () => {
+    expect(status.status.health.health).toBe("Healthy");
+    expect(status.status.activities).toMatchObject({ state: "read", idle: true, unknown: false });
+    expect(status.status.freshness).toEqual([]);
+    expect(needsLook(node, status)).toBe(false);
+  });
+
+  it("needs one for the health Unknown alone", () => {
+    expect(needsLook(node, changed({ health: { ...status.status.health, health: "Unknown" } as never }))).toBe(true);
+  });
+
+  it("needs one for a mark of freshness other than Paused alone, and none for the mark Paused alone", () => {
+    expect(
+      needsLook(
+        node,
+        changed({
+          freshness: [{ cause: "Older generation", generation: 3, observedGeneration: 2, topologiesHeld: false }],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      needsLook(node, changed({ freshness: [{ cause: "Paused", since: undefined, topologiesHeld: false }] })),
+    ).toBe(false);
+  });
+
+  it("needs one for the activity Unknown alone", () => {
+    const { activities } = status.status;
+
+    expect(activities.state).toBe("read");
+    expect(
+      needsLook(node, changed({ activities: { ...activities, idle: false, unknown: true } as typeof activities })),
+    ).toBe(true);
+  });
+});
+
 describe("the state of the rows after the expansion at first (P13)", () => {
   // healthy, and healthy with the Machine 2xxxg Unhealthy: its condition `Ready` False, so that a node under the
   // Workers needs a look.
@@ -540,6 +587,19 @@ describe("the search (P15)", () => {
     expect(matched(view, "0f6c1a52")).toEqual([]);
     expect(matched(view, "21 objects")).toEqual([]);
     expect(matched(view, "17 Healthy")).toEqual([]);
+  });
+
+  it("matches the words that P12 puts in the cells of a node that cannot be read, Not found among them", () => {
+    expect(matched(stateView("deleting"), "Not found")).toEqual([
+      "DevMachineTemplate freelens-capi-deleting-md-0-gq8t7 (template) [not found]",
+      "KubeadmConfigTemplate freelens-capi-deleting-md-0-nddmd [not found]",
+    ]);
+    expect(
+      matched(
+        stateView("healthy", { failures: { "addons.cluster.x-k8s.io/ClusterResourceSetBinding": [REFUSED] } }),
+        "Not read",
+      ),
+    ).toEqual(["ClusterResourceSetBindings [not read]", "ConfigMap cni-kindnet [not read]"]);
   });
 
   it("matches the words of P12 of a node that cannot be read", () => {
