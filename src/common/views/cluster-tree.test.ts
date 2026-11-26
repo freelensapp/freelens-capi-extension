@@ -1305,6 +1305,45 @@ describe("a node that cannot be read (P12)", () => {
     ).toEqual({ by: "reason", reason: { code: "owned-by-cluster", namers: ["Machines"] } });
   });
 
+  it("an object of a provider that the Cluster owns names among the kinds that could not be read those that the roles of its kind give", () => {
+    // On machine-pools with the Machines refused: the MachinePool names a bootstrap config of a provider, which gives
+    // its kind the role of a bootstrap config, and another object of that kind, owned by the Cluster alone, is named
+    // by no object. A bootstrap config is named by the Machines and the MachinePools; the Machines could not be read.
+    const objects = setOf("machine-pools");
+    const pool = named(objects, "MachinePool");
+    const kind = "ExampleConfig";
+    const config = (name: string, owner: Writable): Writable => ({
+      apiVersion: "bootstrap.example.test/v1beta2",
+      kind,
+      metadata: {
+        name,
+        namespace: "freelens-capi-machine-pools",
+        labels: { "cluster.x-k8s.io/cluster-name": "freelens-capi-machine-pools" },
+        ownerReferences: [{ apiVersion: owner.apiVersion, kind: owner.kind, name: owner.metadata.name }],
+      },
+      spec: {},
+    });
+
+    pool.spec.template.spec.bootstrap.configRef = { apiGroup: "bootstrap.example.test", kind, name: "example-pool" };
+
+    const tree = treeOf(
+      [...objects, config("example-pool", pool), config("example-orphan", named(objects, "Cluster"))],
+      "freelens-capi-machine-pools",
+      {
+        failures: { "cluster.x-k8s.io/Machine": [REFUSED] },
+        resolutions: {
+          "bootstrap.example.test/ExampleConfig": resolved("bootstrap.example.test/ExampleConfig", "bootstrap-example"),
+        },
+      },
+    );
+
+    expect(nodeOf<ObjectNode>(tree, "bootstrap.example.test/ExampleConfig/example-pool").role).toBe("bootstrap-config");
+    expect(nodeOf<ObjectNode>(tree, "bootstrap.example.test/ExampleConfig/example-orphan").placement).toEqual({
+      by: "reason",
+      reason: { code: "owned-by-cluster", namers: ["Machines"] },
+    });
+  });
+
   it("a kind still loading has its nodes pending, never Unknown, and no node of its kind", () => {
     const tree = stateTree("healthy", { pending: ["bootstrap.cluster.x-k8s.io/KubeadmConfig"] });
     const rows = treeOutline(tree);
