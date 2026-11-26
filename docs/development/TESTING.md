@@ -24,13 +24,17 @@ publishes it, the local Docker, the check of a digest and the cache of the
 downloads, the state folder, its lock and the kubeconfig of the user, the
 environment of a command, the containers that `down` deletes and what it
 decides, the providers of the real project against the pins, the command line,
-the limits of inotify, what the scripts take from the files of a release, and
-the fixtures: the shift of their times, the cleaning of a captured object,
-their apply, their YAML, their states and the sets of the repository.
-SPEC-0002 lists its cases. `pnpm test:integration` runs the integration tests,
+the limits of inotify, what the scripts take from the files of a release, the
+fixtures: the shift of their times, the cleaning of a captured object, their
+apply, their YAML, their states and the sets of the repository, and the objects
+of the trial of S7 ("Tests of the real tier"). SPEC-0002 lists its cases, and
+SPEC-0003 those of the trial of S7 ("Tests", "With the real project: S7"). The
+status model is read on the fixtures by `src/common/status/fixtures.test.ts`
+(SPEC-0003, "Tests"). `pnpm test:integration` runs the integration tests,
 described in `AGENTS.md`: the session of the template, which installs the
 extension, the session of the fixtures, and the session of the list of Clusters
-of SPEC-0004 ("Continuous integration").
+of SPEC-0004 ("Continuous integration"). `pnpm test:real-project` runs the
+tests of the real tier ("Tests of the real tier").
 
 ## The test environment
 
@@ -273,6 +277,66 @@ two times of the API server apart, and removes the set. The API server applies
 the schema of each definition to every object and to its status, its CEL rules
 included, so a fixture that does not pass it fails there; no schema is changed.
 
+## Tests of the real tier
+
+What only a controller answers is tried on the real project by the tests of
+the real tier: `pnpm test:real-project` runs the files
+`test/real-project/**/*.tests.ts`, one at a time, with
+`vitest.real-project.config.ts`. The job of the real project of
+`test-environment.yaml` runs it once the real project is up, before it takes the
+environment down, and nothing else runs it: neither `pnpm test:unit` nor the
+integration workflow. Outside CI a test skips with a warning when the real
+project cannot be reached through the scripts; in CI it fails instead.
+
+A test of the real tier reaches the cluster of the real project through the
+scripts, with `openRealProject` of `e2e/scripts/commands.mts`, as a command of
+the scripts reaches it: it sets the private umask of the scripts, checks the
+local Docker, takes the lock of the state folder, runs the checks that a capture
+runs before it makes workload clusters, the tools and the limits of inotify
+among them, refuses a real project without the providers of the pins or with one
+at another release, and checks the target before every request, so that it
+refuses any other cluster. A refusal of the checks of the target throws a
+`TargetRefusal`, which a test does not retry, while a request that fails may
+succeed later. Closing the session that it returns releases the lock and reports
+a change to the kubeconfig of the user. A test writes only to that cluster, in a
+namespace of its own, which it deletes at its end with its objects, as it
+deletes first one that a run that was killed left. Vitest runs each file in a
+process of its own, since a worker thread cannot set the umask.
+
+The one test of the real tier, `test/real-project/s7.tests.ts`, tries S7 of
+SPEC-0001 as SPEC-0003 tries it (P32), in the namespace `freelens-capi-s7`: a
+server-side dry run of a Cluster with neither reference nor topology, which the
+webhook of Cluster refuses; a Cluster with an infrastructure reference only and
+one control plane Machine of its own, labelled for kindnet, which the
+ClusterResourceSet of kindnet in the namespace applies; and a Cluster with a
+control plane reference only, to a KubeadmControlPlane of one replica. It reads
+the namespace every five seconds until the Cluster with an infrastructure
+reference has settled, its probe succeeded and its control plane initialized,
+and four minutes have passed since the creation of both Clusters, ten minutes
+after the creation at most. A reading that fails is taken again until then, as
+the waits of the scripts take theirs, and a refusal of the checks of the target
+ends the test at once. It checks every reading against what the trial by hand
+saw, the reading of the status model included, with the expectations of
+`s7-expectations.ts`, from the first full status of each object, but for what a
+controller writes a moment after the rest, which an expectation derives from the
+reading or asserts once written. Their unit tests check them on readings rebuilt
+from that trial, from the first run in CI and from the code of the release, and
+on readings that contradict each row (SPEC-0003, "With the real project: S7").
+
+The first run of the test in CI, in the job of the real project dispatched on
+the branch that added it, passed its first and third cases and failed the second
+at +6.361s: its Cluster had a generation that its status had not observed yet,
+which the model marks as an older generation, as it should, while the
+expectation wanted no mark. The expectations now derive that mark from each
+reading, and two more expectations follow the code where the trial could not see
+it (SPEC-0003, "Notes and deviations"). The test asserts what it checks only
+once its run in CI has passed. The whole job took about 8 minutes on a warm
+cache.
+
+The workload cluster of the second case has containers of its own, which `down`
+deletes, by their label, as it deletes those of the captures, when a run that
+was killed left them.
+
 ## Continuous integration
 
 - `integration-tests.yaml`, on every pull request and push to `main`: the kind
@@ -300,15 +364,25 @@ included, so a fixture that does not pass it fails there; no schema is changed.
   panel open, and the key is a column that the list repeats, as the host makes
   its columns from the definition; any other repeated key counts (`AGENTS.md`).
   The session of the template installs the extension, as before.
-- `test-environment.yaml`, when the scripts, the pins, the fixtures or the
-  toolchain change, on every push to `main` and every night: its job of the
-  fixtures runs `pnpm e2e:fixtures:check` on the cluster of the definitions,
-  and its job of the real project runs `pnpm e2e:cluster:up`, checks that
-  `freelens-capi-md` reports `Available` `True`, runs `pnpm e2e:cluster:up`
-  again, which resumes, then `pnpm e2e:cluster:down`, and checks that no kind
-  cluster and no container of the scripts is left. A new push to a pull request
-  cancels the job of the real project that still runs for it; the runs of
-  `main` and of the night are never cancelled.
+- `test-environment.yaml`, when the scripts, the pins, the fixtures, the
+  toolchain, the code of the status model that the tests of the real tier load,
+  `src/common/status/` and `src/common/parsers/` without their unit tests, or
+  the tests of the real tier change, on every push to `main` and every night.
+  The paths start both of its jobs, the fixtures too; the pull request of
+  SPEC-0004 that adds its sessions to the job of the real project widens them
+  to what those load. Its job of the fixtures runs `pnpm e2e:fixtures:check` on
+  the cluster of the definitions, and its job of the real project runs
+  `pnpm e2e:cluster:up`, checks that `freelens-capi-md` reports `Available`
+  `True`, runs `pnpm e2e:cluster:up` again, which resumes, then the tests of the
+  real tier, `pnpm test:real-project`, within a quarter of an hour of their
+  own, then `pnpm e2e:cluster:down`, and checks that no kind cluster and no
+  container of the scripts is left. The job has 75 minutes, the hour that the
+  real project had and the quarter of an hour of the tests of the real tier,
+  and took about 8 minutes on a warm cache. A step of the tests cut by its
+  limit leaves their workload clusters to `pnpm e2e:cluster:down`, which deletes
+  them with the others. A new push to a pull request cancels the job of the
+  real project that still runs for it; the runs of `main` and of the night are
+  never cancelled.
 - `e2e-pins-check.yaml`, on every change to the pins or to the scripts:
   `pnpm e2e:pins:check`.
 
@@ -454,7 +528,9 @@ of SPEC-0002:
   paused Cluster it resumes. `down` deletes the containers of these clusters as
   it deletes those of the demo, by their label, when the state folder records
   the cluster of the real project, so a capture that was killed leaves nothing
-  behind it once the environment is taken down.
+  behind it once the environment is taken down. The same holds for the workload
+  clusters of the test of S7, named `freelens-capi-s7-infra-only` and
+  `freelens-capi-s7-cp-only`, which it deletes at its end with their namespace.
 - **The limits of inotify, on Linux.** The nodes of the workload clusters need
   more instances of inotify than some systems give: with too few, their
   containers exit with code 255 as they start, and the health check of the
