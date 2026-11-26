@@ -13,13 +13,13 @@
 //   only, and asks the provider to set the address on the claim, so a claim with no `Ready` and an address is
 //   Healthy, and one with neither is Unknown.
 // - The kinds of the operator (P14): their `Ready` copies only the `Available` of the Deployment of the provider, so
-//   with `Ready` the kind is Healthy only when `PreflightCheckPassed`, `ProviderInstalled` and `Ready` are all
-//   `True`, Unhealthy when `Ready` is `False`, and Degraded when `Ready` is `True` and another of the three is not;
-//   a `Ready` that is `Unknown` gives Unknown, as point 2 says. `Ready` is not written while `ProviderInstalled` is
-//   not `True`: with no `Ready`, the kind is Unhealthy when `ProviderInstalled` is `False`, or
-//   `PreflightCheckPassed` is `False` for another reason than the wait for the core provider, and Unknown
-//   otherwise. `ProviderUpgraded` counts by point 3 while `status.installedVersion` differs from `spec.version`;
-//   once they match it is stale, no issue, At rest, and noted.
+//   with `Ready` the kind is Healthy only when `PreflightCheckPassed`, `ProviderInstalled` and `Ready` are all `True`,
+//   Unhealthy when `Ready` is `False`, and Degraded when `Ready` is `True` and another of the three is not; a `Ready`
+//   that is `Unknown` gives Unknown, as point 2 says. `Ready` is not written while `ProviderInstalled` is not `True`:
+//   with no `Ready`, the kind is Unhealthy when `ProviderInstalled` is `False`, or `PreflightCheckPassed` is `False`
+//   for another reason than the wait for the core provider, and Unknown otherwise, a reason that cannot be read
+//   included, since only the reason tells the wait apart. `ProviderUpgraded` counts by point 3 while
+//   `status.installedVersion` differs from `spec.version`; once they match it is stale, no issue, At rest, and noted.
 // - The objects of a provider (P15): `Ready` sums them up, `Available` else `Ready` for a control plane, and every
 //   other condition of positive polarity makes them Degraded. A remediation request is Unknown, since no contract
 //   of the book names a condition of it, and a template of a provider has no status (P16).
@@ -37,10 +37,14 @@ function ipAddressClaimHealth(input: HealthInput): HealthOutcome {
     return { health: summaryHealth(input.conditions, "Ready", () => false), notes: [] };
   }
 
-  const name = readText(fieldOf(readFields(fieldOf(input.status, "addressRef")), "name"));
+  const reference = readFields(fieldOf(input.status, "addressRef"));
+  const name = readText(fieldOf(reference, "name"));
   const address = name === UNREADABLE || name === "" ? undefined : name;
   const restsOn = { form: "address", address } as const;
-  const notes: Note[] = name === UNREADABLE ? [{ code: "field-unreadable", field: "status.addressRef.name" }] : [];
+  const notes: Note[] = [];
+
+  if (reference === UNREADABLE) notes.push({ code: "field-unreadable", field: "status.addressRef" });
+  if (name === UNREADABLE) notes.push({ code: "field-unreadable", field: "status.addressRef.name" });
 
   return { health: address === undefined ? unknownHealth(restsOn) : { health: "Healthy", restsOn, issues: [] }, notes };
 }
@@ -103,7 +107,11 @@ function operatorHealth(input: HealthInput): HealthOutcome {
 
   if (installed?.status === "False") {
     health = { health: "Unhealthy", restsOn: restsOn("ProviderInstalled", installed), issues: [] };
-  } else if (preflight?.status === "False" && preflight.reason !== WAITING_FOR_CORE_PROVIDER) {
+  } else if (
+    preflight?.status === "False" &&
+    preflight.reason !== undefined &&
+    preflight.reason !== WAITING_FOR_CORE_PROVIDER
+  ) {
     health = { health: "Unhealthy", restsOn: restsOn("PreflightCheckPassed", preflight), issues: [] };
   }
   return { health, notes };
@@ -137,6 +145,18 @@ export const OPERATOR_RULES: readonly KindRule[] = (
 ).map(operatorRule);
 
 // The objects of a provider
+
+// The roles of an object of a provider, a closed set (SPEC-0003, P15): a role outside it reads as not given.
+export const PROVIDER_ROLES: readonly ProviderRole[] = [
+  "infrastructure-cluster",
+  "control-plane",
+  "infrastructure-machine",
+  "bootstrap-config",
+  "infrastructure-machine-pool",
+  "ipam-pool",
+  "remediation-request",
+  "template",
+];
 
 // The roles whose contracts ask their controllers to honour the request of a pause, as the kinds of Cluster API do
 // (P19): those of an infrastructure cluster, machine and machine pool, of a control plane and of a bootstrap config

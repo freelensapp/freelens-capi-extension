@@ -746,6 +746,27 @@ describe("the note of P4", () => {
     ).toEqual([]);
   });
 
+  it("reads the Rolling out of a Cluster from its condition, with the note of its parts, when the view gave none", () => {
+    const read = activitiesOf(rollingOut.cluster, { machinePools: [], machines: [], healthChecks: [] });
+
+    expect(read.activities.find(({ name }) => name === "Rolling out")).toMatchObject({ state: "Progressing" });
+    expect(read.notes).toContainEqual({ code: "input-not-given", input: "parts" });
+    expect(read.notes).not.toContainEqual({ code: "machines-differ-from-spec" });
+  });
+
+  it("shows no note for a Cluster none of whose parts rolls out when a part cannot be read, which may", () => {
+    const wrong = { object: { kind: "MachineDeployment", name: "broken" }, activities: { state: "read" } } as never;
+    const read = activitiesOf(rollingOut.cluster, {
+      machinePools: [],
+      machines: [],
+      healthChecks: [],
+      parts: { machineDeployments: [wrong] },
+    });
+
+    expect(read.activities.map(({ name }) => name)).not.toContain("Rolling out");
+    expect(read).toMatchObject({ idle: false, unknown: true, notes: [] });
+  });
+
   it("shows the note for a Cluster whose parts that roll out are all under OnDelete", () => {
     const onDelete = withSpec(rollingOut.machineDeployment, { rollout: { strategy: { type: "OnDelete" } } });
     const context = { machinePools: [], machines: [], healthChecks: [] };
@@ -1001,16 +1022,20 @@ describe("a MachinePool", () => {
 });
 
 describe("a control plane of a provider (P1)", () => {
-  it("reads the activities of the three conditions that it writes", () => {
-    // The control plane of the provider scaling up: its `ScalingUp` changed to `True`.
-    const scaling = withCondition(providerControlPlane, "ScalingUp", { status: "True", reason: "ScalingUp" });
+  it.each([
+    ["RollingOut", "Rolling out"],
+    ["ScalingUp", "Scaling up"],
+    ["ScalingDown", "Scaling down"],
+  ] as const)("reads %s, one of the three conditions that it writes", (type, name) => {
+    // The control plane of the provider with that condition changed to `True`.
+    const active = withCondition(providerControlPlane, type, { status: "True", reason: type });
 
     expect(activitiesOf(providerControlPlane, asControlPlane)).toMatchObject({
       activities: [],
       idle: true,
       unknown: false,
     });
-    expect(namesOf(scaling, asControlPlane)).toEqual(["Scaling up"]);
+    expect(namesOf(active, asControlPlane)).toEqual([name]);
   });
 
   it("reads Unknown when it writes none of them, and so does its Cluster with it in parts", () => {
@@ -1132,6 +1157,71 @@ describe("Unknown and never Idle (P1)", () => {
       changesAt: undefined,
       notes: [{ code: "input-not-given", input: "machines" }],
     });
+  });
+
+  it("for a parent of the field of a contract that is not an object, which is noted and never read as unset (P17)", () => {
+    // The KubeadmConfig of provisioning with its `status.initialization` of the wrong type.
+    const config = withStatus(provisioning.workerKubeadmConfig, { initialization: "pending" });
+    const read = activitiesOf(config, { ...ofProvisioning, machines: [provisioning.workerMachine] });
+
+    expect(read).toMatchObject({ activities: [], idle: false, unknown: true });
+    expect(read.notes).toContainEqual({ code: "field-unreadable", field: "status.initialization" });
+  });
+
+  it.each([
+    ["spec.rollout", { rollout: "RollingUpdate" }],
+    ["spec.rollout.strategy", { rollout: { strategy: "RollingUpdate" } }],
+    ["spec.rollout.strategy.type", { rollout: { strategy: { type: 2 } } }],
+    ["spec.paused", { paused: "yes" }],
+  ])("for a %s of the wrong type, under which P4 reads the strategy, noted", (field, spec) => {
+    // The MachineDeployment of rolling-out, whose `RollingOut` is `True`, with that field of the wrong type.
+    const read = activitiesOf(withSpec(rollingOut.machineDeployment, spec), {
+      ...ofRollingOut,
+      machines: [rollingOut.oldMachine, rollingOut.newMachine],
+    });
+
+    expect(read.activities.map(({ name }) => name)).not.toContain("Rolling out");
+    expect(read).toMatchObject({ idle: false, unknown: true });
+    expect(read.notes).toContainEqual({ code: "field-unreadable", field });
+  });
+
+  it("for a topology of the wrong type, which never reads as no topology", () => {
+    // The Cluster of upgrading, whose `TopologyReconciled` says that it upgrades, with its `spec.topology` of the
+    // wrong type.
+    const odd = withSpec(upgrading.cluster, { topology: "quick-start" });
+    const read = activitiesOf(odd, { machinePools: [], parts: { machineDeployments: [] }, machines: [] });
+
+    expect(read.activities.map(({ name }) => name)).not.toContain("Upgrading");
+    expect(read).toMatchObject({ idle: false, unknown: true });
+    expect(read.notes).toContainEqual({ code: "field-unreadable", field: "spec.topology" });
+  });
+
+  it("for a Machine whose creation cannot be read, whose age then cannot be judged, and for its owner", () => {
+    // The new Machine of rolling-out, which has its Node and is not available, with its creation of the wrong type
+    // and then not a time.
+    for (const creationTimestamp of [1_767_225_580, "yesterday"]) {
+      const machine = withMetadata(rollingOut.newMachine, { creationTimestamp });
+      const read = activitiesOf(machine, ofRollingOut);
+
+      expect(read).toMatchObject({ activities: [], idle: false, unknown: true });
+      expect(read.notes).toContainEqual({ code: "field-unreadable", field: "metadata.creationTimestamp" });
+      expect(activitiesOf(rollingOut.newMachineSet, { ...ofRollingOut, machines: [machine] })).toMatchObject({
+        idle: false,
+        unknown: true,
+      });
+    }
+  });
+
+  it("for a kind of the operator installed with no version in its spec, which is no upgrade", () => {
+    // A kind of the operator installed, whose spec lost its version, which the operator writes before it installs.
+    const ready = [condition("Ready", "True", "DeploymentAvailable", "2025-12-31T23:58:20Z")];
+
+    for (const version of [undefined, "", 7]) {
+      const read = activitiesOf(withSpec(operator(ready, "v1.14.4"), { version }));
+
+      expect(read).toMatchObject({ activities: [], idle: false, unknown: true });
+      expect(read.notes).toContainEqual({ code: "field-unreadable", field: "spec.version" });
+    }
   });
 
   it("for a version that does not parse (P28)", () => {
@@ -1315,12 +1405,30 @@ describe("Blocked (D4, P14, P18, P21, P33)", () => {
       });
     });
 
+    it("reads an upgrade whose manifests cannot be fetched as Upgrading and Blocked, from ProviderInstalled", () => {
+      const fetchFailed = condition("ProviderInstalled", "False", "ComponentsFetchError", "2025-12-31T23:59:00Z");
+
+      expect(activityOf(operator([preflight, fetchFailed, ready], "v1.14.4", "v1.15.0"), "Upgrading")).toMatchObject({
+        state: "Blocked",
+        condition: { type: "ProviderInstalled", reason: "ComponentsFetchError" },
+      });
+    });
+
     it("reads a first installation that failed, and a preflight check that refuses it, as Blocked", () => {
       const failed = condition("ProviderInstalled", "False", "ComponentsFetchError", "2025-12-31T23:58:10Z");
       const refused = condition("PreflightCheckPassed", "False", "IncorrectVersionFormat", "2025-12-31T23:58:05Z");
 
       expect(activityOf(operator([preflight, failed]), "Provisioning").state).toBe("Blocked");
       expect(activityOf(operator([refused]), "Provisioning").state).toBe("Blocked");
+    });
+
+    it("reads Blocked a paused kind whose preflight check has a reason of the wrong type, as P33 comes first", () => {
+      // The operator writes no `Paused`: one written by hand, next to a reason that is a number.
+      const unsure = condition("PreflightCheckPassed", "False", "WaitingForCoreProviderReady", "2025-12-31T23:58:05Z");
+      const pausedByHand = condition("Paused", "True", "Paused", "2025-12-31T23:58:06Z");
+
+      expect(activityOf(operator([{ ...unsure, reason: 7 }]), "Provisioning").state).toBe("Unknown");
+      expect(activityOf(operator([{ ...unsure, reason: 7 }, pausedByHand]), "Provisioning").state).toBe("Blocked");
     });
 
     it("reads the wait for the core provider as a step of its activity, Progressing", () => {
@@ -1345,6 +1453,25 @@ describe("Blocked (D4, P14, P18, P21, P33)", () => {
       ["Scaling down", "Blocked"],
     ]);
     expect(read.activities.slice(1).every((activity) => activity.tone === "warning")).toBe(true);
+  });
+
+  it("for the Rolling out of a Cluster when every part that rolls out is Blocked, as its Provisioning", () => {
+    // The MachineDeployment of rolling-out paused by its own annotation, so that each of its activities is Blocked,
+    // given as the part of its Cluster, which is not paused.
+    const pausedPart = rollingOutPart(
+      withMetadata(rollingOut.machineDeployment, { annotations: { "cluster.x-k8s.io/paused": "" } }),
+    );
+    const context = { machinePools: [], machines: [], healthChecks: [] };
+
+    expect(
+      activityOf(rollingOut.cluster, "Rolling out", { ...context, parts: { machineDeployments: [pausedPart] } }),
+    ).toMatchObject({ state: "Blocked", tone: "warning" });
+    expect(
+      activityOf(rollingOut.cluster, "Rolling out", {
+        ...context,
+        parts: { machineDeployments: [pausedPart, rollingOutPart()] },
+      }),
+    ).toMatchObject({ state: "Progressing" });
   });
 
   it("for a deleting object that is paused, which stays so until it is resumed (P33)", () => {

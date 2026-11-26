@@ -18,14 +18,19 @@ import {
   withoutTopology,
   withSpec,
   withStatus,
+  withThirdPartyCondition,
 } from "../../../test/status-objects";
 import { statusOf } from "./index";
 
 import type { ClusterObject, Health, KubeObjectData, ObjectStatus, StatusContext } from "./index";
 
-// The parts of the Cluster are given, with none, so that the activities of the Cluster note nothing.
+// The parts of the Cluster are given, with none, and its ClusterClass, quick-start, the class of every Cluster of the
+// fixtures with a topology, so that the Cluster notes nothing that a case does not test.
 function statusOfCluster(cluster: KubeObjectData, context: Partial<StatusContext> = {}): ObjectStatus {
-  return statusOf(cluster, contextOf({ machinePools: [], parts: { machineDeployments: [] }, ...context }));
+  return statusOf(
+    cluster,
+    contextOf({ machinePools: [], parts: { machineDeployments: [] }, clusterClass: healthy.clusterClass, ...context }),
+  );
 }
 
 function healthOf(cluster: KubeObjectData, context: Partial<StatusContext> = {}): Health {
@@ -121,7 +126,31 @@ describe("a Cluster", () => {
     );
 
     expect(healthOf(gated).health).toBe("Healthy");
-    expect(healthOf(withCondition(healthy.cluster, "WorkersAvailable", { status: "False" })).health).toBe("Healthy");
+  });
+
+  it.each(["RemoteConnectionProbe", "InfrastructureReady", "ControlPlaneAvailable", "WorkersAvailable"])(
+    "counts no %s, an input of Available (R2.21)",
+    (type) => {
+      // The Cluster of healthy with that condition `False`, which its `Available` would turn `False`.
+      expect(healthOf(withCondition(healthy.cluster, type, { status: "False" }))).toMatchObject({
+        health: "Healthy",
+        issues: [],
+      });
+    },
+  );
+
+  it("reads Degraded from a condition of a third party that is False, unless a gate of its ClusterClass names it (H1)", () => {
+    // The Cluster of healthy with a condition of a third party `False`, which its `Available` leaves out; then with
+    // the class of healthy given a gate that names it, which makes it an input of `Available`.
+    const backup = withThirdPartyCondition(healthy.cluster);
+    const gated = withSpec(healthy.clusterClass, { availabilityGates: [{ conditionType: "example.com/BackupReady" }] });
+
+    expect(healthOf(backup)).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
+    });
+    expect(healthOf(backup, { clusterClass: gated }).health).toBe("Healthy");
+    expect(healthOf(withThirdPartyCondition(healthy.cluster, "True")).health).toBe("Healthy");
   });
 });
 
@@ -143,9 +172,14 @@ describe("the MachinePools of a Cluster (H1)", () => {
     );
   });
 
-  it("says how many MachinePools are Unknown, next to its health", () => {
+  it("says how many MachinePools are Unknown, next to its health, leaving out those with no health", () => {
     const status = statusOfCluster(poolWithoutMachines.cluster, {
-      machinePools: [poolStatus("Unknown", "a"), poolStatus("Unknown", "b"), poolStatus("Healthy", "c")],
+      machinePools: [
+        poolStatus("Unknown", "a"),
+        poolStatus("Unknown", "b"),
+        poolStatus("Healthy", "c"),
+        poolStatus("none", "d"),
+      ],
     });
 
     expect(status.health.health).toBe("Degraded");
@@ -153,7 +187,10 @@ describe("the MachinePools of a Cluster (H1)", () => {
   });
 
   it("notes that the MachinePools were not read when the view did not give them", () => {
-    const status = statusOf(healthy.cluster, contextOf({ parts: { machineDeployments: [] } }));
+    const status = statusOf(
+      healthy.cluster,
+      contextOf({ parts: { machineDeployments: [] }, clusterClass: healthy.clusterClass }),
+    );
 
     expect(status.health.health).toBe("Healthy");
     expect(status.notes).toEqual([{ code: "input-not-given", input: "machinePools" }]);
@@ -179,15 +216,27 @@ describe("a Cluster that the project never reports available (P7)", () => {
       { controlPlaneRef: undefined, infrastructureRef: undefined },
       ["spec.controlPlaneRef", "spec.infrastructureRef"],
     ],
-  ])("notes a Cluster without a topology and with %s, and keeps the health its Available gives", (_, spec, missing) => {
-    // The Cluster of without-topology with a reference taken out, as the trial of S7 makes one.
-    const cluster = withSpec(withoutTopology.cluster, spec);
-    const status = statusOfCluster(cluster);
+  ])(
+    "notes a Cluster without a topology and with %s, which is Unknown or Unhealthy but never Healthy",
+    (_, spec, missing) => {
+      // The Cluster of without-topology with a reference taken out, as the trial of S7 makes one. Its `Available`
+      // stays `True` only in a status written by hand, as the fixture is: the project never writes it so (R2.27).
+      const cluster = withSpec(withoutTopology.cluster, spec);
+      const status = statusOfCluster(cluster);
+      const degraded = withCondition(cluster, "WorkerMachinesReady", { status: "False", reason: "NotReady" });
 
-    expect(status.notes).toContainEqual({ code: "never-available", missing });
-    expect(status.health.health).toBe("Healthy");
-    expect(statusOfCluster(withCondition(cluster, "Available", { status: "False" })).health.health).toBe("Unhealthy");
-  });
+      expect(status.notes).toContainEqual({ code: "never-available", missing });
+      expect(status.health).toMatchObject({
+        health: "Unknown",
+        restsOn: { form: "condition", type: "Available", condition: { status: "True" } },
+      });
+      expect(statusOfCluster(degraded).health).toMatchObject({
+        health: "Unknown",
+        issues: [{ form: "condition", type: "WorkerMachinesReady" }],
+      });
+      expect(statusOfCluster(withCondition(cluster, "Available", { status: "False" })).health.health).toBe("Unhealthy");
+    },
+  );
 
   it("notes nothing for a Cluster with both references or with a topology", () => {
     expect(statusOfCluster(withoutTopology.cluster).notes).toEqual([]);

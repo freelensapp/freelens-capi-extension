@@ -16,6 +16,7 @@ import {
   upgrading,
   withCondition,
   withStatus,
+  withThirdPartyCondition,
 } from "../../../test/status-objects";
 import { statusOf } from "./index";
 
@@ -98,6 +99,13 @@ describe("a KubeadmControlPlane", () => {
     expect(healthOf(noStatus.kubeadmControlPlane).health).toBe("Unknown");
   });
 
+  it("reads Degraded from a condition of a third party that is False, which Available leaves out (H1)", () => {
+    expect(healthOf(withThirdPartyCondition(healthy.kubeadmControlPlane))).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
+    });
+  });
+
   it("has no phase", () => {
     expect(statusOf(healthy.kubeadmControlPlane, contextOf()).phase).toBeUndefined();
   });
@@ -131,7 +139,7 @@ describe("a KubeadmConfig", () => {
     });
   });
 
-  it("is made Degraded by nothing else: its other conditions are the inputs of Ready", () => {
+  it("is made Degraded by none of its own conditions, which are the inputs of Ready, and by one of a third party", () => {
     // The config of healthy with its `DataSecretAvailable` changed to `False`, while its `Ready` stays `True`.
     const stale = withCondition(healthy.kubeadmConfig, "DataSecretAvailable", {
       status: "False",
@@ -139,7 +147,29 @@ describe("a KubeadmConfig", () => {
     });
 
     expect(healthOf(stale)).toMatchObject({ health: "Healthy", issues: [] });
+    expect(
+      healthOf(
+        withCondition(healthy.kubeadmConfig, "CertificatesAvailable", { status: "False", reason: "NotAvailable" }),
+      ),
+    ).toMatchObject({ health: "Healthy", issues: [] });
     expect(healthOf(noStatus.kubeadmConfig).health).toBe("Unknown");
+    expect(healthOf(withThirdPartyCondition(healthy.kubeadmConfig))).toMatchObject({
+      health: "Degraded",
+      issues: [{ form: "condition", type: "example.com/BackupReady" }],
+    });
+  });
+});
+
+describe("the deprecated failure of a KubeadmConfig (P6)", () => {
+  it("notes it, since its schema keeps it", () => {
+    const failed = withStatus(healthy.kubeadmConfig, {
+      deprecated: { v1beta1: { failureReason: "DataSecretGenerationFailed", failureMessage: "no join token" } },
+    });
+    const context = contextOf({ cluster: healthy.cluster, machines: [healthy.controlPlaneMachine] });
+
+    expect(statusOf(failed, context).notes).toEqual([
+      { code: "deprecated-failure", reason: "DataSecretGenerationFailed", message: "no join token" },
+    ]);
   });
 });
 

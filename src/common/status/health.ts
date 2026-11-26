@@ -11,7 +11,7 @@
 //    `False` the object is Unhealthy; when it is `Unknown`, missing or of any other status, or the object has no
 //    status yet, it is Unknown.
 // 3. When it is `True`, the object is Degraded if another condition of positive polarity that its rule counts is
-//    an issue, and Healthy otherwise.
+//    an issue, and Healthy otherwise. A condition of a third party counts, unless it is a gate (allButInputs).
 // 4. What is no issue never makes it Degraded: a condition other than the summary that is `Unknown`, a condition
 //    of negative polarity, a `TopologyReconciled` that is `False` for a reason that is no failure, the pending
 //    changes of P4 and P5, all of which conditions.ts weighs as something other than Issue, and what the rule of a
@@ -265,6 +265,16 @@ export function summaryHealth(
 // polarity".
 export function everyOtherCondition(): boolean {
   return true;
+}
+
+// The conditions that point 3 counts on a kind whose summary merges some of its own conditions and its gates: every
+// other condition of positive polarity, those of its closed set that its table names and one of a third party, which
+// the summary leaves out (H1), but the inputs of the summary, which count only through it (SPEC-0001, R2.21, R2.83).
+export function allButInputs(
+  inputs: readonly string[],
+  gates: ReadonlySet<string> = new Set(),
+): (type: string) => boolean {
+  return (type) => !inputs.includes(type) && !gates.has(type);
 }
 
 // Whether an object is deleting: a deletion timestamp that is text, an unavailable time included, says so.
