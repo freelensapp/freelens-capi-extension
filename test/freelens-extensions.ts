@@ -221,12 +221,15 @@ class LensExtensionKubeObject {
 }
 
 // What a store of the extension's own class reads, by the base of its API: the
-// objects of the cluster, in every namespace, and the failures that a load
-// reports, one for each namespace that fails, through `onLoadFailure`, as the
-// store of the host reports them. A test sets it with `host.cluster`.
+// objects of the cluster, in every namespace, and the failures of the lists of
+// some namespaces, each with its namespace. The next load of a namespace that
+// fails reports its failure through `onLoadFailure`, once, and leaves the
+// objects of that namespace out of the store, as the store of the host does
+// (freelens kube-object.store.ts at v2.1.0: 284-311, 333, 372-388). A test sets
+// it with `host.cluster`.
 interface ClusterData {
   items: unknown[];
-  failures: unknown[];
+  failures: { readonly namespace: string; readonly error: unknown }[];
 }
 
 // The base of the stores of the extension's own class: building one sends
@@ -243,12 +246,17 @@ class KubeObjectStore {
 
     const data = host.cluster.get(this.api.apiBase ?? "");
     const namespaces = opts?.namespaces ?? [];
+    const failing = (data?.failures ?? []).filter((failure) => namespaces.includes(failure.namespace));
+    const failed = new Set(failing.map((failure) => failure.namespace));
 
-    for (const failure of data?.failures.splice(0) ?? []) opts?.onLoadFailure?.(failure);
+    if (data !== undefined) data.failures = data.failures.filter((failure) => !failing.includes(failure));
+    for (const failure of failing) opts?.onLoadFailure?.(failure.error);
     runInAction(() => {
-      const read = (data?.items ?? []).filter((item) =>
-        namespaces.includes((item as { metadata?: { namespace?: string } }).metadata?.namespace ?? ""),
-      );
+      const read = (data?.items ?? []).filter((item) => {
+        const namespace = (item as { metadata?: { namespace?: string } }).metadata?.namespace ?? "";
+
+        return namespaces.includes(namespace) && !failed.has(namespace);
+      });
 
       this.items.replace([
         ...this.items.filter((item) => !namespaces.includes(item.metadata?.namespace ?? "")),

@@ -68,12 +68,12 @@ interface OwnStore {
 }
 
 // The objects that the stores of the extension's own class read of the cluster, by the base of their API, with the
-// failures that a load of a kind reports.
+// failures that the next load of a kind reports, each for the namespace of the Cluster.
 function serveOwn(objects: readonly HostObject[], failures: Partial<Record<string, unknown[]>> = {}) {
   for (const api of [...Object.values(APIS), ...Object.values(TREE_APIS)]) {
     host.cluster.set(api.apiBase, {
       items: objects.filter((object) => object.kind === api.kind),
-      failures: [...(failures[api.kind] ?? [])],
+      failures: (failures[api.kind] ?? []).map((error) => ({ namespace: NAMESPACE, error })),
     });
   }
 }
@@ -957,6 +957,40 @@ describe("the refresh of the tree (SPEC-0005, P23)", () => {
       expect(store.subscribe.mock.calls[1][0].abortController.signal.aborted, kind).toBe(false);
     }
     expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
+  it("that fails empties its kind in the namespace of the Cluster, as the store of the host does, and holds it back", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+    expect(read.objects().tree?.kubeadmConfigs.items).toHaveLength(3);
+
+    host.cluster.get(TREE_APIS.kubeadmConfigs.apiBase)?.failures.push({
+      namespace: NAMESPACE,
+      error: new Error("Failed to load", {
+        cause: {
+          kind: "Status",
+          code: 403,
+          message: `kubeadmconfigs.bootstrap.cluster.x-k8s.io is forbidden in "${NAMESPACE}"`,
+        },
+      }),
+    });
+    act(() => read.refresh());
+    await settle();
+
+    const key = read.kinds().find((kind) => kind.kind === "KubeadmConfig")?.key ?? "";
+
+    expect(read.reads.kinds[key]?.refreshHold?.failures).toHaveLength(1);
+    expect((byKind(read).get("KubeadmConfig") as unknown as { items: unknown[] }).items).toEqual([]);
+    expect(
+      readOfNode(
+        treeOfRead(read).nodes.get("bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-healthy-d2lgq-zqlcx"),
+      ),
+    ).toBe("not-read: kind-not-read");
     stop();
   });
 
