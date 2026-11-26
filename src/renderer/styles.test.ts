@@ -131,6 +131,16 @@ describe("the cells of the list (P12; kit, Lists)", () => {
     expect(cell).toMatch(/text-overflow: ellipsis;/);
   });
 
+  it("have their head cut as they are, in the badge of each title: the box of the host that holds it has no minimum width", () => {
+    expect(declarationsOf(page, ".list :global(.TableHead) :global(.TableCell) > :global(.content)")).toBe(
+      "min-width: 0;",
+    );
+  });
+
+  it("line the note of a cell up with the marks before it, each at the middle of the line", () => {
+    expect(declarationsOf(marks, ".cell > .mark,\n.cell > .note")).toBe("vertical-align: middle;");
+  });
+
   it.each([
     ["pages/clusters-page.module.scss", () => page],
     ["components/marks.module.scss", () => marks],

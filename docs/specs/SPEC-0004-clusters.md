@@ -2223,6 +2223,22 @@ No question is open.
   began, and the note of the MachinePools of unknown health. No mark in a cell
   has a tooltip of its own. The badges of the other cells never expand on a
   click either.
+- Decided while implementing, after the second run in Freelens, which showed
+  the titles "Control pla" and "ClusterClas" at 1280 px, cut with no ellipsis:
+  a title of the head is cut as the content of a cell is, by a badge of the
+  host that never expands, with an ellipsis, and its tooltip carries it whole.
+  A minimum width that held each title would keep the columns of the domain
+  from giving their room in a narrow window, the class and the version first
+  (P7). The host puts the title of a head cell in a box of its own, an item of
+  the flex cell that is never narrower than its title (table-cell.tsx:110), so
+  the stylesheet of the page gives that box no minimum width, and the badge
+  cuts the title. The stylesheet says so.
+- Seen while implementing, in the second run in Freelens: the note of the
+  MachinePools of unknown health sat lower than the marks before it in the cell
+  of the condition. A mark is a box of the line that cuts what overflows, and
+  such a box stands on the baseline by the bottom edge of its margin, not by
+  its words (CSS 2.1, 10.8.1). The marks and the note of a cell stand at the
+  middle of its line.
 - Decided while implementing: the widths of the columns keep P7, with the
   minimums of the columns of state as small as cells of one line allow, and
   the name the last column of the domain to give room, its shrink a quarter of
@@ -2238,15 +2254,22 @@ No question is open.
   (kube-object-list-layout.tsx:224-256). Step 2 and the unit case of the props
   check an empty cell of the menu in each row, where the spec says none.
 - Decided while implementing, under the delegation for M1, and listed for the
-  review of M1: the headline of P11 is the first line of the message of
-  `Available` as the parser gives it; when that line is a subject with no words
-  of its own, whose words are in the lines nested under it, such as
+  review of M1: the headline of P11 is the text of the first line of the
+  message of `Available` as the parser gives it, without the indentation and
+  the bullet that the parser reads there; when that line is a subject with no
+  words of its own, whose words are in the lines nested under it, such as
   `* WorkersAvailable:`, the headline is the subject followed by the first line
-  under it that has words, both as the parser gives their text, without their
-  bullets, such as `WorkersAvailable: MachineDeployment x-md-0: 0 available
-  replicas, at least 2 required`. The tooltip keeps the whole message, nested.
-  In 5 of the 15 states of the fixtures the first line is such a subject,
-  which alone says nothing in the list.
+  under it that has words, both without their bullets, such as
+  `WorkersAvailable: MachineDeployment x-md-0: 0 available replicas, at least 2
+  required`. No headline starts with the bullet of the parser: the bullet lines
+  a line up with the others of the message in the tooltip, which keeps the
+  whole message, nested, and a cell of one line has none to line it up with. In
+  5 of the 15 states of the fixtures the first line is such a subject, which
+  alone says nothing in the list, and in `provisioning` it is
+  `* RemoteConnectionProbe: Remote connection not established yet`, whose cell
+  shows `RemoteConnectionProbe: Remote connection not established yet`; the
+  second run in Freelens showed that cell with the bullet, which the headline
+  of a first line with words of its own kept until then.
 - Decided while implementing: the background of a mark mixes 20% of the token
   of its tone with `transparent` (P21).
 - Decided while implementing: the page evaluates the model with the time of
@@ -2278,17 +2301,21 @@ No question is open.
   adapters, as the host would.
 - Decided while implementing: the session of the list in Freelens,
   `integration/__tests__/clusters.tests.ts`, runs, of the steps of "In
-  Freelens": step 1; step 2 but the details of the extension, with a click that
-  opens no details of the host and leaves their parameter out of the address;
-  the part of step 3 on the remove button; step 6 but the details of
+  Freelens": step 1, with a hover of a cell of each kind, whose tooltip it
+  reads line by line, the titles of the head, each cut by its badge with an
+  ellipsis where its column does not hold it, and the note of a cell at the
+  middle of its line; step 2 but the details of the extension, with a click
+  that opens no details of the host and leaves their parameter out of the
+  address; the part of step 3 on the remove button; step 6 but the details of
   `upgrading`; step 7; and step 8, whose check reads every request of the frame
   to the groups that the view reads, each a GET, and the version of every
   object of the fixtures before and after the session, but the versions that
   the answers to its own writes of a label gave. A write that the session
-  plants from the frame when `TEST_PLANT_WRITE` is set makes both fail. The
-  rest of steps 2, 3 and 6, and steps 4 and 5, come with the second part. Its
-  end removes its labels, disconnects the cluster and closes the connection
-  whatever failed before.
+  plants from the frame when `TEST_PLANT_WRITE` is set makes both fail, and the
+  end of the session reports every check that failed in one error, so that both
+  show. The rest of steps 2, 3 and 6, and steps 4 and 5, come with the second
+  part. Its end removes its labels, disconnects the cluster and closes the
+  connection whatever failed before.
 - Decided while implementing: step 1 checks the word, the state and the tone of
   each activity, and allows a row or an activity in flight the tone of progress
   or that of a warning, and Deleting that of a deletion or of a warning: the
@@ -2310,6 +2337,22 @@ No question is open.
   The session writes a label with a merge patch, whose answer is the object
   that the write made, and fails at once when the version that it records is
   the one that it read before the write, which a write always changes.
+- Seen while implementing, in the second run in Freelens: in screenshots taken
+  1.5 seconds after a hover, in six themes, the tooltip of the cell of the
+  activities never showed, while those of the condition and the status did. The
+  cause was the session, not the cell: the search of a list of the host filters
+  the list 250 ms after its input changes
+  (freelens:packages/core/src/renderer/components/input/search-input-url.tsx:41);
+  the first hover started from the whole list, found its row where the whole
+  list had it, and landed there before the row moved to the top, while the next
+  hovers waited for a row that the list showed only once the search applied.
+  The session finds a row once the list shows only the rows that the search
+  keeps, which also keeps a click of steps 2 and 3 from landing on nothing, and
+  checks the tooltip of a cell of each kind.
+- Seen while implementing, in the run with `TEST_PLANT_WRITE`: the end of the
+  session threw at the first check that failed, the requests of the frame, and
+  the check of the versions never ran. The end reports every check that failed,
+  all in one error.
 - Seen while implementing: the table of SPEC-0003, "The fixtures of SPEC-0002
   give these results", gives the Cluster of `machine-without-node` Unhealthy,
   with its `Available` `False` through `WorkersAvailable`. In the fixture its

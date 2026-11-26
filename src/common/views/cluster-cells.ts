@@ -337,19 +337,22 @@ function firstWorded(lines: readonly MessageLine[]): MessageLine | undefined {
   return undefined;
 }
 
-// The headline of a message (P11): its first line as the parser gives it. A first line that is a subject with no words
-// of its own, such as `* WorkersAvailable:`, whose words are in the lines nested under it, says nothing in a list: the
-// headline is then that subject followed by the first line under it that has words, both as the parser gives their
-// text, without their bullets, such as `WorkersAvailable: MachineDeployment md-0: 0 available replicas` (decided while
-// implementing, under the delegation for M1).
+// The headline of a message (P11): the text of its first line as the parser gives it, without the indentation and the
+// bullet that the parser reads there, such as `RemoteConnectionProbe: Remote connection not established yet` for
+// `* RemoteConnectionProbe: Remote connection not established yet`. The bullet lines up a line with the others in the
+// tooltip, which keeps it; a cell shows one line, and there it says nothing. A first line that is a subject with no
+// words of its own, such as `* WorkersAvailable:`, whose words are in the lines nested under it, says nothing in a list
+// either: the headline is then that subject followed by the first line under it that has words, both without their
+// bullets, such as `WorkersAvailable: MachineDeployment md-0: 0 available replicas` (decided while implementing, under
+// the delegation for M1). So no headline starts with the bullet of the parser.
 export function headlineOf(message: Extract<ConditionMessage, { state: "read" }>): string | undefined {
   const [first] = message.lines;
 
-  if (first === undefined || hasWords(first)) return message.headline;
+  if (first === undefined) return undefined;
 
-  const worded = firstWorded(first.children);
+  const worded = hasWords(first) ? undefined : firstWorded(first.children);
 
-  return worded === undefined ? message.headline : `${first.text.trim()} ${worded.text.trim()}`;
+  return worded === undefined ? first.text.trim() : `${first.text.trim()} ${worded.text.trim()}`;
 }
 
 export function statusCell(conditions: ConditionsResult): StatusCell {

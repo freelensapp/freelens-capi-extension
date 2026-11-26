@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPTURE, fixtureSet, ofKind } from "../../../test/fixture-sets";
+import { CAPTURE, fixtureSet, ofKind, STATES } from "../../../test/fixture-sets";
 import { parseConditionMessage } from "../parsers/condition-message";
 import { ACTIVITY_NAMES } from "../status/activity";
 import {
@@ -358,10 +358,22 @@ describe("the health (P12)", () => {
 });
 
 describe("the status (P11)", () => {
-  it("is the first line of the message of Available when it has words of its own, with every line in its tooltip", () => {
+  it("is the first line of the message of Available when it has words of its own, without its bullet, which its tooltip keeps", () => {
     const cell = statusCell(rowOf("provisioning").conditions);
 
-    expect(cell.text).toBe("* RemoteConnectionProbe: Remote connection not established yet");
+    expect(cell.text).toBe("RemoteConnectionProbe: Remote connection not established yet");
+    expect(cell.lines).toHaveLength(4);
+    expect(cell.lines[0]).toEqual({
+      indentation: 0,
+      text: "* RemoteConnectionProbe: Remote connection not established yet",
+    });
+  });
+
+  it("never starts with the bullet of the parser, in any state of the fixtures", () => {
+    const texts = STATES.map((state) => statusCell(rowOf(state).conditions).text);
+
+    expect(texts.filter((text) => text.startsWith("* "))).toEqual([]);
+    expect(texts).toContain("RemoteConnectionProbe: Remote connection not established yet");
   });
 
   it("is the subject of a first line with no words of its own and the first line under it that has some", () => {
@@ -379,15 +391,16 @@ describe("the status (P11)", () => {
     );
   });
 
-  it("skips the subjects with no words of their own under the first line, and keeps a first line with none under it", () => {
+  it("skips the subjects with no words of their own under the first line, and keeps the subject alone when none has", () => {
     const message = (text: string) =>
       parseConditionMessage(text) as Extract<ReturnType<typeof parseConditionMessage>, { state: "read" }>;
 
     expect(headlineOf(message("* Deleting:\n  * MachineDeployment md-0:\n    * Machine m-1: draining"))).toBe(
       "Deleting: Machine m-1: draining",
     );
-    expect(headlineOf(message("* Deleting:\n  * MachineDeployment md-0:"))).toBe("* Deleting:");
-    expect(headlineOf(message("* Deleting:"))).toBe("* Deleting:");
+    expect(headlineOf(message("* Deleting:\n  * MachineDeployment md-0:"))).toBe("Deleting:");
+    expect(headlineOf(message("* Deleting:"))).toBe("Deleting:");
+    expect(headlineOf(message("  * Deleting: Machine m-1"))).toBe("Deleting: Machine m-1");
     expect(headlineOf(message(""))).toBeUndefined();
   });
 

@@ -77,12 +77,14 @@ as "SPEC-0003, P31", and the kit as `kit` with its file.
   their cells, whose stylesheet gives the columns of state a minimum width, as
   small as cells of one line allow, and no shrink (SPEC-0004, P7, "Notes and
   deviations"). Each cell is one line: the marks of a cell sit side by side,
-  what does not fit is cut with an ellipsis, and the tooltip of the cell
-  carries its whole content; no mark in a cell has a tooltip of its own, and no
-  cell expands on a click (kit, `docs/design.md`, "Lists"; SPEC-0004, P12,
-  "Notes and deviations"). A list of a kind with no status
-  shows no column of health or activity, and Deleting as the state of a row
-  that is deleting (SPEC-0003, P16).
+  with a note after them, all at the middle of the line, what does not fit is
+  cut with an ellipsis, and the tooltip of the cell carries its whole content;
+  no mark in a cell has a tooltip of its own, and no cell expands on a click
+  (kit, `docs/design.md`, "Lists"; SPEC-0004, P12, "Notes and deviations"). A
+  title of the head that its column does not hold is cut the same way, by a
+  badge whose tooltip carries it whole. A list of a kind with no status shows
+  no column of health or activity, and Deleting as the state of a row that is
+  deleting (SPEC-0003, P16).
   - Activity: each activity, in a mark of its tone, with its state when it is
     not Progressing and its duration, in the order of the closed set of
     SPEC-0003, Replacing included (SPEC-0003, "The closed sets").
@@ -94,12 +96,14 @@ as "SPEC-0003, P31", and the kit as `kit` with its file.
   - Status: the headline of the message of the condition that sums the object
     up, its reason when the message is empty, and N/A when the object has no
     such condition (SPEC-0004, P11). The headline is the first line of the
-    message, and, when that line is a subject with no words of its own, such as
-    `* WorkersAvailable:`, the subject and the first line under it with words,
-    without their bullets (SPEC-0004, "Notes and deviations", decided under the
-    delegation for M1). For a kind whose summary is not a
-    condition, such as a MachineSet, a MachinePool or a MachineHealthCheck
-    (SPEC-0003, P9 to P11), the spec of its view says what the cell shows.
+    message without its bullet, and, when that line is a subject with no words
+    of its own, such as `* WorkersAvailable:`, the subject and the first line
+    under it with words, both without their bullets: no headline starts with
+    the bullet of the parser, which the tooltip keeps (SPEC-0004, "Notes and
+    deviations", decided under the delegation for M1). For a kind whose summary
+    is not a condition, such as a MachineSet, a MachinePool or a
+    MachineHealthCheck (SPEC-0003, P9 to P11), the spec of its view says what
+    the cell shows.
 - The columns of state sort worst first: the health Unhealthy, Degraded,
   Unknown, Healthy, then no health; the activities in the order of the closed
   set of SPEC-0003 by the first of a row, then Unknown alone, then Idle; a

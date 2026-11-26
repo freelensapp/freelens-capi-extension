@@ -101,6 +101,20 @@ function activityTones(word: string): string[] {
   return ACTIVITY_TONES[word] ?? IN_FLIGHT;
 }
 
+// The titles of the columns, in their order (P7).
+const TITLES = [
+  "Name",
+  "Namespace",
+  "Control plane",
+  "Workers",
+  "Version",
+  "ClusterClass",
+  "Activity",
+  "Condition",
+  "Status",
+  "Age",
+];
+
 const EXPECTED: ExpectedRow[] = [
   {
     state: "provisioning",
@@ -194,13 +208,14 @@ type Fields = Record<string, unknown>;
 const fields = (value: unknown): Fields | undefined =>
   typeof value === "object" && value !== null ? (value as Fields) : undefined;
 
-// The headline of a message (P11): its first line; when that line is a subject with no words of its own, such as
-// `* WorkersAvailable:`, the subject and the first line under it with words, each without its indentation and bullet.
+// The headline of a message (P11): its first line, without its indentation and bullet; when that line is a subject
+// with no words of its own, such as `* WorkersAvailable:`, the subject and the first line under it with words, each
+// without its indentation and bullet.
 function headlineOf(message: string): string {
   const [first, ...rest] = message.split("\n");
   const bare = (line: string) => line.trim().replace(/^\* /, "");
 
-  if (!/^\* \S+:$/.test(first)) return first;
+  if (!/^\* \S+:$/.test(first)) return bare(first);
 
   const under: string[] = [];
 
@@ -211,7 +226,7 @@ function headlineOf(message: string): string {
 
   const worded = under.map(bare).find((text) => text !== "" && !text.endsWith(":"));
 
-  return worded === undefined ? first : `${bare(first)} ${worded}`;
+  return worded === undefined ? bare(first) : `${bare(first)} ${worded}`;
 }
 
 // The cells of the domain and the status, as the fixture writes them: the available of the desired Machines (P8), the
@@ -369,9 +384,19 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     return page;
   }
 
-  // The row of a Cluster, found by a search of its name, once its marks of state no longer show the spinner.
+  // The row of a Cluster, found by a search of its name, once the list shows only the rows that the search keeps and
+  // the marks of the row no longer show the spinner. The search of the host filters the list 250 ms after its input
+  // changes (freelens:packages/core/src/renderer/components/input/search-input-url.tsx:41): until then the row is where
+  // the whole list has it, and a hover or a click there lands on nothing once the row moves to the top.
   async function rowOf(page: Locator, name: string): Promise<Locator> {
     await page.locator('input[placeholder^="Search"]').fill(name);
+    await expect
+      .poll(async () => {
+        const names = await page.getByTestId("capi-cluster-name").allTextContents();
+
+        return names.length > 0 && names.every((listed) => listed.includes(name));
+      }, viewTimeout)
+      .toBe(true);
 
     // The locator inside a row starts from the frame: one that starts from the page, an ancestor of the rows, finds
     // nothing inside a row.
@@ -381,6 +406,26 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
     await row.getByTestId("capi-cluster-health").waitFor(viewTimeout);
     return row;
+  }
+
+  // The tooltip that a hover of an element shows, once it is visible. The pointer leaves the frame first, so that the
+  // tooltip of a hover before it is gone.
+  async function tooltipOf(target: Locator): Promise<Locator> {
+    const cluster = opened();
+
+    await session?.window.mouse.move(5, 5);
+    await expect.poll(() => cluster.locator('[role="tooltip"]').count(), viewTimeout).toBe(0);
+    await target.hover();
+
+    const tooltip = cluster.locator('[role="tooltip"].visible');
+
+    await tooltip.waitFor(viewTimeout);
+    return tooltip;
+  }
+
+  // The lines of the tooltip of a cell, each a block of its own.
+  async function linesOf(target: Locator): Promise<string[]> {
+    return (await (await tooltipOf(target)).locator(":scope > div > div").allTextContents()).map((line) => line.trim());
   }
 
   beforeAll(async () => {
@@ -451,13 +496,29 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       await attempt(() => opened.close(), undefined);
     }
 
-    if (failures.length > 0) throw new AggregateError(failures, "The end of the session failed");
+    // Every check of the end is reported, each that failed in one error, so that a write planted from the frame fails
+    // both checks of "Safety" and shows both.
+    const writes = requests.filter(readsAGroupOfTheView).filter((request) => request.method !== "GET");
+    const failed = [
+      ...(errors.length === 0 ? [] : [`The app logged errors:\n${errors.join("\n")}`]),
+      // The check of "Safety": every request of the frame to the groups that the view reads is a GET, and every object
+      // of the fixtures has the version it had before, or the one that a write of the session gave it.
+      ...(writes.length === 0
+        ? []
+        : [
+            `The frame sent requests other than a GET:\n${writes.map((write) => `${write.method} ${write.url}`).join("\n")}`,
+          ]),
+      ...(changed.length === 0 ? [] : [`Objects of the fixtures changed their version:\n${changed.join("\n")}`]),
+      ...failures.map(
+        (failure) => `The end of the session failed: ${failure instanceof Error ? failure.message : String(failure)}`,
+      ),
+    ];
 
-    expect(errors).toEqual([]);
-    // The check of "Safety": every request of the frame to the groups that the view reads is a GET, and every object
-    // of the fixtures has the version it had before, or the one that a write of the session gave it.
-    expect(requests.filter(readsAGroupOfTheView).filter((request) => request.method !== "GET")).toEqual([]);
-    expect(changed).toEqual([]);
+    if (failed.length > 0) {
+      throw new Error(
+        `${failed.length === 1 ? "A check" : `${failed.length} checks`} at the end of the session failed:\n\n${failed.join("\n\n")}`,
+      );
+    }
   }, 240 * 1000);
 
   it("lists every Cluster of the fixtures with the marks that the status model gives its state (1)", async () => {
@@ -507,6 +568,109 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     ).conditions.find((condition) => condition.type === "Available");
 
     expect(available?.status).toBe("True");
+    expect(await session?.errors()).toEqual([]);
+  });
+
+  it("shows in the tooltip of a cell what the cell cuts: each activity, the health with stale and its note, the status (1; P11, P12)", async () => {
+    const cluster = opened();
+
+    await selectNamespaces(cluster, namespaces);
+
+    const page = await openPage();
+    const held = EXPECTED.find((row) => row.state === "scaling-up-held")?.activities ?? [];
+    const activities = await linesOf(
+      (await rowOf(page, clusterOf("scaling-up-held").name)).getByTestId("capi-cluster-activity").first(),
+    );
+
+    // Every activity, also those that the cell cuts, with its duration and its start.
+    expect(activities).toHaveLength(held.length);
+    held.forEach((word, index) => {
+      expect(activities[index], word).toMatch(new RegExp(`^${word}, for \\S+, since \\S.*$`));
+    });
+
+    const paused = await linesOf((await rowOf(page, clusterOf("paused").name)).getByTestId("capi-cluster-health"));
+
+    expect(paused).toHaveLength(2);
+    expect(paused[0]).toBe("Healthy");
+    expect(paused[1]).toMatch(/^Stale: Paused, since \S.*$/);
+    expect(
+      await linesOf(
+        (await rowOf(page, clusterOf("machine-pool-without-machines").name)).getByTestId("capi-cluster-health"),
+      ),
+    ).toEqual(["Degraded", "1 MachinePool of unknown health"]);
+
+    // The whole message of Available, each line as the cluster wrote it, nested.
+    const message = (
+      clusterOf("upgrading").cluster.status as { conditions: { type: string; message?: string }[] }
+    ).conditions.find((condition) => condition.type === "Available")?.message;
+
+    expect(await linesOf((await rowOf(page, clusterOf("upgrading").name)).getByTestId("capi-cluster-status"))).toEqual(
+      (message ?? "").split("\n").map((line) => line.trim()),
+    );
+
+    await session?.window.mouse.move(5, 5);
+    await page.locator('input[placeholder^="Search"]').fill("");
+    expect(await session?.errors()).toEqual([]);
+  });
+
+  it("cuts a title of the head that its column does not hold with an ellipsis, and lines a note up with the marks of its cell (1; P7, P12)", async () => {
+    const cluster = opened();
+
+    await selectNamespaces(cluster, namespaces);
+
+    const page = await openPage();
+    const heads = page.getByTestId("capi-clusters-head");
+
+    await heads.first().waitFor(viewTimeout);
+
+    // Each title ends inside its cell, so that what its column does not hold is cut by its badge, with an ellipsis,
+    // and not by the cell.
+    const titles = await heads.evaluateAll((badges) =>
+      badges.map((badge) => {
+        const cell = badge.closest(".TableCell");
+        const end = cell
+          ? cell.getBoundingClientRect().right - Number.parseFloat(getComputedStyle(cell).paddingRight)
+          : Number.NaN;
+
+        return {
+          title: badge.textContent ?? "",
+          inside: badge.getBoundingClientRect().right <= end + 0.5,
+          cut: badge.scrollWidth > badge.clientWidth,
+          ellipsis: getComputedStyle(badge).textOverflow === "ellipsis",
+        };
+      }),
+    );
+
+    expect(titles.map(({ title }) => title)).toEqual(TITLES);
+    expect(titles.filter(({ inside }) => !inside).map(({ title }) => title)).toEqual([]);
+    expect(titles.filter(({ cut, ellipsis }) => cut && !ellipsis).map(({ title }) => title)).toEqual([]);
+
+    // A title that its badge cuts is whole in its tooltip.
+    for (const { title } of titles.filter(({ cut }) => cut)) {
+      expect(await (await tooltipOf(heads.filter({ hasText: new RegExp(`^${title}$`) }))).textContent()).toBe(title);
+    }
+
+    // The note of the MachinePools of unknown health stands at the middle of the line of its cell, as the marks do.
+    const condition = (await rowOf(page, clusterOf("machine-pool-without-machines").name)).getByTestId(
+      "capi-cluster-condition",
+    );
+    const middles = await condition.evaluate((cell) => {
+      const middle = (element: Element | null | undefined) => {
+        const box = element?.getBoundingClientRect();
+
+        return box === undefined ? Number.NaN : box.top + box.height / 2;
+      };
+      const note = [...cell.querySelectorAll("span")].find(
+        (span) => span.textContent === "1 MachinePool of unknown health",
+      );
+
+      return { mark: middle(cell.querySelector('[data-testid="capi-cluster-health"]')), note: middle(note) };
+    });
+
+    expect(Math.abs(middles.note - middles.mark), JSON.stringify(middles)).toBeLessThanOrEqual(1.5);
+
+    await session?.window.mouse.move(5, 5);
+    await page.locator('input[placeholder^="Search"]').fill("");
     expect(await session?.errors()).toEqual([]);
   });
 
