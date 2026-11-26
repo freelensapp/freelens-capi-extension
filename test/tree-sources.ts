@@ -74,10 +74,9 @@ export interface TreeSourceOptions {
   // The namespaces that the reads hold: those of the objects by default, and the namespace of the class.
   readonly namespaces?: readonly string[];
   // The kinds, by `group/kind`, whose first load has not ended, or whose load failed with these failures, one for each
-  // namespace of the load, or whose refresh failed after their load.
+  // namespace of the load.
   readonly pending?: readonly string[];
   readonly failures?: Readonly<Record<string, readonly ReadFailure[]>>;
-  readonly refreshes?: Readonly<Record<string, ReadFailure>>;
   // The resolution of the references to a kind of a provider, resolved by default.
   readonly resolutions?: Readonly<Record<string, ResolvedReference>>;
   // The kinds that the cluster does not serve, which have no store.
@@ -180,11 +179,6 @@ export function treeSourceOf(objects: readonly KubeObjectData[], options: TreeSo
     if (options.pending?.includes(kind)) continue;
     for (const failure of options.failures?.[kind] ?? []) events.push({ type: "load-failed", kind: key, id, failure });
     events.push({ type: "load-ended", kind: key, id, overWholeCluster: false, followed: true, at: CAPTURE });
-
-    const refresh = options.refreshes?.[kind];
-
-    if (refresh !== undefined)
-      events.push({ type: "refresh-failed", kind: key, failure: refresh, at: CAPTURE + 60_000 });
   }
 
   const reads: ReadsState = events.reduce(reduceReads, NO_READS);

@@ -185,8 +185,9 @@ export type Placement =
   // A ClusterResourceSet: its selector selects the Cluster, or the binding of the Cluster names it.
   | { readonly by: "selector" }
   | { readonly by: "binding" }
-  // An IPAddress: the address of its claim, or the claim that it names.
-  | { readonly by: "claim"; readonly field: "status.addressRef" | "spec.claimRef" }
+  // An IPAddress that names its claim in `spec.claimRef`; one that the claim names in `status.addressRef` is placed by
+  // that reference of the claim.
+  | { readonly by: "claim"; readonly field: "spec.claimRef" }
   // An object under an owner that the tree holds, the node above it (P7, the row of the owners).
   | { readonly by: "owner"; readonly owner: string }
   // An object under Other objects, or under the row of an owner that cannot be read.
@@ -641,6 +642,28 @@ interface Draft {
   readonly namedBy: { id: string; field: string }[];
 }
 
+const KUBEADM_CONTROL_PLANES = kindId("controlplane.cluster.x-k8s.io", "KubeadmControlPlane");
+
+// The kinds whose objects name an object of a kind of Cluster API that is no template, by the rules of P7.
+const NAMERS_OF_KIND: Readonly<Record<string, readonly string[]>> = {
+  [kindId("bootstrap.cluster.x-k8s.io", "KubeadmConfig")]: [kindId(CORE, "Machine"), kindId(CORE, "MachinePool")],
+  [kindId("ipam.cluster.x-k8s.io", "IPAddress")]: [kindId("ipam.cluster.x-k8s.io", "IPAddressClaim")],
+  [kindId("addons.cluster.x-k8s.io", "ClusterResourceSet")]: [
+    kindId("addons.cluster.x-k8s.io", "ClusterResourceSetBinding"),
+  ],
+};
+
+// The kinds whose objects name an object of a provider in each role, by the rules of P7: the Cluster names its
+// infrastructure cluster and its control plane, and is read; the templates are named as the rule of the templates says.
+const NAMERS_OF_ROLE: Readonly<Record<ReferenceRole, readonly string[]>> = {
+  "infrastructure-cluster": [],
+  "control-plane": [],
+  "infrastructure-machine": [kindId(CORE, "Machine")],
+  "bootstrap-config": [kindId(CORE, "Machine"), kindId(CORE, "MachinePool")],
+  "infrastructure-machine-pool": [kindId(CORE, "MachinePool")],
+  template: [],
+};
+
 // The kinds whose objects name the kinds of the providers that the tree reads (P6, P12).
 const NAMERS_OF_PROVIDER_KINDS: ReadonlySet<string> = new Set([
   kindId(CORE, "Machine"),
@@ -800,7 +823,7 @@ class Placer {
               reason: read.state === "read" ? "not-found" : read.reason,
               failures: read.state === "read" ? [] : read.failures,
               namespace,
-              classNamespace: elsewhere || (kind?.where === "class" && namespace === this.#classNamespace),
+              classNamespace: elsewhere,
             },
       placement,
       namedBy: [],
@@ -1064,7 +1087,8 @@ class Placer {
       group: owner.group,
       kind: owner.kind,
       name: owner.name,
-      role: undefined,
+      // An owner of a kind of a provider takes the first role of its kind, as an object that no reference names does.
+      role: isClusterApiKind(owner.group, owner.kind) ? undefined : this.#kind(owner.group, owner.kind)?.roles[0],
       read: {
         state: "not-read",
         reason: read.reason,
@@ -1152,25 +1176,30 @@ class Placer {
     }
   }
 
-  // The kinds that can name an object that the Cluster owns, and that could not be read, by their nouns (P7): the
-  // control planes, the MachineDeployments, the MachineSets and the MachinePools for a template, the Machines and the
-  // MachinePools for any other object.
+  // The kinds that can name an object that the Cluster owns by the rules of P7, and that could not be read, by their
+  // nouns: of a template, the control plane that the Cluster names, the KubeadmControlPlanes, the MachineDeployments,
+  // the MachineSets and the MachinePools; of a KubeadmConfig, the Machines and the MachinePools; of an IPAddress, the
+  // IPAddressClaims; of a ClusterResourceSet, the ClusterResourceSetBindings; of an object of a provider, the kinds
+  // that name the roles of its kind (`NAMERS_OF_ROLE`); and of any other object none, since only the Cluster, which is
+  // read, can name it.
   #unreadNamersOf(entry: TreeObject): string[] {
-    const template = isTemplateKind(entry.kind.kind);
+    const { group, kind, roles } = entry.kind;
+    const id = kindId(group, kind);
     const controlPlane = contractReferenceOf(fieldsOf(this.#cluster.spec)?.controlPlaneRef);
-    const namers = template
+    const namers = isTemplateKind(kind)
       ? [
           ...(controlPlane === undefined ? [] : [kindId(controlPlane.apiGroup, controlPlane.kind)]),
+          KUBEADM_CONTROL_PLANES,
           kindId(CORE, "MachineDeployment"),
           kindId(CORE, "MachineSet"),
           kindId(CORE, "MachinePool"),
         ]
-      : [kindId(CORE, "Machine"), kindId(CORE, "MachinePool")];
+      : (NAMERS_OF_KIND[id] ?? (isClusterApiKind(group, kind) ? [] : roles.flatMap((role) => NAMERS_OF_ROLE[role])));
 
-    return namers.flatMap((id) => {
-      const kind = this.#index.kinds.get(id);
+    return [...new Set(namers)].flatMap((namer) => {
+      const named = this.#index.kinds.get(namer);
 
-      return kind !== undefined && cannotBeRead(kindReadOf(this.#index, kind, this.#namespace)) ? [kind.noun] : [];
+      return named !== undefined && cannotBeRead(kindReadOf(this.#index, named, this.#namespace)) ? [named.noun] : [];
     });
   }
 
@@ -1420,13 +1449,24 @@ class Placer {
             ),
           );
 
-    if (bindingEntry !== undefined) {
-      this.#placeObject(
-        bindingEntry,
-        this.#virtual(this.#root, "add-ons", [ROOT_ORDER.addOns, 0, "", ""]),
-        ROW.binding,
-        { by: "cluster-name" },
+    if (bindingEntry === undefined) return;
+
+    const addOns = this.#virtual(this.#root, "add-ons", [ROOT_ORDER.addOns, 0, "", ""]);
+    const bindingDraft = this.#placeObject(bindingEntry, addOns, ROW.binding, { by: "cluster-name" }, undefined);
+
+    if (bindingDraft === undefined) return;
+    // A ClusterResourceSet that the binding names and that the tree did not read, its kind refused, failed or still
+    // loading, or the object gone, is a row made from that name, which says why: the binding places it always (P7,
+    // P12). The row holds no entry, since its resources are those of its `spec.resources`, which the tree did not read.
+    for (const { name } of bound) {
+      if (this.#drafts.has(addressOf("addons.cluster.x-k8s.io", "ClusterResourceSet", name))) continue;
+      this.#placeReference(
+        { apiGroup: "addons.cluster.x-k8s.io", kind: "ClusterResourceSet", name },
         undefined,
+        addOns,
+        ROW.clusterResourceSet,
+        "spec.bindings.clusterResourceSetName",
+        { namer: bindingDraft },
       );
     }
   }
@@ -1623,10 +1663,13 @@ export function evaluateTree(
         return given(sets.flatMap((set) => controlled(set, CORE)));
       }
       case "MachineHealthCheck": {
+        // The Machines that its targets name, each found by its address in the index, with no walk of the Machines.
         const targets = listOf(fieldsOf(node.object.status)?.targets).filter((target) => typeof target === "string");
-        const machines = (index.kinds.get(kindId(CORE, "Machine"))?.items ?? []).filter(
-          (machine) => namespaceOf(machine) === namespace && targets.includes(nameOf(machine) ?? ""),
-        ) as MachineObject[];
+        const machines = [...new Set(targets)].flatMap((target) => {
+          const machine = index.byAddress.get(scopedAddress(CORE, "Machine", namespace, target));
+
+          return machine === undefined ? [] : [machine.object as MachineObject];
+        });
 
         return given(machines);
       }

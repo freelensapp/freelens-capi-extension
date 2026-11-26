@@ -687,6 +687,41 @@ describe("the IPAddressClaims of a Cluster (P7, P21)", () => {
     });
   });
 
+  it("a claim holds the IPAddress that its status.addressRef names, by that reference", () => {
+    const objects = claimed();
+
+    named(objects, "IPAddressClaim").status = { addressRef: { name: "freelens-capi-no-status" } };
+
+    const tree = treeOf(objects, HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "IPAddressClaim freelens-capi-no-status",
+      "  IPAddress freelens-capi-no-status",
+    ]);
+    expect(nodeOf<ObjectNode>(tree, "ipam.cluster.x-k8s.io/IPAddress/freelens-capi-no-status").placement).toEqual({
+      by: "reference",
+      field: "status.addressRef",
+      from: "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-no-status",
+    });
+  });
+
+  it("a claim whose status.addressRef names an IPAddress that its namespace does not hold has a row of it, Not found", () => {
+    const objects = claimed().filter((object) => object.kind !== "IPAddress");
+
+    named(objects, "IPAddressClaim").status = { addressRef: { name: "freelens-capi-gone" } };
+
+    const tree = treeOf(objects, HEALTHY);
+    const node = nodeOf<ReferenceNode>(tree, "ipam.cluster.x-k8s.io/IPAddress/freelens-capi-gone");
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "IPAddressClaim freelens-capi-no-status",
+      "  IPAddress freelens-capi-gone [not found]",
+    ]);
+    expect(node.read.state === "pending" ? "pending" : unreadWords(node.read)).toBe(
+      "No such object is in the namespace of the Cluster.",
+    );
+  });
+
   it("the claim of no-status that names its Cluster, as P21 captures it, sits under Other objects with its address", () => {
     const objects = setOf("no-status");
 
@@ -760,6 +795,47 @@ describe("the ClusterClass and the add-ons (P6, P7)", () => {
     expect(read?.health.health).toBe("Healthy");
     expect(without?.health.health).toBe("Degraded");
     expect(without?.notes).toContainEqual({ code: "input-not-given", input: "clusterClass" });
+  });
+
+  it("is not read in the namespace of its Cluster in the words of the namespace of the Cluster, which its reference names by naming none", () => {
+    const tree = stateTree("healthy", { failures: { "cluster.x-k8s.io/ClusterClass": [REFUSED] } });
+    const node = nodeOf<ReferenceNode>(tree, "cluster.x-k8s.io/ClusterClass/quick-start");
+
+    expect(text(node)).toBe("ClusterClass quick-start [not read]");
+    expect(node.read.state === "pending" ? "pending" : unreadWords(node.read)).toBe(
+      "Not read. Its kind could not be read in the namespace of the Cluster.",
+    );
+  });
+
+  it("a ClusterResourceSet that the binding names has a row when its kind cannot be read, or when its namespace does not hold it", () => {
+    const tree = stateTree("healthy", {
+      failures: { "addons.cluster.x-k8s.io/ClusterResourceSet": [REFUSED] },
+    });
+    const node = nodeOf<ReferenceNode>(tree, "addons.cluster.x-k8s.io/ClusterResourceSet/cni-kindnet");
+
+    expect(under(treeOutline(tree), "Add-ons")).toEqual([
+      "ClusterResourceSet cni-kindnet [not read]",
+      "ClusterResourceSetBinding freelens-capi-healthy",
+    ]);
+    expect(node.read.state === "pending" ? "pending" : unreadWords(node.read)).toBe(
+      "Not read. Its kind could not be read in the namespace of the Cluster.",
+    );
+    expect(node.placement).toEqual({
+      by: "reference",
+      field: "spec.bindings.clusterResourceSetName",
+      from: "addons.cluster.x-k8s.io/ClusterResourceSetBinding/freelens-capi-healthy",
+    });
+    expect(treeOutline(tree).at(-1)?.text).toBe("ClusterResourceSets [not read]");
+
+    const gone = treeOf(
+      setOf("healthy").filter((object) => object.kind !== "ClusterResourceSet"),
+      HEALTHY,
+    );
+
+    expect(under(treeOutline(gone), "Add-ons")).toEqual([
+      "ClusterResourceSet cni-kindnet [not found]",
+      "ClusterResourceSetBinding freelens-capi-healthy",
+    ]);
   });
 
   it("a ClusterResourceSet whose selector a deleting Cluster no longer meets is placed by the binding of the Cluster alone", () => {
@@ -1066,6 +1142,49 @@ describe("a node that cannot be read (P12)", () => {
       nodeOf<ObjectNode>(tree, "infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-md-0-older")
         .placement,
     ).toEqual({ by: "reason", reason: { code: "owned-by-cluster", namers: ["MachineSets"] } });
+  });
+
+  it("the row of an owner of a kind of a provider that cannot be read takes the first role of its kind", () => {
+    // On machine-pools, the MachinePool names another DevMachinePool, the Machine of the pool is gone, and the
+    // DevMachinePools are refused: the DevMachine that the older pool owns sits under the row of that pool.
+    const objects = setOf("machine-pools").filter(
+      (object) => !(object.kind === "Machine" && object.metadata.name === "worker-c6khcq"),
+    );
+
+    named(objects, "MachinePool").spec.template.spec.infrastructureRef.name = "freelens-capi-machine-pools-mp-0-new";
+
+    const tree = treeOf(objects, "freelens-capi-machine-pools", {
+      failures: { "infrastructure.cluster.x-k8s.io/DevMachinePool": [REFUSED] },
+    });
+
+    expect(under(treeOutline(tree), "DevMachinePool objects [not read]")).toEqual([
+      "DevMachinePool freelens-capi-machine-pools-mp-0-6cl2n (infrastructure machine pool) [not read]",
+      "  DevMachine worker-c6khcq (infrastructure machine)",
+    ]);
+  });
+
+  it("an object that the Cluster owns names among the kinds that could not be read those that can name it alone", () => {
+    // On healthy with the Machines refused: a MachineSet without the label of its Cluster, and a KubeadmConfig, each
+    // owned by the Cluster alone. No kind names a MachineSet; the Machines and the MachinePools name a bootstrap config.
+    const objects = setOf("healthy");
+    const set = named(objects, "MachineSet");
+    const config = structuredClone(named(objects, "KubeadmConfig", "freelens-capi-healthy-d2lgq-zqlcx"));
+    const owner = { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: HEALTHY };
+
+    delete (set.metadata.labels as Record<string, string>)["cluster.x-k8s.io/cluster-name"];
+    set.metadata.ownerReferences = [owner];
+    config.metadata.name = "freelens-capi-healthy-orphan";
+    config.metadata.ownerReferences = [owner];
+
+    const tree = treeOf([...objects, config], HEALTHY, { failures: { "cluster.x-k8s.io/Machine": [REFUSED] } });
+
+    expect(nodeOf<ObjectNode>(tree, `cluster.x-k8s.io/MachineSet/${set.metadata.name}`).placement).toEqual({
+      by: "reason",
+      reason: { code: "owned-by-cluster", namers: [] },
+    });
+    expect(
+      nodeOf<ObjectNode>(tree, "bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-healthy-orphan").placement,
+    ).toEqual({ by: "reason", reason: { code: "owned-by-cluster", namers: ["Machines"] } });
   });
 
   it("a kind still loading has its nodes pending, never Unknown, and no node of its kind", () => {
