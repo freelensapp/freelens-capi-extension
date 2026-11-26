@@ -1,0 +1,133 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  annotations:
+    machinedeployment.clusters.x-k8s.io/revision: "1"
+  creationTimestamp: "2025-12-31T23:58:27Z"
+  finalizers:
+  - machinedeployment.topology.cluster.x-k8s.io
+  - cluster.x-k8s.io/machinedeployment
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-md-0-vzf8f
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-paused
+spec:
+  clusterName: freelens-capi-paused
+  replicas: 1
+  rollout:
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+      type: RollingUpdate
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: freelens-capi-paused
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-paused
+        topology.cluster.x-k8s.io/deployment-name: md-0
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: freelens-capi-paused-md-0-vzj4p
+      clusterName: freelens-capi-paused
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-paused-md-0-j4zdt
+      version: v1.37.0
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRollingOut
+    status: "False"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingDown
+    status: "False"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:58:36Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: UpToDate
+    status: "True"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:58:30Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      availableReplicas: 1
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        status: "True"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        status: "True"
+        type: Available
+      - lastTransitionTime: "2025-12-31T23:59:40Z"
+        status: "True"
+        type: MachineSetReady
+      readyReplicas: 1
+      unavailableReplicas: 0
+      updatedReplicas: 1
+  observedGeneration: 1
+  phase: Running
+  readyReplicas: 1
+  replicas: 1
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-paused,topology.cluster.x-k8s.io/deployment-name=md-0,topology.cluster.x-k8s.io/owned=
+  upToDateReplicas: 1
+  versions:
+  - replicas: 1
+    version: v1.37.0

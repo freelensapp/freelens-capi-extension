@@ -1,0 +1,161 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-paused-md-0-j4zdt
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/deployment-name: freelens-capi-paused-md-0-vzf8f
+    cluster.x-k8s.io/set-name: freelens-capi-paused-md-0-vzf8f-62l5g
+    machine-template-hash: 107852496-62l5g
+    topology.cluster.x-k8s.io/deployment-name: md-0
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+status:
+  addresses:
+  - address: freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+    type: Hostname
+  - address: 172.19.0.16
+    type: InternalIP
+  - address: 172.19.0.16
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:20Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:59:11Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:59:18Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 2
+    reason: Paused
+    status: "True"
+    type: Paused
+  initialization:
+    provisioned: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: freelens-capi-paused-wfb6c
+    devmachine.infrastructure.cluster.x-k8s.io/weight: "100"
+  creationTimestamp: "2025-12-31T23:58:34Z"
+  finalizers:
+  - dockermachine.infrastructure.cluster.x-k8s.io
+  generation: 2
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    cluster.x-k8s.io/control-plane: ""
+    cluster.x-k8s.io/control-plane-name: freelens-capi-paused-q6kg9
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-q6kg9-lsjbh
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Machine
+    name: freelens-capi-paused-q6kg9-lsjbh
+spec:
+  backend:
+    docker:
+      customImage: kindest/node:v1.37.0
+      extraMounts:
+      - containerPath: /var/run/docker.sock
+        hostPath: /var/run/docker.sock
+  providerID: docker:////freelens-capi-paused-q6kg9-lsjbh
+status:
+  addresses:
+  - address: freelens-capi-paused-q6kg9-lsjbh
+    type: Hostname
+  - address: 172.19.0.13
+    type: InternalIP
+  - address: 172.19.0.13
+    type: ExternalIP
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:01Z"
+    message: ""
+    observedGeneration: 2
+    reason: Ready
+    status: "True"
+    type: Ready
+  - lastTransitionTime: "2025-12-31T23:59:01Z"
+    message: ""
+    observedGeneration: 2
+    reason: Completed
+    status: "True"
+    type: BootstrapCompleted
+  - lastTransitionTime: "2025-12-31T23:58:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: CGroupsReady
+  - lastTransitionTime: "2025-12-31T23:58:41Z"
+    message: ""
+    observedGeneration: 1
+    reason: Provisioned
+    status: "True"
+    type: ContainerProvisioned
+  - lastTransitionTime: "2025-12-31T23:58:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: Ready
+    status: "True"
+    type: PreLoadedImagesReady
+  - lastTransitionTime: "2025-12-31T23:59:45Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 2
+    reason: Paused
+    status: "True"
+    type: Paused
+  failureDomain: fd5
+  initialization:
+    provisioned: true

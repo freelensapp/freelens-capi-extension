@@ -1,0 +1,123 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:27Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-md-0-vzf8f
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-paused
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-paused
+  selector:
+    matchLabels:
+      topology.cluster.x-k8s.io/deployment-name: md-0
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:59:57Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:42Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  creationTimestamp: "2025-12-31T23:58:27Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-paused
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-paused-q6kg9
+  namespace: freelens-capi-paused
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-paused
+spec:
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyMachineConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: NodeReady
+    - status: "False"
+      timeoutSeconds: 300
+      type: NodeReady
+    unhealthyNodeConditions:
+    - status: Unknown
+      timeoutSeconds: 300
+      type: Ready
+    - status: "False"
+      timeoutSeconds: 300
+      type: Ready
+  clusterName: freelens-capi-paused
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/control-plane: ""
+      topology.cluster.x-k8s.io/owned: ""
+status:
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:58:42Z"
+    message: ""
+    observedGeneration: 1
+    reason: RemediationAllowed
+    status: "True"
+    type: RemediationAllowed
+  - lastTransitionTime: "2025-12-31T23:59:57Z"
+    message: Cluster spec.paused is set to true
+    observedGeneration: 1
+    reason: Paused
+    status: "True"
+    type: Paused
+  currentHealthy: 1
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:58:42Z"
+        status: "True"
+        type: RemediationAllowed
+  expectedMachines: 1
+  observedGeneration: 1
+  remediationsAllowed: 1
+  targets:
+  - freelens-capi-paused-q6kg9-lsjbh

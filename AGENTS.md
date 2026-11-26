@@ -116,8 +116,8 @@ external" in Freelens's `migrating-from-v1.md`, and contracts C3 and C11 of
 
 ## Development process (binding)
 
-This repository follows the Freelens extension kit, version `v0.1.2`:
-`https://github.com/freelensapp/freelens-extension-kit/tree/v0.1.2`. It is
+This repository follows the Freelens extension kit, version `v0.1.3`:
+`https://github.com/freelensapp/freelens-extension-kit/tree/v0.1.3`. It is
 developed spec first. Before implementing anything, read these, as far as
 they exist yet:
 
@@ -168,7 +168,12 @@ Rules that hold on top of the process:
 - Data read from a real environment stay on the machine that read them. They
   never go into source, fixtures, specs, documents, logs, screenshots, test
   reports or Git history, and never to an agent, a remote service or hosted
-  CI. Fixtures are synthetic.
+  CI. Fixtures are synthetic. Those that the scripts capture from the real
+  project of the test environment, a kind cluster of their own, keep nothing
+  that the machine of the capture tells of itself: the kernel, the boot and
+  the swap of each Node and the capacity of each machine template are
+  replaced or left out, and only the architecture of the Nodes is kept
+  (`docs/development/TESTING.md`, "The fixtures").
 - Never store, log or forward credentials or signed URLs.
 - The content of the kubeconfig of a workload cluster never appears on
   screen or in a log.
@@ -212,12 +217,18 @@ pnpm knip:check           # Unused files, unused and unlisted dependencies (knip
 # Tests
 pnpm test:unit            # vitest
 pnpm test:integration     # vitest, against Freelens dev with a kind cluster
+pnpm test:real-project    # vitest, the tests of the real tier, on the real project (its job of CI alone)
+pnpm test:integration:real-project # vitest, the sessions of the real tier, against Freelens dev on the real project
 
 # Test environment (docs/development/TESTING.md)
 pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
 pnpm e2e:cluster:up:definitions   # The definitions of Cluster API alone, on another kind cluster
 pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters
 pnpm e2e:pins:check               # Downloads every pinned file and checks it, with no cluster
+pnpm e2e:fixtures:capture <state> # Captures the fixtures of a state, or of all, from the real project
+pnpm e2e:fixtures:up <state>      # Applies the fixtures of a state, or of all, to the cluster of the definitions
+pnpm e2e:fixtures:down            # Removes the fixtures from the cluster of the definitions
+pnpm e2e:fixtures:check           # Applies each fixture set, reads it back and compares it with its files
 pnpm demo:up                      # e2e:cluster:up, then how to open it in Freelens
 pnpm demo:down                    # Alias for e2e:cluster:down
 
@@ -240,31 +251,62 @@ pnpm clean:all            # Clean everything (dist, dts, node_modules, tgz)
 src/
   main/index.ts                  # Main entry (Main.LensExtension)
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
-  renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage
+  renderer/api/                  # The models: Cluster at v1beta2 (cluster/), the kinds that the view of Clusters
+                                 #   reads as the context of the status model (context/), and their shared types
+  renderer/pages/                # The page of the Clusters and its list (SPEC-0004)
+  renderer/details/              # The details of a Cluster (SPEC-0004): the drawer that the page opens over its list,
+                                 #   the view of one Cluster and the panel in the details of the host
+  renderer/reads/                # How a view reads the stores of the host: the adapter of each store, the reads of a
+                                 #   mount, the stores of the page, the definitions, the context of the frame, and the
+                                 #   stores of its own that the view of one Cluster reads outside the page
+  renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage, the marks of state, notices
+  renderer/icons/                # The icon of the root entry of the sidebar
+  common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
+  common/status/                 # The status model (SPEC-0003): statusOf and conditionsOf in index.ts, the rules
+                                 #   of each family of kinds, freshness, activity and tone, each with its unit test
+  common/views/                  # The pure functions of the views: the context of the model, the state of the reads,
+                                 #   the references, the availability of a kind, the cells of a list, and the address,
+                                 #   the state and the sections of the details, each tested
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
+test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
+test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their files for the unit tests of the views
+test/host-stores.ts              # Stores and APIs of the host on the stub, for the unit tests of the pages
+test/status-views.ts             # The model read with the context that a view builds from a set of objects
 test/environment.test.ts         # Unit tests of the scripts of the test environment
+test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
+test/expected-refusals.test.ts   # Unit tests of the refusals that a session expects and leaves out of its errors
+test/real-project-checks.test.ts # Unit tests of what the sessions of the real tier compare
+test/real-project/               # Tests of the real tier, `*.tests.ts`: S7 on the real project, and its expectations
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
-integration/__tests__/           # Integration tests, run against Freelens dev over CDP, and their shared module
+integration/__tests__/           # Integration tests, run against Freelens dev over CDP, the sessions of the real tier
+                                 #   among them, and the modules they share or import
+integration/fixtures/            # The fixtures of the test environment: objects of Cluster API, one folder per state
 e2e/environment/pins.json        # Versions and digests of what the scripts of the test environment download
 e2e/scripts/                     # The scripts of the test environment, run by Node as they are
 ```
 
-The extension registers nothing yet: each feature adds its files with its
-spec.
+The extension registers the page of the Clusters of SPEC-0004, with its
+sidebar entry, and the panel of the Clusters in the details of the host; each
+feature adds its files with its spec.
 
 Build output goes to `dist/`: `main.js`, `renderer.js` and `renderer.css`, with
 source maps. `main` and `renderer` in `package.json` point at the two entries.
 
 ## CRD KubeObject Pattern
 
-No model exists yet. This section and "Adding an API" describe the pattern
-with the `Example` of freelensapp/freelens-example-extension; the spec that
-adds the first model replaces it here with that model.
+The models of this extension follow the pattern of
+freelensapp/freelens-example-extension: the model of Cluster at `v1beta2`,
+and the models that SPEC-0004 gives the kinds that the view of Clusters reads
+only as the context of the status model (SPEC-0004, P1).
 
 A model is a subclass of `Renderer.K8sApi.LensExtensionKubeObject`, one file
-per API version: `src/renderer/api/example/example-v1alpha1.ts` and
-`example-v1alpha2.ts`, each exporting a class named `Example`.
+per API version: `src/renderer/api/cluster/cluster-v1beta2.ts`, exporting a
+class named `Cluster`, with the types of a Cluster written from the schema of
+the release. The name stays inside its module and those that import it:
+`Renderer.K8sApi` exports a model named `Cluster` for another group
+(SPEC-0001, R7.20). The models of the context are in
+`src/renderer/api/context/context-models.ts`, one class for each kind.
 
 The host reads the model's metadata from the class, through `static readonly`
 properties. The objects it hands to the extension, in a list, a details panel
@@ -281,93 +323,122 @@ is not, and calling it throws. So:
   each other, and `detailsFor` and `menuItemFor` accept a component written
   for the other version (see "Renderer Components"). `declare` emits nothing,
   so the runtime object is the host's as before.
-- **Per-object logic**: a `static` method that takes the object, such as
-  `Example.getSuspended(object)`.
+- **Per-object logic**: a `static` method that takes the object. The models of
+  this extension have none: the status of an object of Cluster API is the
+  status model's, which every view reads through `statusOf` and
+  `conditionsOf` (SPEC-0003), and a view reads the other fields as plain data.
 - **Fields**: read `object.spec` and `object.status` through the model's typed
-  `ExampleSpec` and `ExampleStatus`.
+  `ClusterSpec` and `ClusterStatus`.
 - **Forbidden**: instance methods on the subclass; a fallback such as
   `typeof (object as any).getSuspended === "function" ? ...`, which always
   takes the fallback; `as any`.
 
 ```typescript
-export class Example extends Renderer.K8sApi.LensExtensionKubeObject<
-  Renderer.K8sApi.KubeObjectMetadata,
-  ExampleStatus,
-  ExampleSpec
+export class Cluster extends Renderer.K8sApi.LensExtensionKubeObject<
+  Renderer.K8sApi.NamespaceScopedMetadata,
+  ClusterStatus,
+  ClusterSpec
 > {
-  declare kind: "Example";
-  declare apiVersion: "example.freelens.app/v1alpha2";
+  declare kind: "Cluster";
+  declare apiVersion: "cluster.x-k8s.io/v1beta2";
 
-  static readonly kind = "Example";
+  static readonly kind = "Cluster";
   static readonly namespaced = true;
-  static readonly apiBase = "/apis/example.freelens.app/v1alpha2/examples";
+  static readonly apiBase = "/apis/cluster.x-k8s.io/v1beta2/clusters";
 
-  static readonly crd: ExampleKubeObjectCRD = {
-    apiVersions: ["example.freelens.app/v1alpha2"],
-    plural: "examples",
-    singular: "example",
-    shortNames: ["ex"],
-    title: "Examples",
+  static readonly crd: ClusterApiKubeObjectCRD = {
+    apiVersions: ["cluster.x-k8s.io/v1beta2"],
+    plural: "clusters",
+    singular: "cluster",
+    shortNames: ["cl"],
+    title: "Workload Clusters",
   };
-
-  static getSuspended(object: Example): boolean {
-    return object.spec.suspended ?? false;
-  }
 }
 
-export class ExampleApi extends Renderer.K8sApi.KubeApi<Example> {}
-export class ExampleStore extends Renderer.K8sApi.KubeObjectStore<Example, ExampleApi> {}
+export class ClusterApi extends Renderer.K8sApi.KubeApi<Cluster> {}
+export class ClusterStore extends Renderer.K8sApi.KubeObjectStore<Cluster, ClusterApi> {}
 ```
 
 The file also exports a `KubeApi` and a `KubeObjectStore` subclass. The list
-page uses the `KubeApi` type for `KubeObjectListLayout`; neither is
-instantiated, because the store comes from the host, through
-`Example.getStore()`.
+page uses the `KubeApi` type for `KubeObjectListLayout`, and the store that it
+reads comes from the host, through `Cluster.getStore()`. The `KubeApi`
+subclass is never instantiated: built, it would register an API of its own.
+The `KubeObjectStore` subclass is not either, with two exceptions. The page of
+the Clusters builds one `ClusterStore`, once in the frame of a cluster, with
+the API of Clusters that the host registered, and never loads, registers or
+subscribes it; of it, the page reads the public getter `context` alone, the one
+way in which the extension API tells whether the host follows a list that it
+reads over the whole cluster (SPEC-0004, P34). The view of one Cluster whose
+namespace the page does not read, or reads over the whole cluster with no watch
+(P34), in the details of the page or in the panel in the details of the host,
+builds one store of the model's class for each kind that it reads, the Cluster
+included, and one `ProviderObjectStore` for each kind of a provider that the
+Cluster names, each with the API that the host registered for its kind; it loads
+each on the namespace of the Cluster alone, under an `AbortController` of its
+own, subscribes it once that load has ended, stops the stores built on the APIs
+that the host registers again, ends every subscription when it closes, and never
+registers them with the API manager of the host, whose own views would then read
+them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
 
-`src/renderer/index.tsx` registers each version's details panel
-(`kubeObjectDetailItems`) and menu item (`kubeObjectMenuItems`) with
-`Renderer.K8sApi.detailsFor` and `Renderer.K8sApi.menuItemFor`, which take
-`kind` and `crd.apiVersions` from the model class, and one "Examples" page
-(`clusterPages`, `clusterPageMenus`).
-That page is made by `createAvailableVersionPage` from the list pages of both
-versions, newest first: it renders the first one whose store the host has,
-and a "not available" message when the cluster serves neither.
+`src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
+and its sidebar entries (`clusterPageMenus`). The details panel and the menu
+items of a kind are registered (`kubeObjectDetailItems`,
+`kubeObjectMenuItems`) with `Renderer.K8sApi.detailsFor` and
+`Renderer.K8sApi.menuItemFor`, which take `kind` and `crd.apiVersions` from the
+model class: the panel of the Clusters, `ClusterPanel`, at priority 250, so
+that it comes after the metadata of the host and before its custom resource
+section and its events (SPEC-0004, P16). The details of the extension are not a
+registration: the page renders them over its list while its parameter
+`details`, which its registration declares in `params`, names a Cluster (P6,
+P15).
+The page of a kind of the template is made by `createAvailableVersionPage`
+from the list pages of its versions, newest first: it renders the first one
+whose store the host has, and a "not available" message when the cluster
+serves neither. The page of the Clusters departs from it (SPEC-0004, P20): it
+reads one version alone, `v1beta2`, and tells from the APIs that the host
+registers and from its store of definitions whether the host is still
+checking, Cluster API is not installed, or the cluster serves Clusters at an
+older version alone, which that page does not tell apart.
 
-`customResources` lists the model classes of both versions. The host reads the
-group and plural from each class's `crd`, and while the extension is enabled
-it leaves the resource out of the Custom Resources tree of the cluster
-sidebar, where it would otherwise be listed a second time next to the
-"Examples" page. Both versions name the same group and plural, so either class
-alone would do; both are listed so that removing one version leaves the other
-registered. The definition stays in the Definitions list, and the host's own
-list and details stay reachable by URL and from the command palette. A model
-the extension only decorates, with a details panel or a menu item and no page
-of its own, stays out of the field: registered, it would leave the tree with
-nothing in its place. The host rejects an entry it cannot read (no `kind`, no
-`crd` or `apiBase`, a core-group resource) with an error in the log, and the
-resource stays in the tree (contract C6 of `api.md`).
+`customResources` lists the model of Cluster at `v1beta2`. The host reads the
+group and plural from the class's `crd`, and while the extension is enabled it
+leaves the resource out of the Custom Resources tree of the cluster sidebar,
+where it would otherwise be listed a second time next to the "Workload
+Clusters" page. The definition stays in the Definitions list, and the host's
+own list and details stay reachable by URL and from the command palette. A
+model the extension only reads or decorates, with no page of its own, such as
+the models of the context, stays out of the field: registered, it would leave
+the tree with nothing in its place. The host rejects an entry it cannot read
+(no `kind`, no `crd` or `apiBase`, a core-group resource) with an error in the
+log, and the resource stays in the tree (contract C6 of `api.md`).
 
-The page it returns is an `observer`. `getStore()` reads the host's API
-registry, which is observable, and the host registers a CRD's APIs only after
-the cluster frame has loaded the CRDs. Freelens restores the last page when a
-cluster is opened, so the page often renders before that; as an `observer` it
-renders again when the version is served, and otherwise it keeps showing "not
-available" until the user navigates away and back. Any component that chooses
-a version through `getStore()` is an `observer` for the same reason.
-`src/renderer/components/available-version.test.tsx` checks it: its spy on
-`getStore` reads an observable, and the page follows when the test sets it.
+The page is an `observer`. `getStore()` reads the host's API registry, which
+is observable, and the host registers a CRD's APIs only after the cluster
+frame has loaded the CRDs. Freelens restores the last page when a cluster is
+opened, so the page often renders before that; as an `observer` it renders
+again when the version is served, and otherwise it keeps showing that it is
+checking until the user navigates away and back. Any component that chooses a
+version through `getStore()` is an `observer` for the same reason.
+`src/renderer/pages/clusters-page-v1beta2.test.tsx` checks it: the registry of
+the stub of the SDK is observable, and the page follows when the test
+registers the API.
 
 ### Adding an API
 
 A new kind, or a new version of a kind, takes the same set of files as
-`Example`, one per version. The steps, in order:
+`Cluster`, one per version. The steps, in order:
 
 1. **The types.** They follow the API of the controller that serves the
    resource, read from its sources at the release that serves the version,
    and not from memory: the Go types when the controller is written with
    kubebuilder, otherwise the `openAPIV3Schema` of the CRD.
    - Every Go struct has a TypeScript interface of the same name, with the
-     same fields under their `json` names.
+     same fields under their `json` names. The one exception is a kind that a
+     view reads only as the context of the status model: its model types, as
+     its spec and its status, the plain-data types of the status model for the
+     fields that its rules read, and nothing else, until the spec of its own
+     view gives it its whole types (SPEC-0004, P1). The spec of a
+     KubeadmControlPlane holds fields that SPEC-0001, A3 never reads.
    - A field is optional in the interface when the CRD does not require it.
      `controller-gen` decides that from the markers, not from the `json` tag:
      `+required` (or `+kubebuilder:validation:Required`) makes the field
@@ -399,7 +470,9 @@ A new kind, or a new version of a kind, takes the same set of files as
    version, `crd` the plural, singular and short names of the CRD.
 3. **The list page** per version in `src/renderer/pages/`, joined into one page
    per kind by `createAvailableVersionPage`, newest version first, and
-   registered once in `clusterPages` and `clusterPageMenus`.
+   registered once in `clusterPages` and `clusterPageMenus`. A page that reads
+   one version alone tells itself whether the cluster serves it, as the page of
+   the Clusters does (SPEC-0004, P20; "CRD KubeObject Pattern").
 4. **The details panel** per version in `src/renderer/details/`, registered in
    `kubeObjectDetailItems` with `Renderer.K8sApi.detailsFor` and the version's
    model class.
@@ -414,7 +487,11 @@ A new kind, or a new version of a kind, takes the same set of files as
    stub, as small as the test needs.
 8. **`examples/<version>/`**: the CRD and a test object, applied with
    `kubectl apply -k` as `README.md` shows, and a row per version in the
-   resource table of `README.md`.
+   resource table of `README.md`. The kinds of Cluster API have none: their
+   definitions are those of the release, which the scripts of the test
+   environment install, and their objects the fixtures of SPEC-0002; a copy
+   of a definition would reproduce a text of the project (SPEC-0004, P30).
+   `examples/` keeps only its `.yamlfmt.yaml`.
 
 Then check the result in Freelens dev ("Checking the Extension in Freelens
 Dev"): the page lists the test object, the details show every field, the
@@ -422,9 +499,8 @@ menu items work, and the resource is gone from the Custom Resources tree.
 
 ## Renderer Components
 
-The examples of this section name the `Example` of
-freelensapp/freelens-example-extension; the spec that registers the first
-view replaces them with its own classes and files.
+The examples of this section name the classes and files of the first view, the
+Clusters of SPEC-0004, with their list and their details.
 
 - Pages and details panels are `observer` components from `mobx-react`, which the build maps to the host's copy.
 - Every page, panel, menu item and preference the extension registers renders inside an `ErrorBoundary` from
@@ -490,20 +566,30 @@ view replaces them with its own classes and files.
   removes them.
 - Icons are SVG files imported with `?raw` and rendered by `Renderer.Component.Icon` through its `svg` prop.
 - The `kubeObjectDetailItems` and `kubeObjectMenuItems` registrations in `src/renderer/index.tsx` are made by
-  `Renderer.K8sApi.detailsFor(Example, { priority: 10, Details })` and
-  `Renderer.K8sApi.menuItemFor(Example, { MenuItem })`, not written out with `kind` and `apiVersions`. The helper takes
+  `Renderer.K8sApi.detailsFor(Cluster, { priority: 250, Details })` and
+  `Renderer.K8sApi.menuItemFor(Cluster, { MenuItem })`, not written out with `kind` and `apiVersions`. The helper takes
   both from the model class and types the props of `Details` and `MenuItem` from it, so a wrapper that passes more
   props, such as `(props) => <Details {...props} extension={this} />`, needs no props annotation, and a component
   written for another model fails the type check. The
   check is structural: it tells two versions of one kind apart only by the `declare apiVersion` literal of each model
   ("CRD KubeObject Pattern").
-- The props of a details panel are, or extend, `Renderer.Component.KubeObjectDetailsProps<Example>`, and those of a menu
-  item `Common.Types.KubeObjectMenuItemProps<Example>`: the concrete model class, never `any`, and only what the host
+- The props of a details panel are, or extend, `Renderer.Component.KubeObjectDetailsProps<Cluster>`, and those of a menu
+  item `Common.Types.KubeObjectMenuItemProps<Cluster>`: the concrete model class, never `any`, and only what the host
   passes. A menu item does not extend `Renderer.Component.KubeObjectMenuProps`, the props of the host's whole
   `KubeObjectMenu` (`id`, `editable`, `removable`, `onMenuReady` and more). That compiles, because both require only
   `object`, and the item then promises props the host never passes.
-- The host renders a cluster page with `params` only. A page that needs the extension gets it from the registration
-  (`Page: () => <ExamplesPage extension={this} />`), with the page component created once, outside the registration.
+- The details of the extension are the host's `Drawer`, which the page renders over its list
+  (`src/renderer/details/cluster-details-drawer.tsx`), with its content inside an `ErrorBoundary` keyed by the address
+  of the Cluster, and each section of the details inside one of its own keyed by the Cluster. The panel in the details
+  of the host, `ClusterPanel`, is the same view without the metadata, which the host renders there (SPEC-0004, P16,
+  P32). A reference to an object of a provider is a `Renderer.Component.MaybeLink` to
+  `Renderer.Navigation.getDetailsUrl(selfLink)`, which opens the details of the host over the page; a Cluster named in
+  a message opens the details of the extension through the parameter of the page, which the page sets itself and the
+  panel sets with `navigate` of the extension (P6, P18).
+- The host renders a cluster page with `params` only. A page gets the extension from the registration, which passes
+  the `params` of the host on
+  (`Page: (props: Common.Types.PageComponentProps) => <ClustersPage {...props} extension={this} />`), with the page
+  component created once, outside the registration, as `ClustersPage` is; the error boundaries inside a page take it.
   `PageComponents.Page` is typed with the props the host passes, `Common.Types.PageComponentProps`, so the type check
   rejects a page that requires another prop. It does not reject one that declares another prop as optional next to
   `params`; that prop is `undefined`.
@@ -973,14 +1059,23 @@ modules are devDependencies, for their types, and are ignored.
 A file is unused when no entry reaches it: a leftover module, a barrel that
 nothing imports. The production pass starts from the `!` entries only, so it
 also reports a module that only tests import. The fix is to remove the file,
-not to ignore it. The check does not include unused exports and types: on this
-tree they are mostly the exported spec and status types of the models.
+not to ignore it. The page of the Clusters imports the entry points of the
+status model, which reach every module of `src/common/status/` and four of the
+parsers, and the details of a Cluster import the fifth, the parser of the list
+annotation, for the pending hooks of the topology. The check does not include
+unused exports and types: on this tree they are mostly the exported spec and
+status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. Its Vite plugin is off: it adds the renderer entry of
-`vite.config.mjs` as a development entry, which displaces
-`src/renderer/index.tsx!`, and the production pass then skips the renderer.
+`environment-tests/`. The entry of `src/common/status/index.ts` went with the
+list of the Clusters of SPEC-0004, whose page imports the model, and that of
+`src/common/parsers/list-annotation.ts`, the one parser that the model does not
+import, with their details, which import it (SPEC-0003, "Notes and
+deviations").
+Its Vite plugin is off: it adds the renderer entry of `vite.config.mjs` as a
+development entry, which displaces `src/renderer/index.tsx!`, and the
+production pass then skips the renderer.
 `--no-config-hints` is set because one config serves both passes, and an entry
 that only the production pass needs is reported as redundant by the other.
 The scripts of the test environment need no entry: knip finds
@@ -1009,16 +1104,17 @@ problem does not show.
 
 ### Workflows
 
-| Workflow                 | Runs                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `type-check.yaml`        | `pnpm type:check`                                                                     |
-| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                    |
-| `unit-tests.yaml`        | `pnpm test:unit`                                                                      |
-| `trunk-check.yaml`       | `trunk check --all`                                                                   |
-| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                         |
-| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version         |
-| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check` |
-| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                         |
+| Workflow                 | Runs                                                                                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type-check.yaml`        | `pnpm type:check`                                                                                                                                                           |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                                                                                                          |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                                                                                                                            |
+| `trunk-check.yaml`       | `trunk check --all`                                                                                                                                                         |
+| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                                                                                                               |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version                                                                                               |
+| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`                                                                                       |
+| `test-environment.yaml`  | the fixtures and the real project of the test environment, with the tests of the real tier and, in Freelens dev on each release, its sessions (docs/development/TESTING.md) |
+| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                                                                                                               |
 
 The type check has a workflow of its own, on pull requests and on pushes to
 `main`, as in Freelens. It runs every program, tests, tooling and environment
@@ -1041,32 +1137,175 @@ a file and a fresh profile in `FREELENS_INTEGRATION_TESTING_DIR`, waits until
 the CDP endpoint answers, and runs `pnpm test:integration` here. The job
 `integration tests` waits for every job of the matrix and fails when one of
 them did not succeed; the branch rules require it rather than the jobs of the
-matrix, whose names change with the matrix. A profile of
+matrix, whose names change with the matrix. The kind cluster of the sessions is
+the cluster of the definitions of the test environment, which the workflow
+creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
+fixtures of every state with `pnpm e2e:fixtures:up all`, each state in a
+namespace of its own, as its last step before the tests, once Freelens dev
+answers (docs/development/TESTING.md; SPEC-0004, P33). A profile of
 Freelens dev syncs no kubeconfig by default, so the workflow seeds the fresh
-one with a single sync entry, a file with the kind cluster alone, and the
-catalog lists that cluster and nothing else. Every test
-file is a session of its own on the one app, and fails on any error logged by
-either process:
+one with two sync entries: a copy of the kubeconfig of the scripts, which
+holds that cluster alone, and the folder of the restricted session, empty and
+readable by the runner user alone, where that session writes the kubeconfig of
+a second identity and deletes it at its end (SPEC-0004, P23). The catalog
+lists that cluster, and the cluster of that identity while its file is there.
+Every test file is a session of its own on the one app, and fails on any error
+logged by either process:
 
 - `extensions.tests.ts` uninstalls whatever installation of the extension the
   app has, installs this checkout in place from the Extensions page and opens
   its preferences page, without changing the preference: the extension's tab
   in the "Extensions" tab group shows the title and the checkbox label of its
   `appPreferences` entry. It needs no cluster.
-- `example-v1alpha1.tests.ts` and `example-v1alpha2.tests.ts` open the kind
-  cluster with the CRD of one API version and its test object, and click
-  through the extension's views: the list page shows a row for the object,
-  its details show the extension's panel with `Api Version` set to the
-  session's version and no error page of the error boundary, and the row's
-  menu lists the extension's `Suspend` item, which is not clicked. Each view
-  is an `it` that navigates from the sidebar itself, so that it does not
-  depend on the state another left. They do not check the columns, every
-  field, what a menu action does, or the Custom Resources tree. They keep an
-  in-place installation of this checkout that is enabled, and install it
-  otherwise.
+- `fixtures.tests.ts` opens the kind cluster with the definitions of Cluster
+  API and the fixtures of one state, `healthy` unless `TEST_FIXTURE_STATE`
+  names another, and checks that the host imports the renderer of the
+  extension in the frame of the cluster, which it shows by linking the
+  stylesheet of the extension there before it activates it, with no error in
+  either process, an error of the activation failing the teardown, and that
+  the host lists every object of the fixtures, by the cell of its name, in the
+  list of the host for its kind, which it opens by its address with its
+  namespace filter on the namespace of the state. The first check needs the
+  extension to ship `dist/renderer.css`, and fails at once, saying so, when
+  the build has none. It reads the fixtures with
+  the modules of the scripts of the test environment, and changes nothing on
+  the cluster. It keeps an in-place installation of this checkout that is
+  enabled, and installs it otherwise.
+- `clusters.tests.ts` opens the page of the Clusters of the extension on the
+  same cluster, with the namespaces of every state selected, and checks the
+  row of the Cluster of each state against what the status model gives its
+  fixtures (SPEC-0003, "The fixtures of SPEC-0002 give these results";
+  SPEC-0004, "Notes and deviations"): the word and the tone of its health, the
+  word, the state and the tone of each activity, the word stale, its counters,
+  its version, its class and its status. It finds a row by a search of its
+  name once the list shows only the rows that the search keeps: the search of
+  the host filters 250 ms after its input changes, and until then a hover or a
+  click lands where the whole list has the row. It checks that a hover of a
+  cell of each kind shows its tooltip with every line of it: each activity
+  with its duration and its start, the health with stale and its cause, the
+  note of the MachinePools of unknown health, and the whole message of the
+  status; that a title of the head that its column does not hold is cut by its
+  badge, with an ellipsis, and whole in its tooltip; and that the note of a
+  cell stands at the middle of its line, as its marks do. It checks that the
+  list has no checkbox and no menu of the host, its rows an empty cell of the
+  menu that lines them up with the header (SPEC-0001, A7), and that a click on
+  a row opens the details of the extension, never those of the host, with the
+  address of the Cluster in the parameter `details` of the page: a click on
+  another row shows that Cluster, a click on the title of the page and Escape
+  close them with the focus back on the name, and Tab and Enter open them from
+  a name (SPEC-0004, P6, P13, P15). It checks that no remove button shows on
+  its page while a Cluster is selected in the list of the host, before and
+  after a click on its row (the half of S5 that concerns the page); that the
+  details of the host of a Cluster show the panel of the extension after their
+  metadata and before their custom resource section and their events, and that
+  the annotation `cluster.x-k8s.io/paused`, which it sets with kubectl, reaches
+  the panel with no reload while the host keeps the Cluster as it first read it
+  (P16, P31); that the infrastructure cluster opens the details of the host of
+  its object over those of the extension, which the close icon of the host shows
+  again and one Escape closes with them, while the other references are text,
+  and the namespace the badge of the host, which selects it alone in the filter
+  (P18, P32); that the details of the states that have sections of their own
+  show them; that a label which it sets with kubectl reaches the search of the
+  list and the details of a Cluster whose namespace the page does not read,
+  with no reload, also in a namespace that the filter adds; and that the Custom
+  Resources tree of the host has no entry for the Clusters. It records the
+  requests of the renderer, and fails when one to the groups that the view
+  reads is not a GET, or when an object of the fixtures has another version
+  after the session than before, or than the one that the answer to the last
+  write of the session gave it. It writes its labels and its annotation with a
+  merge patch, whose answer is the object that the write made, since
+  `kubectl label` and `kubectl annotate` print the object as it was before the
+  write, and fails at once when the version that it records is the one before
+  the write. With `TEST_PLANT_WRITE` set it patches a label from the frame of
+  the cluster, and both checks fail. The step of the annotation removes it at
+  its end, also when a check failed; the end of the session removes its labels,
+  and the annotation when that removal failed, disconnects the cluster and
+  closes the connection whatever failed before, and then throws one error that
+  lists every check that failed, so that a planted write shows both.
+- `clusters-restricted.tests.ts` opens the same page as a second identity, a
+  ServiceAccount in a namespace of its own on the cluster of the definitions,
+  which it makes through the scripts of the test environment, with
+  `openDefinitions`, with a token from a TokenRequest in a kubeconfig file of
+  the folder that `TEST_RESTRICTED_KUBECONFIG_FOLDER` names, which the profile
+  syncs (SPEC-0004, P23; docs/development/TESTING.md, "Safety"). Each step of a
+  case grants the identity what it allows, through ClusterRoles that read
+  alone and their bindings, and waits until the cluster answers so, in one
+  batch of SubjectAccessReviews: the Clusters refused in the namespace of
+  `paused`, Partial, with the mark of the host for the failure of its load,
+  over the whole cluster and in both namespaces Restricted, with "not counted"
+  next to that mark; the Machines refused, the Clusters listed with activities
+  that read Unknown, never Idle, and the read that failed in their details;
+  every kind of the page over the whole cluster with no watch of every
+  resource of the core group, the notice of a list that the host reads once
+  and does not follow, and with one namespace none, and a label that it sets
+  with a merge patch found by a search that showed no row before; and S2
+  last, with the definitions refused: the infrastructure cluster a link when
+  the identity may get its definition by its name, and text with its reason
+  and the permission when it may not. A step that refuses a kind in a
+  namespace that the frame read before, and S2, whose definitions the host
+  lists as the frame starts, load the frame again, so that no API of the host
+  keeps a version from which a watch would start and be refused, and then open
+  the page, since a frame that starts may show the start page of the host.
+  Each notice is checked against the message that the cluster gives the
+  identity for the same request, read with an impersonation. A refusal that a
+  case expects is left out of the errors when it arrives, a 403 of an address
+  to which the renderer sent GETs alone, never a watch, by its address, the
+  frame of that cluster that sent it and the page that this frame shows, any
+  page for the list of the definitions that the frame sends as it starts
+  (`expectRefusals` of the session of the app, `isExpectedRefusal` of
+  `expected-refusals.ts`); any other refusal, and any other error, fails the
+  session, and each case checks that the refusals that it expects arrived
+  (`refusalsLeftOut`). It waits in its hooks with `vi.waitFor`, since Vitest
+  refuses `expect.poll` outside a test. Its end, also when a case failed,
+  disconnects that cluster, deletes the file, every object that it made and
+  the namespace, and checks that they are gone. The token is never logged.
+
+The sessions of the real tier, `clusters-real.tests.ts` and
+`clusters-sveltos.tests.ts`, open the cluster of the real project instead, and
+run in the job of the real project of `test-environment.yaml`, on each release
+of the matrix, with `pnpm test:integration:real-project`; `pnpm
+test:integration` leaves them out. Each reaches the real project through the
+scripts, with `openRealProject`, as the tests of the real tier do, and finds
+the cluster in the catalog by `TEST_KIND_CLUSTER_NAME`,
+`freelens-capi-management` in that job, whose profile syncs a copy of the
+kubeconfig of the scripts for that cluster alone:
+
+- `clusters-real.tests.ts` compares the details with what
+  `clusterctl describe cluster` prints, run by the scripts with the pinned
+  clusterctl, which its hook sets up once: the status and the reason of
+  `Available` of `freelens-capi-md`, and the counters of its control plane and
+  of its workers, read from the value of their items, which add up to its row;
+  the health Degraded of `freelens-capi-mp`, with `ControlPlaneMachinesReady`
+  among its issues, once the tool gives its `Available` as `True`; each side
+  read again until they agree, five minutes at most; and, read once, the
+  topology of both. It writes nothing.
+- `clusters-sveltos.tests.ts` is S6 (SPEC-0004, P29): it installs the Sveltos
+  extension from the file of its package, which the scripts download and check
+  against its pin, with the `.sha256` beside it, applies the definitions of the
+  chart of Sveltos of the pins, by the names that it takes from their manifests
+  first, then checks that both pages, each at the address of its own extension
+  (`openExtensionPage` with the name of the extension), list the same Clusters,
+  that a label that kubectl sets reaches each when it opens, that a label set
+  and removed with one page open reaches it through its watch and the other
+  when it opens, and that no watch of `cluster.x-k8s.io` fails, which the
+  client of the host logs as a warning (`recordWatchFailures`). The page of the
+  Sveltos extension also reloads its lists every 30 seconds, so the session
+  records the requests, and an update counts only when no list of the Clusters
+  without a watch went between the write and the update; when one did, the step
+  makes its write again, three times at most. It leaves out of the errors a 429
+  that the API server answers to a GET of the Sveltos extension to the groups of
+  its own kinds, `*.projectsveltos.io`, from the frame of that cluster, never one
+  to a group that this view reads (`expectThrottling` of the session of the
+  app). Its end removes the label, uninstalls the Sveltos extension and deletes
+  the definitions by their names, also when a step failed.
 
 The tests are deterministic, so nothing retries them: the config sets no
-`retry`, and the workflow runs the step once, under `timeout 600`. A retry
+`retry`, and the workflow runs the step once, under `timeout 1500`, and the job
+of the real project its sessions under `timeout 2400`, limits set from the
+durations of the runs (docs/development/TESTING.md, "Continuous integration"):
+a step that reaches its limit fails, as a case that reaches its own does, and
+loses the report of the sessions after it, which a run of one file gives
+again. A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
 loads a second time when it did not render and the dev file route of Freelens
@@ -1120,36 +1359,62 @@ stylesheets, the frame does not render its sidebar, and `openKindCluster`,
 after its timeout, loads the frame again once, only if the main log has a
 failed request since the cluster was opened.
 
+The list of the host for a custom resource keys its columns by the names of
+the printer columns of the CRD, and at `v1beta2` the CRDs of MachineDeployment
+and KubeadmControlPlane of Cluster API name two columns `Available`, their
+condition and their count of available replicas. React logs the repeated key
+as an error at every render of their lists in Freelens dev
+(`Encountered two children with the same key`). The session decides each such
+error in the handler of its message, as it arrives, on the address of the
+frame that logged it, found by the host of the script that logged it, as
+Playwright last saw it: Playwright follows the navigations of a frame in order
+with its console messages, so that is the address the frame had when it
+logged the error. The error is left out only when that address is the list of
+the host for a custom resource, `/crd/<group>/<plural>`, with no details panel
+open (no `kube-details` in it), and the key is one that the list gives two
+columns, as the host makes them from the CRD: the name, the namespace, the
+printer columns of the version it reads (the stored one when it is served,
+else the served one of the highest priority) without those of a priority
+above 0, and the age. `hostLists` reads those keys before it opens a list; for
+a list that the session finds open, such as one that Freelens restores when it
+opens the cluster, they are read when its first message arrives, and that
+decision waits for the read, which counts the error, with its reason, when it
+fails. Any other repeated key counts, those of the extension's own views
+included, and so does one that a details panel logs over a list. `errors()`
+and the teardown wait until no decision is pending, those that start meanwhile
+included.
+
+The list layout of the host gives each cell of a row the class of the head of
+its column. The lists of the host name that class after the column, so
+`.TableCell.name` finds the cell of the name in a list of the host, as
+`hostLists` does. The cells of the list of the extension carry instead the class
+that the CSS module of its page exports for the column, whose name the build
+makes, such as `_name_` and a hash: a session finds a cell of the page by what
+it holds, the cell of the name by the test id of the name, never by the id of
+its column, which matches nothing there.
+
 The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent
 `dev` task never ends, so the log would stay empty.
 
-There is one session per API version because the cluster and the app are
-singletons: the CRD `examples.example.freelens.app` is one object, whose
-`examples/v1alpha1` definition serves v1alpha1 only and whose
-`examples/v1alpha2` definition serves both versions, and the app reads which
-versions are served when it connects to the cluster. So the v1alpha1 session
-checks that the page falls back to the v1alpha1 list, and the v1alpha2
-session that it picks v1alpha2, the newest version. Vitest runs the files one
-at a time (`fileParallelism: false`), in no set order, and none depends on
-another having run: each session disconnects the kind cluster, removes the
-leftovers of an earlier run (the namespace `integration-tests` and the CRD),
-applies the CRD from `examples/<version>/crds`, waits until it is
-established, applies `integration/fixtures/<version>/` (the object of
-`examples/<version>/test`, in the namespace `integration-tests`, which the
-kustomization creates), and only then connects the cluster. The session then
-selects `integration-tests` in the namespace filter of the extension's own
-page, which its `KubeObjectListLayout` renders for a namespaced resource,
-unless the filter already shows it: a new cluster shows only `default`, and
-the app keeps the selection for every namespaced list of the cluster. Without
-it the page lists nothing, and every view fails on its timeout. The session
-opens no page of the host, whose requests can log errors of their own: the
-Pods page asks for pod metrics, and kind has no metrics server. A session's
-teardown stops collecting the errors first, then disconnects the cluster, so
-that the app logs no watch error for a CRD deleted under it, then deletes the
-fixtures and the CRD with `--wait`, also when a test failed, and then checks
-the errors. The app refreshes the cluster's permissions while it disconnects
-it, and when the refresh loses the race, its requests fail on its own proxy
+The workflow applies the fixtures of every state, each in a namespace of its
+own, so that the sessions of the views read several states at once on the one
+cluster and the one app; the session of the fixtures opens the state that
+`TEST_FIXTURE_STATE` names. Vitest runs the files
+one at a time (`fileParallelism: false`), in no set order, and none depends on
+another having run. The session of the fixtures changes nothing on the
+cluster: it checks that the namespace of its state is there, connects the
+cluster, and opens the list of the host for each kind of the set by its
+address, `/crd/<group>/<plural>`, in the cluster frame. It selects the
+namespace of the state in the namespace filter of the list, unless the filter
+already shows it: a new cluster shows only `default`, and the app keeps the
+selection for every namespaced list of the cluster. Without it the list shows
+nothing, and every check fails on its timeout. It opens no other page of the
+host, whose requests can log errors of their own: the Pods page asks for pod
+metrics, and kind has no metrics server. A session's teardown stops collecting
+the errors first, then disconnects the cluster, and then checks the errors.
+The app refreshes the cluster's permissions while it disconnects it, and when
+the refresh loses the race, its requests fail on its own proxy
 (`[AUTHORIZATION-REVIEW]`, `[AUTHORIZATION-NAMESPACE-REVIEW]`,
 `[FREELENS-PROXY]` with `Cluster <id> is not connected` or `The client is
 destroyed`); those errors come and go with the timing of a run and say
@@ -1157,34 +1422,58 @@ nothing about the extension, and the session no longer collects them.
 
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
-connecting and disconnecting the kind cluster, kubectl, and the selectors. Its
+connecting and disconnecting the kind cluster, opening the lists of the host,
+kubectl, and the selectors. Its
 name does not match `*.tests.ts`, so Vitest does not collect it.
 `integration/tsconfig.json` compiles the directory with Node and the DOM,
 because the callbacks of `page.evaluate` run in the page, and with the types
 of `@freelensapp/extensions`, which declare `globalThis.FreelensExtensionApi`
 for them.
 
-Three variables configure the sessions. `FREELENS_CDP_URL` is the CDP
+Five variables configure the sessions. `FREELENS_CDP_URL` is the CDP
 endpoint (`http://127.0.0.1:9223` by default), `FREELENS_MAIN_LOG` the main
-log, and `TEST_KIND_CLUSTER_NAME` names the kind cluster (`kind` by default,
-`freelens` in the workflow); every kubectl call names its context,
-`kind-<name>`, so a run never acts on the current context. The checkout to
-install, and the manifests, are found from the location of the helpers. Outside
-CI a session skips with a warning when Freelens dev does not answer or the
-cluster is not reachable; in CI (`CI` set) the run fails instead, so that a
-mistake in the workflow does not turn into a silent skip.
+log, `TEST_KIND_CLUSTER_NAME` names the kind cluster (`kind` by default,
+`freelens-capi-definitions` in the workflow, which gives kubectl the
+kubeconfig of the scripts through `KUBECONFIG`), `TEST_FIXTURE_STATE` the
+state of the fixtures of the session of the fixtures, and
+`TEST_RESTRICTED_KUBECONFIG_FOLDER` the folder of the restricted session, which
+the profile syncs; every kubectl call names its context, `kind-<name>`, so a run
+never acts on the current context, and the sessions that write to a cluster
+other than with a label reach it through the scripts, which check the target
+before every request. The
+checkout to install is found from the location of the helpers, and the
+fixtures from that of the session. Outside CI a session skips with a warning
+when Freelens dev does not answer or the cluster is not reachable; in CI (`CI`
+set) the run fails instead, so that a mistake in the workflow does not turn
+into a silent skip.
 
 Run locally, the tests act on the profile of Freelens dev, `FreelensDev`,
 which is apart from that of an installed Freelens: they navigate its window,
 leave this checkout installed in place, uninstalling another installation of
 the extension, and leave the kind cluster disconnected, with the namespace
-filter set to `integration-tests`. They touch no other cluster of the
-catalog. The profile lists the kind cluster only once its kubeconfig is in
+filter set to namespaces of the fixtures. They touch no other cluster of
+the catalog. The profile lists the kind cluster only once its kubeconfig is in
 "Kubeconfig Syncs" (see "Checking the Extension in Freelens Dev"); without
-it the cluster sessions fail on the timeout of finding the cluster. A run
-deletes the CRD `examples.example.freelens.app`, and with it every `Example`
-on the cluster: run it only against a kind cluster with nothing worth
-keeping.
+it the cluster sessions fail on the timeout of finding the cluster. The
+session of the fixtures needs the cluster of the definitions with the fixtures
+of its state, and the session of the Clusters those of every state,
+`pnpm e2e:cluster:up:definitions` and `pnpm e2e:fixtures:up all`, and the
+kubeconfig of the scripts in "Kubeconfig Syncs" and in `KUBECONFIG`; each skips
+with a warning when the namespace of the fixtures is not there. The times of
+the fixtures move to the moment of their apply, and the marks of step 1 of the
+session of the Clusters hold for 25 minutes after it: the session fails at its
+start, saying so, when the Clusters of the fixtures were created longer ago, and
+a local run applies them again first, `pnpm e2e:fixtures:up all`. The
+restricted session needs a folder outside every repository, readable by you
+alone, added once in "Kubeconfig Syncs" and named in
+`TEST_RESTRICTED_KUBECONFIG_FOLDER`, and skips with a warning without it; the
+profile keeps the namespaces of the filter of the cluster of the identity,
+which a run that was killed can leave on refused ones
+(docs/development/TESTING.md, "Safety"). The sessions of the real tier need
+the real project, `pnpm e2e:cluster:up`, and its kubeconfig in "Kubeconfig
+Syncs", with `TEST_KIND_CLUSTER_NAME` set to `freelens-capi-management`; S6
+uninstalls any installation of the Sveltos extension that the profile has, and
+leaves none.
 
 ## Checking the Extension in Freelens Dev
 
@@ -1239,7 +1528,9 @@ syncs of the dev profile" in Freelens's `DEVELOPMENT.md`).
   navigate in `onClick`; their `href` is not the page URL. A click on an
   entry's `[data-testid="sidebar-item-…"]` element does not navigate; a DOM
   `click()` on the link inside it, `[data-testid="link-for-sidebar-item-…"]`,
-  does. Neither does `history.pushState` in the cluster frame.
+  does. Neither does `history.pushState` in the cluster frame, alone; followed
+  by a `popstate` event, it does, which is how the session of the fixtures
+  opens the lists of the host by their addresses.
 - The root frame navigates with `Renderer.Navigation.navigate(url)` of the
   extension API, run in its page: `/extensions`, `/catalog`,
   `/preferences/extension/<name>`, `/cluster/<id>`. The application menu
@@ -1258,7 +1549,9 @@ and paths. Keep only warnings, errors, page errors and the extension's own
 lines, and never paste the full console into a PR, an issue or a report.
 React reports key problems as console errors ("Each child in a list should
 have a unique key", "Encountered two children with the same key"); they count
-as failures of the "no error in DevTools" check.
+as failures of the "no error in DevTools" check. The one exception is the list
+of the host for a custom resource whose CRD names two printer columns alike,
+as the integration tests describe.
 
 The renderer's requests to Kubernetes go through Chromium, which logs every
 response that is not a success as a console error,

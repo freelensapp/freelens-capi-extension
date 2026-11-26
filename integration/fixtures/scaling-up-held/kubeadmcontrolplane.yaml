@@ -1,0 +1,225 @@
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: KubeadmControlPlaneTemplate.controlplane.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: quick-start-control-plane
+  creationTimestamp: "2025-12-31T23:55:31Z"
+  finalizers:
+  - kubeadm.controlplane.cluster.x-k8s.io
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up-held
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-scaling-up-held-jr7rd
+  namespace: freelens-capi-scaling-up-held
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    blockOwnerDeletion: true
+    controller: true
+    kind: Cluster
+    name: freelens-capi-scaling-up-held
+spec:
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs:
+        - localhost
+        - 127.0.0.1
+        - 0.0.0.0
+        - host.docker.internal
+        extraArgs:
+        - name: admission-control-config-file
+          value: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+        extraVolumes:
+        - hostPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+          mountPath: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+          name: admission-pss
+          pathType: File
+          readOnly: true
+    files:
+    - path: /etc/kubernetes/kube-apiserver-admission-pss.yaml
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+    preKubeadmCommands:
+    - sleep 150
+  machineTemplate:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: freelens-capi-scaling-up-held
+        topology.cluster.x-k8s.io/owned: ""
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: freelens-capi-scaling-up-held-xrhbq
+  replicas: 1
+  rollout:
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+      type: RollingUpdate
+  version: v1.37.0
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-12-31T23:59:07Z"
+    message: "* 1 of 2 Machines has healthy control plane components, at least 1 required"
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-12-31T23:55:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: Available
+    status: "True"
+    type: CertificatesAvailable
+  - lastTransitionTime: "2025-12-31T23:59:02Z"
+    message: ""
+    observedGeneration: 1
+    reason: Initialized
+    status: "True"
+    type: Initialized
+  - lastTransitionTime: "2025-12-31T23:59:51Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-held-jr7rd-phjh4:
+        * EtcdMemberHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+    observedGeneration: 1
+    reason: HealthUnknown
+    status: Unknown
+    type: EtcdClusterHealthy
+  - lastTransitionTime: "2025-12-31T23:59:51Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-held-jr7rd-phjh4:
+        * Control plane components: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+    observedGeneration: 1
+    reason: HealthUnknown
+    status: Unknown
+    type: ControlPlaneComponentsHealthy
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: |-
+      Rolling out 1 not up-to-date replicas
+      * Version v1.36.4, v1.37.0 required
+      * DevMachine is not up-to-date
+    observedGeneration: 1
+    reason: RollingOut
+    status: "True"
+    type: RollingOut
+  - lastTransitionTime: "2025-12-31T23:55:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotRemediating
+    status: "False"
+    type: Remediating
+  - lastTransitionTime: "2025-12-31T23:59:41Z"
+    message: |-
+      Scaling down from 2 to 1 replicas is blocked because:
+      * waiting for control plane components to become healthy
+      * waiting for etcd cluster to become healthy
+    observedGeneration: 1
+    reason: ScalingDown
+    status: "True"
+    type: ScalingDown
+  - lastTransitionTime: "2025-12-31T23:55:38Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotScalingUp
+    status: "False"
+    type: ScalingUp
+  - lastTransitionTime: "2025-12-31T23:59:46Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-held-jr7rd-phjh4:
+        * InfrastructureReady:
+          * BootstrapCompleted: Running boostrap command [ /bin/sh -c sleep 150 ] (33 of 34)
+        * NodeHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+        * NodeKubeadmLabelsAndTaintsSet: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+        * Control plane components: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+        * EtcdMemberHealthy: Waiting for a Node with spec.providerID docker:////freelens-capi-scaling-up-held-jr7rd-phjh4 to exist
+    observedGeneration: 1
+    reason: NotReady
+    status: "False"
+    type: MachinesReady
+  - lastTransitionTime: "2025-12-31T23:59:40Z"
+    message: |-
+      * Machine freelens-capi-scaling-up-held-jr7rd-gztx4:
+        * Version v1.36.4, v1.37.0 required
+        * DevMachine is not up-to-date
+    observedGeneration: 1
+    reason: NotUpToDate
+    status: "False"
+    type: MachinesUpToDate
+  - lastTransitionTime: "2025-12-31T23:55:34Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotPaused
+    status: "False"
+    type: Paused
+  - lastTransitionTime: "2025-12-31T23:55:35Z"
+    message: ""
+    observedGeneration: 1
+    reason: NotDeleting
+    status: "False"
+    type: Deleting
+  deprecated:
+    v1beta1:
+      conditions:
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        message: Rolling 1 replicas with outdated spec (1 replicas up to date)
+        reason: RollingUpdateInProgress
+        severity: Warning
+        status: "False"
+        type: Ready
+      - lastTransitionTime: "2025-12-31T23:59:02Z"
+        status: "True"
+        type: Available
+      - lastTransitionTime: "2025-12-31T23:55:38Z"
+        status: "True"
+        type: CertificatesAvailable
+      - lastTransitionTime: "2025-12-31T23:59:07Z"
+        status: "True"
+        type: ControlPlaneComponentsHealthy
+      - lastTransitionTime: "2025-12-31T23:59:07Z"
+        status: "True"
+        type: EtcdClusterHealthy
+      - lastTransitionTime: "2025-12-31T23:55:38Z"
+        status: "True"
+        type: MachinesCreated
+      - lastTransitionTime: "2025-12-31T23:55:44Z"
+        status: "True"
+        type: MachinesReady
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        message: Rolling 1 replicas with outdated spec (1 replicas up to date)
+        reason: RollingUpdateInProgress
+        severity: Warning
+        status: "False"
+        type: MachinesSpecUpToDate
+      - lastTransitionTime: "2025-12-31T23:59:41Z"
+        message: Scaling down control plane to 1 replicas (actual 2)
+        reason: ScalingDown
+        severity: Warning
+        status: "False"
+        type: Resized
+      readyReplicas: 1
+      unavailableReplicas: 1
+      updatedReplicas: 1
+  initialization:
+    controlPlaneInitialized: true
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 2
+  selector: cluster.x-k8s.io/cluster-name=freelens-capi-scaling-up-held,cluster.x-k8s.io/control-plane
+  upToDateReplicas: 1
+  version: v1.36.4
+  versions:
+  - replicas: 1
+    version: v1.36.4
+  - replicas: 1
+    version: v1.37.0

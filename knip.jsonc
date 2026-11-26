@@ -4,8 +4,10 @@
   // The extension is not a library: its entry points are the `main` and
   // `renderer` manifest fields, which point at build output, and knip does not
   // read `renderer` at all, so the sources are listed instead. The Vitest
-  // plugin adds vitest.config.ts, vitest.integration.config.ts and the test
-  // files.
+  // plugin adds vitest.config.ts, vitest.integration.config.ts,
+  // vitest.integration-real-project.config.ts, vitest.real-project.config.ts
+  // and the test files of each, the tests and the sessions of the real tier
+  // among them.
   "entry": [
     "vite.config.mjs",
     "src/main/index.ts!",

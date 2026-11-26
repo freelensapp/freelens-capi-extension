@@ -1,0 +1,22 @@
+declare const classNames: {
+  readonly details: "details";
+  readonly lines: "lines";
+  readonly marks: "marks";
+  readonly textButton: "textButton";
+  readonly since: "since";
+  readonly label: "label";
+  readonly activities: "activities";
+  readonly failure: "failure";
+  readonly message: "message";
+  readonly note: "note";
+  readonly remark: "remark";
+  readonly state: "state";
+  readonly condition: "condition";
+  readonly table: "table";
+  readonly kind: "kind";
+  readonly partName: "partName";
+  readonly health: "health";
+  readonly activity: "activity";
+  readonly replicas: "replicas";
+};
+export = classNames;

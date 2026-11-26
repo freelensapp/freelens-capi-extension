@@ -1,0 +1,75 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  annotations:
+    cluster.x-k8s.io/cloned-from-groupkind: DevMachineTemplate.infrastructure.cluster.x-k8s.io
+    cluster.x-k8s.io/cloned-from-name: quick-start-control-plane
+  creationTimestamp: "2025-12-31T23:58:37Z"
+  labels:
+    cluster.x-k8s.io/cluster-name: freelens-capi-machine-pools
+    topology.cluster.x-k8s.io/owned: ""
+  name: freelens-capi-machine-pools-z92dz
+  namespace: freelens-capi-machine-pools
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: Cluster
+    name: freelens-capi-machine-pools
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          customImage: kindest/node:v1.37.0
+          extraMounts:
+          - containerPath: /var/run/docker.sock
+            hostPath: /var/run/docker.sock
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:58:36Z"
+  name: quick-start-control-plane
+  namespace: freelens-capi-machine-pools
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: ClusterClass
+    name: quick-start
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          extraMounts:
+          - containerPath: /var/run/docker.sock
+            hostPath: /var/run/docker.sock
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  creationTimestamp: "2025-12-31T23:58:36Z"
+  name: quick-start-default-worker-machinetemplate
+  namespace: freelens-capi-machine-pools
+  ownerReferences:
+  - apiVersion: cluster.x-k8s.io/v1beta2
+    kind: ClusterClass
+    name: quick-start
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          extraMounts:
+          - containerPath: /var/run/docker.sock
+            hostPath: /var/run/docker.sock
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi

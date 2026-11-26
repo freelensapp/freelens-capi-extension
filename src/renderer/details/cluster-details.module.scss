@@ -1,0 +1,127 @@
+// The details of a Cluster (SPEC-0004, "The details"): the sections of the host's drawer items and titles, the lines of
+// a message nested as the project wrote them, and the nested table of the parts. The view authors no color: the tokens
+// of the theme and the components of the host give them.
+
+.details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  word-break: break-word;
+
+  .lines {
+    padding-left: 1.5em;
+  }
+}
+
+// The marks of a row, side by side; a row of the details may take two lines, unlike a cell of the list.
+.marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25em;
+  align-items: center;
+  vertical-align: middle;
+}
+
+// A Cluster named in a message, a button that opens its details: underlined, as the links of the details are.
+.textButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+// The focus of the button, which the reset of the host takes away from every element: an outline in a token of the
+// theme, drawn inside the box, so that what holds the button does not cut it (kit, `docs/design.md`, "Interaction and
+// performance").
+.textButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.since {
+  white-space: nowrap;
+}
+
+.label {
+  margin-left: 0.5em;
+}
+
+.activities {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+
+.failure {
+  margin-top: 0.25em;
+
+  p {
+    margin: 0.25em 0 0;
+  }
+}
+
+.message {
+  font-family: var(--font-monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note,
+.remark {
+  margin: 0.25em 0 0;
+}
+
+.state {
+  padding: 1em;
+  line-height: 1.4;
+
+  p {
+    margin: 0.25em 0 0;
+  }
+}
+
+// The labels of the conditions wrap in the column that the host gives the labels of its items, 30% of the row unless a
+// label is longer (drawer-item.scss): between the words of a name, where the view puts a chance to break, and
+// anywhere in a word that the column does not hold. Without it, a long name of the closed set, such as
+// `ControlPlaneMachinesUpToDate`, widens the column of its row alone, and its marks stand out of line with those of the
+// other rows; holding the longest name would narrow the column of the values of every row, and a condition that an
+// availability gate names may be longer.
+.condition > :global(.name) {
+  overflow-wrap: anywhere;
+}
+
+// The nested table of the parts: the kind and the name give their room first, the marks of state keep theirs.
+.table {
+  margin: 0.5em 0;
+}
+
+.kind {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.partName {
+  flex: 2 1 10em;
+  min-width: 0;
+}
+
+.health {
+  flex: 0 0 8em;
+}
+
+.activity {
+  flex: 1 0 10em;
+}
+
+.replicas {
+  flex: 0 0 5em;
+}

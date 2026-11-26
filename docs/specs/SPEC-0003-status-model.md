@@ -1,6 +1,6 @@
 # SPEC-0003: Status model
 
-- **Status:** Approved
+- **Status:** Verified
 - **Milestone:** `M1` (see [ROADMAP.md](../development/ROADMAP.md))
 - **Reviewed project:** Cluster API `v1.14.4`, commit
   `4356c154f4a76b8939748ef7ebc2d0793ffe47e8`, and the Cluster API Operator
@@ -496,12 +496,12 @@ Machine:
   KubeadmControlPlane included, each with its polarity (R2.46, R2.55).
   `NodeReady` is not an input, but `NodeHealthy` covers the `Ready` of the
   Node (R2.45). `Available` and `UpToDate` follow P5 and P4.
-- A Machine that waits for its Node, with bootstrap and infrastructure
-  ready, has `NodeHealthy` `Unknown`, so its `Ready` is `Unknown` and it is
-  Unknown, unless a MachineHealthCheck marks it
+- A Machine that waits for its Node, with bootstrap and infrastructure ready,
+  has `NodeHealthy` `Unknown`, so its `Ready` is `Unknown` and it is Unknown,
+  unless a MachineHealthCheck marks it
   (core/reconcilers/machine/machine_controller_status.go:398-412; R2.46,
-  R2.53). While it provisions, its health stays the project's, in the tone
-  of progress (D2).
+  R2.53). While it provisions, its health stays the project's: Unknown, which
+  keeps its own tone (D2), next to its activity Provisioning.
 - A Machine whose Node was deleted stays in the phase `Running`, and
   `NodeHealthy` `False` `NodeDeleted` makes it Unhealthy (R2.44).
 - Phase: the closed set of R2.43; a value outside it reads Unknown (R2.43),
@@ -1177,7 +1177,7 @@ controlplane/kubeadm/webhooks/admission/kubeadmcontrolplane.go:73,
 a control plane is upgrading: by the precedence of semantic versions, then
 by their build metadata, where numeric identifiers compare by number, a
 number comes before a word, two different words cannot be ordered, and of
-two equal lists the longer comes after (util/version/version.go:52-212;
+two equal lists the longer comes after (util/version/version.go:52-201;
 internal/contract/controlplane.go:296-352). A control plane is Upgrading
 when the project says so: when its `spec.version` comes after one of its
 versions in status, or differs from it only by words of its build metadata
@@ -1548,47 +1548,80 @@ Each case of `tone.test.ts` that turns progress into a warning fails against
 a tone with no end, and each case of `health.test.ts` that reads the word
 of the project fails against a rule that holds a health.
 
-The fixtures of SPEC-0002 give these results. Each case first asserts, on
-the fixture, the conditions that its row names, so that a capture in
-another state fails as such and not as a fault of the model. Each passes
+The fixtures of SPEC-0002 give these results, in
+`src/common/status/fixtures.test.ts`, which reads each set from its files
+with the YAML reader of the scripts of the test environment, and evaluates
+each object with the context that a view builds from the same set: its
+Machines by their owners, its Cluster by its name, its owner or the
+reference that names it, the parts and the MachinePools of a Cluster by
+their own results, the bindings of a ClusterResourceSet, and, for an object
+of the development provider, the role of its kind, from a table of the test
+that gives each kind the role that the reference that names it gives on
+these sets, with the contract `v1beta2` of its definitions. Each case first
+asserts, on the fixture, the conditions that its row names, so that a
+capture in another state fails as such and not as a fault of the model;
+then the health with its issues, which the details list whatever the word,
+the tone, the activities, the marks and the notes. Each passes
 `controllers` with every provider available, since that tier installs with
 `clusterctl` and has no object of the operator (SPEC-0002, "Design"), so
-that no note of P24 appears. "At the capture" passes the time of the
-capture as `now`, and "past the threshold" a time past the threshold of
-every activity of the row and past the 30 minutes of its Cluster (D2).
-Every row but "A Cluster provisioning" is read after those 30 minutes: when
-the capture falls within them, the case moves the creation of the Cluster
-back by 30 minutes, the one field it changes.
+that no note of P24 appears. The cases read every set at two times: "at the
+capture" passes the time of the capture as `now`, and "past the threshold"
+30 minutes and one second after it, past the threshold of every activity of
+the row and past the 30 minutes of its Cluster (D2). Every time that a
+threshold counts from is at or before the capture, and every
+MachineHealthCheck of the sets leaves the threshold of a Machine at 600
+seconds, its `nodeStartupTimeoutSeconds` unset, 0 or 600, which the first
+cases check. Every set but `provisioning` is read after the 30 minutes of
+its Cluster: when the capture falls within them, the case moves the
+creation of the Cluster back by 30 minutes, the one field it changes. A
+view that reads a set applied with its times moved to the present, as the
+sessions of SPEC-0004 do, reads it within those 30 minutes, where the floor
+of P2 keeps every activity whose start the project wrote within its
+threshold, and with it the tone of progress: the rows say what the sets
+give after them. Each state names its folder of `integration/fixtures/`.
 
-| State of the fixture                    | Object                                                                                              | The fixture has                                                                                                                                                                            | Health                                                                          | Tone of the health                                                                                                               | Activities                                                                                                                                                                                                         | Marks and notes                                                                      |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| A Cluster provisioning                  | the Cluster                                                                                         | `ControlPlaneInitialized` not `True`, `Available` `False`, a creation less than 30 minutes before the capture                                                                              | Unhealthy                                                                       | at the capture, progress; past the threshold, a warning                                                                          | Provisioning since its creation, and Scaling up when its `ScalingUp` is `True`                                                                                                                                     | none                                                                                 |
-| A Cluster provisioning                  | its KubeadmControlPlane                                                                             | `status.initialization.controlPlaneInitialized` unset                                                                                                                                      | Unhealthy                                                                       | at the capture, progress; past the threshold, a warning                                                                          | Provisioning while a Machine of it has no Node, since its creation, and Scaling up when its `ScalingUp` is `True`                                                                                                  | none                                                                                 |
-| Provisioned and healthy                 | the Cluster, its control plane, MachineDeployments, MachineSets, Machines and KubeadmConfigs        | every summary `True`, no other positive condition `False`, no condition of an activity `True`, every Machine `Ready`                                                                       | Healthy                                                                         | that of its health                                                                                                               | Idle                                                                                                                                                                                                               | none                                                                                 |
-| Provisioned and healthy                 | its templates and its bindings                                                                      | no status                                                                                                                                                                                  | none: no status                                                                 | none                                                                                                                             | none                                                                                                                                                                                                               | none                                                                                 |
-| A Machine that never got a Node         | the Machine                                                                                         | phase `Provisioned`, no `status.nodeRef`, `BootstrapConfigReady` and `InfrastructureReady` `True`, `NodeHealthy` `Unknown`, no `HealthCheckSucceeded`                                      | Unknown                                                                         | that of its health                                                                                                               | Provisioning since its creation, in the tone of progress at the capture and of a warning past the threshold                                                                                                        | none                                                                                 |
-| A Machine that never got a Node         | its MachineSet                                                                                      | fewer available Machines than `spec.replicas`, that Machine the only one not available, every replica created                                                                              | Unhealthy                                                                       | at the capture, progress; past the threshold of that Machine, a warning                                                          | Provisioning since the creation of that Machine                                                                                                                                                                    | none                                                                                 |
-| A Machine that never got a Node         | its MachineDeployment and its Cluster                                                               | the `Available` of the MachineDeployment `False` for that Machine alone, and that of the Cluster `False` through `WorkersAvailable` only                                                   | Unhealthy                                                                       | at the capture, progress, the Cluster through its MachineDeployment; past the threshold, a warning                               | Provisioning since the creation of that Machine, for both                                                                                                                                                          | none                                                                                 |
-| Rolling out                             | the MachineDeployment                                                                               | its strategy `RollingUpdate`, `RollingOut` `True`, `Available` `True`, `MachinesReady` and `MachinesUpToDate` `False`, each Machine not `Ready` with no Node at the capture, none deleting | Degraded, from `MachinesReady`; `MachinesUpToDate` is no issue (P4)             | at the capture, progress; past the threshold of each activity, a warning                                                         | Rolling out since its transition; Provisioning since the creation of its new Machine; Scaling up and Scaling down when their conditions are `True`                                                                 | none                                                                                 |
-| Rolling out                             | its Cluster                                                                                         | `RollingOut` `True`, `Available` `True`, `WorkerMachinesReady` and `WorkerMachinesUpToDate` `False`                                                                                        | Degraded, from `WorkerMachinesReady`; `WorkerMachinesUpToDate` is no issue (P4) | at the capture, progress; past the threshold of its activities and of those of its parts, a warning                              | Rolling out, and Provisioning through its MachineDeployment                                                                                                                                                        | none                                                                                 |
-| Scaling                                 | a MachineDeployment scaling up                                                                      | `ScalingUp` `True`, `Available` `False`, `maxUnavailable` 0, fewer Machines than `spec.replicas`                                                                                           | Unhealthy                                                                       | at the capture, progress; past the threshold, a warning                                                                          | Scaling up, Progressing also when its message says ` is blocked because`; Provisioning while a Machine of it has no Node                                                                                           | none                                                                                 |
-| Scaling                                 | a MachineDeployment whose Machines are created                                                      | `ScalingUp` `False`, `Available` `False`, `maxUnavailable` 0, each Machine not available with no Node at the capture                                                                       | Unhealthy                                                                       | at the capture, progress; past the threshold, a warning                                                                          | Provisioning since the creation of the oldest new Machine                                                                                                                                                          | none                                                                                 |
-| Scaling                                 | the Cluster of that MachineDeployment                                                               | `Available` `False` through `WorkersAvailable` only                                                                                                                                        | Unhealthy                                                                       | as its MachineDeployment                                                                                                         | Provisioning through its MachineDeployment, and Scaling up while its `ScalingUp` is `True`                                                                                                                         | none                                                                                 |
-| Scaling                                 | a MachineDeployment scaling down                                                                    | `ScalingDown` `True`, `Available` `True`, a Machine deleting for less than 15 minutes at the capture                                                                                       | Degraded when `MachinesReady` is `False`, Healthy when it is `True`             | when Degraded, progress at the capture and a warning past 15 minutes from the transition of `ScalingDown`; when Healthy, its own | Scaling down                                                                                                                                                                                                       | none                                                                                 |
-| Paused                                  | the Cluster and its objects with a status                                                           | `Paused` `True`                                                                                                                                                                            | the health that their conditions give                                           | that of its health                                                                                                               | Paused, and every other activity Blocked                                                                                                                                                                           | Paused, since the transition of `Paused`                                             |
-| Deleting                                | the Cluster                                                                                         | a deletion timestamp, `Deleting` `True`                                                                                                                                                    | none: deleting                                                                  | none                                                                                                                             | Deleting, Progressing with the stage of its reason, `WaitingForBeforeDeleteHook` included, or Blocked with the text of a blocking hook in `TopologyReconciled`; past 15 minutes, its mark in the tone of a warning | none                                                                                 |
-| With a managed topology, upgrading      | the Cluster                                                                                         | `TopologyReconciled` `False` `ClusterUpgrading`, `RollingOut` `True`                                                                                                                       | the health that its `Available` gives                                           | when Unhealthy or Degraded, progress while it or a part has an activity within its threshold; when Healthy, its own              | Upgrading since the transition of `TopologyReconciled`, Progressing, or Blocked with the text of a hook; Rolling out                                                                                               | none                                                                                 |
-| Without a managed topology              | the Cluster                                                                                         | no `spec.topology`, no `TopologyReconciled`, every summary `True`, no condition of an activity `True`                                                                                      | Healthy                                                                         | that of its health                                                                                                               | Idle                                                                                                                                                                                                               | none                                                                                 |
-| With MachinePools only                  | the Cluster                                                                                         | `Available` `True`, `ControlPlaneMachinesReady` `False`, `WorkersAvailable` `True` `NoWorkers`, no condition of an activity `True`                                                         | Degraded, where the project says available                                      | that of its health, unless a part has an activity in progress                                                                    | Idle, unless a part is Provisioning                                                                                                                                                                                | none                                                                                 |
-| With MachinePools only                  | a MachinePool with Machines                                                                         | its Machines not `Ready`, each with no Node at the capture                                                                                                                                 | Unhealthy                                                                       | at the capture, progress; past the threshold, a warning                                                                          | Provisioning since the creation of the oldest of them, Scaling up or Scaling down as P20 reads its counters, and Unknown                                                                                           | none                                                                                 |
-| With MachinePools only, written by hand | a MachinePool without Machines                                                                      | no Machine, `spec.replicas` above zero                                                                                                                                                     | Unknown                                                                         | that of its health                                                                                                               | Provisioning while its `status.nodeRefs` is empty, with no duration; Scaling up or Scaling down as P20 reads its counters; Unknown                                                                                 | the reason, and the deprecated `v1beta1` `Ready`                                     |
-| With MachinePools only, written by hand | the same MachinePool at 0 replicas                                                                  | `spec.replicas` set to 0, the one field the case changes, and no `status.nodeRefs`                                                                                                         | Healthy                                                                         | that of its health                                                                                                               | Scaling down while its `status.replicas` is above 0, and Unknown; never Provisioning                                                                                                                               | none                                                                                 |
-| With MachinePools only, written by hand | its Cluster                                                                                         | that MachinePool, and the conditions of the first row of MachinePools only                                                                                                                 | as that row: the pool adds no issue                                             | as that row                                                                                                                      | as that row                                                                                                                                                                                                        | one MachinePool of unknown health                                                    |
-| A remediation in progress               | the Machine                                                                                         | `HealthCheckSucceeded` `False`, `OwnerRemediated` `False` `WaitingForRemediation`, not deleting                                                                                            | Unhealthy                                                                       | at the capture, progress; past the threshold of its remediation, a warning                                                       | Remediating, Progressing                                                                                                                                                                                           | none                                                                                 |
-| A remediation in progress               | its MachineSet and MachineDeployment                                                                | that Machine not available and not deleting, `Remediating` `True`                                                                                                                          | Unhealthy                                                                       | at the capture, progress; past the threshold of the remediation, a warning                                                       | Remediating; Replacing once that Machine deletes                                                                                                                                                                   | none                                                                                 |
-| Objects with no status                  | Cluster, Machine, MachinePool, KubeadmControlPlane, KubeadmConfig, MachineDeployment and MachineSet | no status, no Machine                                                                                                                                                                      | Unknown                                                                         | that of its health                                                                                                               | Unknown                                                                                                                                                                                                            | the inputs that the case does not give                                               |
-| Objects with no status                  | MachineHealthCheck, ClusterResourceSet, ClusterClass, ExtensionConfig and IPAddressClaim            | no status                                                                                                                                                                                  | Unknown                                                                         | that of its health                                                                                                               | Unknown                                                                                                                                                                                                            | the inputs that the case does not give, and for a ClusterResourceSet the note of P12 |
-| Objects with no status                  | each kind with no status                                                                            | no status                                                                                                                                                                                  | none: no status                                                                 | none                                                                                                                             | none                                                                                                                                                                                                               | none                                                                                 |
+| State of the fixture                                                     | Object                                                                                              | The fixture has                                                                                                                                                                                                                                                                                                                                                                                | Health                                                                                                       | Tone of the health                                                                                                                                                                                             | Activities                                                                                                                                                                                                                                                                                                             | Marks and notes                                                                                                                                      |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A Cluster provisioning, `provisioning`                                   | the Cluster                                                                                         | `ControlPlaneInitialized` `False`, `Available` `False`, `ControlPlaneMachinesReady` and `WorkerMachinesReady` `False`, `ScalingUp` `False`, a creation less than 30 minutes before the capture                                                                                                                                                                                                 | Unhealthy, with the issues `ControlPlaneInitialized`, `ControlPlaneMachinesReady` and `WorkerMachinesReady`  | at the capture, progress until 30 minutes after its creation; past them, a warning                                                                                                                             | Provisioning since its creation                                                                                                                                                                                                                                                                                        | none                                                                                                                                                 |
+| A Cluster provisioning                                                   | its KubeadmControlPlane                                                                             | `status.initialization.controlPlaneInitialized` unset, `Initialized` and `MachinesReady` `False`, `ScalingUp` `False`, its one Machine without a Node, and its Cluster as above                                                                                                                                                                                                                | Unhealthy, with the issues `Initialized` and `MachinesReady`                                                 | at the capture, progress until the 30 minutes of its Cluster end; past them, a warning                                                                                                                         | Provisioning since the creation of its Machine (D3)                                                                                                                                                                                                                                                                    | none                                                                                                                                                 |
+| A Cluster provisioning                                                   | the DevMachine of its control plane Machine                                                         | `status.initialization.provisioned` true, `Ready` and `BootstrapCompleted` `False`, its other conditions `True`, and its Cluster as above                                                                                                                                                                                                                                                      | Unhealthy, with the issue `BootstrapCompleted`                                                               | at the capture, progress until the 30 minutes of its Cluster end, from the first provisioning of its Cluster (D2); past them, a warning                                                                        | Idle: the field of its contract is set (P17)                                                                                                                                                                                                                                                                           | none                                                                                                                                                 |
+| A Cluster provisioning                                                   | its ClusterResourceSet                                                                              | `ResourcesApplied` `False` `InternalError`; the binding of its Cluster, which cannot be reached yet, with no entry of its resource; and its Cluster as above                                                                                                                                                                                                                                   | Unhealthy, with the issue of its resource, missing from that binding (P12)                                   | at the capture, progress until the 30 minutes of that Cluster end, from its first provisioning (D2); past them, a warning                                                                                      | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| A Cluster provisioning                                                   | its MachineHealthChecks                                                                             | `RemediationAllowed` `True`, fewer healthy targets than expected, each target a Machine with no Node, none failing its check                                                                                                                                                                                                                                                                   | Healthy: no target fails its check (P11)                                                                     | that of its health                                                                                                                                                                                             | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| Provisioned and healthy, `healthy`                                       | the Cluster, its control plane, MachineDeployments, MachineSets, Machines and KubeadmConfigs        | every summary `True`, and on a MachineSet, which has none, every replica available; no other positive condition `False`, no condition of an activity `True`, every Machine `Ready`                                                                                                                                                                                                             | Healthy                                                                                                      | that of its health                                                                                                                                                                                             | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| Provisioned and healthy                                                  | its templates and its bindings                                                                      | no status, but the `status.capacity` that the development provider writes into each DevMachineTemplate                                                                                                                                                                                                                                                                                         | none: no status (P16)                                                                                        | none                                                                                                                                                                                                           | none                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| A Machine that never got a Node, `machine-without-node`                  | the Machine                                                                                         | phase `Provisioned`, no `status.nodeRef`, `BootstrapConfigReady` and `InfrastructureReady` `True`, `NodeHealthy` `Unknown`, no `HealthCheckSucceeded`                                                                                                                                                                                                                                          | Unknown, with the issue `Available`                                                                          | that of its health                                                                                                                                                                                             | Provisioning since its creation, in the tone of progress at the capture and of a warning past the threshold                                                                                                                                                                                                            | none                                                                                                                                                 |
+| A Machine that never got a Node                                          | its MachineSet                                                                                      | fewer available Machines than `spec.replicas`, that Machine the only one not available, every replica created                                                                                                                                                                                                                                                                                  | Unhealthy, with no issue                                                                                     | at the capture, progress; past the threshold of that Machine, a warning                                                                                                                                        | Provisioning since the creation of that Machine                                                                                                                                                                                                                                                                        | none                                                                                                                                                 |
+| A Machine that never got a Node                                          | its Cluster                                                                                         | that MachineSet beside the topology, owned by the Cluster and by no MachineDeployment; `Available`, `WorkersAvailable` and `WorkerMachinesReady` `True`: `WorkersAvailable` counts only MachineDeployments and MachinePools, and the Cluster has not computed `WorkerMachinesReady` again since that Machine came, since it does not reconcile on a change of a MachineSet or a worker Machine | Healthy                                                                                                      | that of its health                                                                                                                                                                                             | Idle: that MachineSet is none of its parts                                                                                                                                                                                                                                                                             | none                                                                                                                                                 |
+| Rolling out, `rolling-out`                                               | the MachineDeployment                                                                               | its strategy `RollingUpdate`, `RollingOut` `True`, `Available` `True`, `MachinesReady` and `MachinesUpToDate` `False`, `ScalingDown` `True`, `ScalingUp` `False`; its new Machine not available, with a Node, younger than its threshold; none deleting                                                                                                                                        | Degraded, from `MachinesReady`; `MachinesUpToDate` is no issue (P4)                                          | at the capture, progress; past the threshold of each activity, a warning                                                                                                                                       | Rolling out and Scaling down since their transitions; Provisioning since the creation of its new Machine, while that Machine, which has its Node, is younger than its threshold (D3)                                                                                                                                   | none                                                                                                                                                 |
+| Rolling out                                                              | its Cluster                                                                                         | `RollingOut` `True`, `ScalingDown` `True`, `Available` `True`, `WorkerMachinesReady` and `WorkerMachinesUpToDate` `False`                                                                                                                                                                                                                                                                      | Degraded, from `WorkerMachinesReady`; `WorkerMachinesUpToDate` is no issue (P4)                              | at the capture, progress; past the threshold of its activities and of those of its parts, a warning                                                                                                            | Rolling out and Scaling down since their transitions; Provisioning through its MachineDeployment, while its new Machine is younger than its threshold                                                                                                                                                                  | none                                                                                                                                                 |
+| Rolling out                                                              | its Machines that are not up to date, and their MachineSet                                          | `UpToDate` `False` `NotUpToDate`, `Available` and `Ready` `True`, not deleting, no condition of an activity `True`; on the MachineSet, `MachinesUpToDate` `False`, `MachinesReady` `True`, every replica available                                                                                                                                                                             | Healthy: `UpToDate` and `MachinesUpToDate` are no issue (P4)                                                 | that of its health                                                                                                                                                                                             | Idle: their MachineDeployment rolls them out                                                                                                                                                                                                                                                                           | the note that their Machines differ from the spec (P4)                                                                                               |
+| Scaling up, held by the preflight checks, `scaling-up-held`              | a MachineDeployment scaling up, and its MachineSet                                                  | `ScalingUp` `True`, the message of the MachineSet saying ` is blocked because`, that of the MachineDeployment not; `Available` `False` and `maxUnavailable` 0 on the MachineDeployment; fewer Machines than `spec.replicas`, each `Available` `True`                                                                                                                                           | Unhealthy, with no issue                                                                                     | at the capture, progress; past the threshold, a warning                                                                                                                                                        | Scaling up, Progressing, since its transition, each from its own `ScalingUp`, whose message the details show: that of the MachineSet keeps ` is blocked because`, which is never read as Blocked (D4); no Provisioning, since each of their Machines is available (D3)                                                 | none                                                                                                                                                 |
+| Scaling up, held by the preflight checks                                 | the Cluster                                                                                         | `Available` and `WorkersAvailable` `False`; `TopologyReconciled` `False` `ClusterUpgrading`, no hook in its message; `RollingOut`, `ScalingUp` and `ScalingDown` `True`; `ControlPlaneMachinesReady` `False`, `WorkerMachinesReady` `True`, `ControlPlaneMachinesUpToDate` `False`; its KubeadmControlPlane with a new Machine that has no Node yet                                            | Unhealthy, with the issue `ControlPlaneMachinesReady`; `ControlPlaneMachinesUpToDate` is no issue (P4)       | at the capture, progress; past the threshold of each activity, its own and those of its parts, a warning                                                                                                       | Provisioning through its KubeadmControlPlane, which goes on while that Machine has no Node; Upgrading since the transition of `TopologyReconciled`; Rolling out, Scaling up and Scaling down since their transitions                                                                                                   | none                                                                                                                                                 |
+| Scaling up, `scaling-up`                                                 | a MachineDeployment whose Machines are created                                                      | `ScalingUp` `False`, `Available` and `MachinesReady` `False`, `maxUnavailable` 0; its new Machine not available, with a Node, younger than its threshold                                                                                                                                                                                                                                       | Unhealthy, with the issue `MachinesReady`                                                                    | at the capture, progress; past the threshold of that Machine, that of its health                                                                                                                               | Provisioning since the creation of its new Machine, while that Machine is younger than its threshold, then Idle (D3)                                                                                                                                                                                                   | none                                                                                                                                                 |
+| Scaling up                                                               | the Cluster of that MachineDeployment                                                               | `Available` `False` through `WorkersAvailable` alone; `ControlPlaneMachinesReady` and `WorkerMachinesReady` `False`; `ScalingUp` `True`, from its KubeadmControlPlane, which adds a control plane Machine with no Node yet                                                                                                                                                                     | Unhealthy, with the issues `ControlPlaneMachinesReady` and `WorkerMachinesReady`                             | at the capture, progress; past the threshold of its activities and of those of its parts, a warning                                                                                                            | Provisioning through its oldest part that provisions, its KubeadmControlPlane, which goes on while its new Machine has no Node; Scaling up since its transition                                                                                                                                                        | none                                                                                                                                                 |
+| Scaling down, `scaling-down`                                             | a MachineDeployment scaling down                                                                    | `ScalingDown` `True`, `Available` `True`, `MachinesReady` `False` for the Machine it deletes, deleting for less than 15 minutes at the capture                                                                                                                                                                                                                                                 | Degraded, from `MachinesReady`                                                                               | at the capture, progress; past 15 minutes from the transition of `ScalingDown`, a warning                                                                                                                      | Scaling down                                                                                                                                                                                                                                                                                                           | none                                                                                                                                                 |
+| Scaling down                                                             | the Machine that it deletes                                                                         | a deletion timestamp less than 15 minutes before the capture, `Deleting` `True` `WaitingForPreDrainHook`, `Ready` `False`                                                                                                                                                                                                                                                                      | none: deleting                                                                                               | none                                                                                                                                                                                                           | Deleting alone, as decided for a deleting object ("Notes and deviations"), Progressing, with the stage of its reason, in the tone terminated within 15 minutes of the deletion and of a warning past them                                                                                                              | none                                                                                                                                                 |
+| Scaling down                                                             | its Cluster                                                                                         | `Available` `True`, `WorkerMachinesReady` `False`, `ScalingDown` `True`, no other condition of an activity `True`                                                                                                                                                                                                                                                                              | Degraded, from `WorkerMachinesReady`                                                                         | at the capture, progress; past 15 minutes from the transition of `ScalingDown`, a warning                                                                                                                      | Scaling down                                                                                                                                                                                                                                                                                                           | none                                                                                                                                                 |
+| Paused, `paused`                                                         | the Cluster and its objects with a status, but its ClusterClass and its ClusterResourceSet          | `Paused` `True`                                                                                                                                                                                                                                                                                                                                                                                | the health that their conditions give: Healthy                                                               | that of its health                                                                                                                                                                                             | Paused alone: no other activity holds                                                                                                                                                                                                                                                                                  | Paused, since the transition of `Paused`                                                                                                             |
+| Paused                                                                   | its ClusterClass and its ClusterResourceSet                                                         | `Paused` `False`: they follow their own annotation alone (P19)                                                                                                                                                                                                                                                                                                                                 | Healthy                                                                                                      | that of its health                                                                                                                                                                                             | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| Deleting, `deleting`                                                     | the Cluster                                                                                         | a deletion timestamp less than 15 minutes before the capture, `Deleting` `True` `WaitingForWorkersDeletion`, no hook in the message of `TopologyReconciled`, `ScalingDown` `True`                                                                                                                                                                                                              | none: deleting                                                                                               | none                                                                                                                                                                                                           | Deleting alone, as decided for a deleting object ("Notes and deviations"), Progressing, with the stage of its reason, in the tone terminated within 15 minutes of the deletion and of a warning past them                                                                                                              | none                                                                                                                                                 |
+| Deleting                                                                 | its MachineDeployment                                                                               | a deletion timestamp less than 15 minutes before the capture, `Deleting` `True` `Deleting`, `ScalingDown` `True`                                                                                                                                                                                                                                                                               | none: deleting                                                                                               | none                                                                                                                                                                                                           | Deleting alone, as decided for a deleting object ("Notes and deviations"), its scale down not shown, Progressing, in the tone terminated within 15 minutes of the deletion and of a warning past them                                                                                                                  | none                                                                                                                                                 |
+| With a managed topology, upgrading, `upgrading`                          | the Cluster                                                                                         | `TopologyReconciled` `False` `ClusterUpgrading`, no hook in its message, `RollingOut` and `ScalingDown` `True`, `Available` `True`, `ControlPlaneMachinesReady` `False`; its KubeadmControlPlane rolling out, with a Machine with no Node yet                                                                                                                                                  | Degraded, from `ControlPlaneMachinesReady`                                                                   | at the capture, progress; past the threshold of each activity, its own and those of its parts, a warning                                                                                                       | Provisioning through its KubeadmControlPlane; Upgrading since the transition of `TopologyReconciled`, Progressing; Rolling out and Scaling down since their transitions                                                                                                                                                | none                                                                                                                                                 |
+| With a managed topology, upgrading                                       | its KubeadmControlPlane                                                                             | `spec.version` `v1.37.0`, and `v1.36.4` among `status.versions`; `RollingOut` and `ScalingDown` `True`, `ScalingUp` `False`, `Available` `True`, `MachinesReady` and `MachinesUpToDate` `False`; a new Machine with no Node yet                                                                                                                                                                | Degraded, from `MachinesReady`; `MachinesUpToDate` is no issue (P4)                                          | at the capture, progress, set by Scaling down; past the threshold of each activity, a warning                                                                                                                  | Provisioning since the creation of its new Machine; Upgrading, Progressing, with no start, since the project writes no time for the version of a control plane, so past its threshold from the capture, which gives no tone of progress by itself (P28, P34, P2); Rolling out and Scaling down since their transitions | none                                                                                                                                                 |
+| Without a managed topology, `without-topology`                           | the Cluster                                                                                         | no `spec.topology`, no `TopologyReconciled`, every summary `True`, no condition of an activity `True`                                                                                                                                                                                                                                                                                          | Healthy                                                                                                      | that of its health                                                                                                                                                                                             | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| With MachinePools only, `machine-pools`                                  | the Cluster                                                                                         | `Available` `True`, `ControlPlaneMachinesReady` `False`, `WorkersAvailable` `True` `NoWorkers`, no condition of an activity `True`; its control plane Machine not available, with a Node, younger than its threshold                                                                                                                                                                           | Degraded, where the project says available: `ControlPlaneMachinesReady`, and its MachinePool, Unhealthy (H1) | at the capture, progress through its parts; past their thresholds, that of its health                                                                                                                          | Provisioning through its parts, while their Machines are younger than their thresholds, then Idle                                                                                                                                                                                                                      | none                                                                                                                                                 |
+| With MachinePools only                                                   | a MachinePool with Machines                                                                         | its Machine not `Ready`, with a Node that is not ready, younger than its threshold; its `status.replicas` equal to `spec.replicas`                                                                                                                                                                                                                                                             | Unhealthy, with the issue of its Machine, which is not `Ready` (H1)                                          | at the capture, progress; past the threshold of that Machine, that of its health                                                                                                                               | Provisioning since the creation of its Machine, while that Machine is younger than its threshold; no scale, its counters equal (P20); and Unknown                                                                                                                                                                      | none                                                                                                                                                 |
+| With MachinePools only, written by hand, `machine-pool-without-machines` | a MachinePool without Machines                                                                      | no Machine, `spec.replicas` above zero, `status.nodeRefs` with its Node, `status.replicas` equal to `spec.replicas`                                                                                                                                                                                                                                                                            | Unknown                                                                                                      | that of its health                                                                                                                                                                                             | Unknown; no Provisioning, its `status.nodeRefs` not empty; no scale, its counters equal                                                                                                                                                                                                                                | the reason, and the deprecated `v1beta1` `Ready`                                                                                                     |
+| With MachinePools only, written by hand                                  | the same MachinePool at 0 replicas                                                                  | `spec.replicas` set to 0, the one field of the MachinePool that the case changes; `status.nodeRefs` still with its Node                                                                                                                                                                                                                                                                        | Healthy                                                                                                      | that of its health                                                                                                                                                                                             | Scaling down while its `status.replicas` is above 0, and Unknown; never Provisioning                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| With MachinePools only, written by hand                                  | its Cluster                                                                                         | that MachinePool, and the conditions of the first row of MachinePools only                                                                                                                                                                                                                                                                                                                     | as that row: the pool adds no issue                                                                          | as that row                                                                                                                                                                                                    | as that row                                                                                                                                                                                                                                                                                                            | one MachinePool of unknown health                                                                                                                    |
+| A remediation in progress, `remediation`                                 | the Machine whose remediation waits                                                                 | `HealthCheckSucceeded` `False`, `OwnerRemediated` `False` `RemediationDeferred`, not deleting, not available and younger than its threshold                                                                                                                                                                                                                                                    | Unhealthy, with the issues `Available`, `HealthCheckSucceeded` and `OwnerRemediated`                         | at the capture, progress; past the threshold of its remediation, a warning                                                                                                                                     | Remediating, Progressing; Provisioning while it is younger than its threshold (D3)                                                                                                                                                                                                                                     | none                                                                                                                                                 |
+| A remediation in progress                                                | its MachineSet and MachineDeployment                                                                | that Machine not available and not deleting; the other Machine remediated, `OwnerRemediated` `False` `MachineDeleting`, deleting and held by a hook; `Remediating` `True`, `MachinesReady` `False`                                                                                                                                                                                             | Unhealthy, with the issue `MachinesReady`                                                                    | at the capture, progress; past the threshold of the remediation and the 15 minutes of the replacement, a warning                                                                                               | Remediating since its transition; Replacing since the deletion of the remediated Machine; Provisioning through the waiting Machine while it is younger than its threshold                                                                                                                                              | none                                                                                                                                                 |
+| A remediation in progress                                                | the remediated Machine                                                                              | `OwnerRemediated` `False` `MachineDeleting`, a deletion timestamp less than 15 minutes before the capture, `Deleting` `True` `WaitingForPreDrainHook`                                                                                                                                                                                                                                          | none: deleting                                                                                               | none                                                                                                                                                                                                           | Deleting alone, as decided for a deleting object ("Notes and deviations"), Progressing, with the stage of its reason, in the tone terminated within 15 minutes of the deletion and of a warning past them                                                                                                              | none                                                                                                                                                 |
+| A remediation in progress                                                | its MachineHealthCheck of the workers                                                               | `RemediationAllowed` `True`, `status.currentHealthy` 0 of 2 expected, each of its two targets with `HealthCheckSucceeded` `False`                                                                                                                                                                                                                                                              | Degraded, with the two Machines that fail their check as its issues (P11)                                    | that of its health                                                                                                                                                                                             | Idle                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
+| A remediation in progress                                                | its Cluster                                                                                         | `Available`, `WorkersAvailable` and `WorkerMachinesReady` `False`, `Remediating` `True`, no other condition of an activity `True`                                                                                                                                                                                                                                                              | Unhealthy, with the issue `WorkerMachinesReady`                                                              | at the capture, progress, set by the Replacing of its MachineDeployment, which it takes for its tone though Replacing is no activity of a Cluster (D2, H2); past the 15 minutes of that replacement, a warning | Provisioning through its MachineDeployment while the waiting Machine is younger than its threshold; Remediating since its transition                                                                                                                                                                                   | none                                                                                                                                                 |
+| Objects with no status, `no-status`                                      | Cluster, Machine, MachinePool, KubeadmControlPlane, KubeadmConfig, MachineDeployment and MachineSet | no status, no Machine of an owner                                                                                                                                                                                                                                                                                                                                                              | Unknown                                                                                                      | that of its health                                                                                                                                                                                             | Unknown                                                                                                                                                                                                                                                                                                                | none, every input given from the set, but on the Cluster one MachinePool of unknown health                                                           |
+| Objects with no status                                                   | MachineHealthCheck, ClusterResourceSet, ClusterClass and IPAddressClaim                             | no status                                                                                                                                                                                                                                                                                                                                                                                      | Unknown                                                                                                      | that of its health                                                                                                                                                                                             | Unknown                                                                                                                                                                                                                                                                                                                | for a ClusterResourceSet the note of P12; for the IPAddressClaim its provider, since its pool belongs to a group that no provider of the tier serves |
+| Objects with no status                                                   | each kind with no status                                                                            | no status                                                                                                                                                                                                                                                                                                                                                                                      | none: no status                                                                                              | none                                                                                                                                                                                                           | none                                                                                                                                                                                                                                                                                                                   | none                                                                                                                                                 |
 
 ### In Freelens
 
@@ -1615,7 +1648,49 @@ schemas, with that file as a reference only.
 
 The trial is a test of the real tier of SPEC-0002, in the job with the real
 project, in a namespace of its own that it deletes at the end, as it does
-the objects; it records its outcome under "Notes and deviations".
+the objects; it records its outcome under "Notes and deviations". It is
+`test/real-project/s7.tests.ts`, which `pnpm test:real-project` runs in that
+job alone (TESTING.md, "Tests of the real tier"): it reaches the cluster of
+the real project through the scripts of the test environment, reads the
+namespace every five seconds until case 2 has settled and four minutes have
+passed since the creation of the Clusters, ten minutes at most, takes a
+reading that fails again and stops at once on a refusal of the checks of the
+target, and checks every reading against the rows below, with the
+expectations of `test/real-project/s7-expectations.ts`. Two unit tests, which
+`pnpm test:unit` runs, check what it rests on:
+
+- `test/real-project/s7-expectations.test.ts`, "the expectations of S7": they
+  hold on readings rebuilt from the trial by hand, from the first run in CI
+  and from the code of the release, with the `InfrastructureReady` `False`
+  `NotReady` of case 2 from +2s, its older generation from +4s to +6s, and the
+  `ScalingUp` `False` of the Cluster of case 3 from +2s; for case 3 they hold
+  too on a reading between the first full conditions of its Cluster and the
+  rest of its status, and on a generation that its status has not observed
+  yet. Case 1 refuses an accepted dry run, a refusal by the schema and a
+  Cluster that the dry run wrote; case 2 refuses `Available` `True`,
+  `ControlPlaneAvailable` `True`, `WorkersAvailable` with another reason,
+  `status.initialization.controlPlaneInitialized` set,
+  `ControlPlaneInitialized` `True` before the Node, `InfrastructureReady` with
+  another time than the `Ready` of its DevCluster, a probe that never
+  succeeds, a kubeconfig that the Cluster owns as its controller, and a watch
+  shorter than the trial's; case 3 refuses a mirror with a time after that of
+  its source, a mirror with another message, a scale up of the
+  KubeadmControlPlane that ends, a probe that succeeds, an infrastructure that
+  is ready, a control plane that is initialized, a Machine of the control
+  plane, an endpoint, an infrastructure that is never provisioned, not
+  provisioned or no longer provisioned, and a Secret of a kubeconfig. "The
+  watch of S7" reads again after a reading that fails, until the watch is
+  over, and says why; ends at once on a refusal of the checks of the target;
+  and ends at the deadline with the readings it has.
+- `test/environment.test.ts`, "the trial of S7": a namespace of its own, and
+  workload clusters named as the scripts name theirs, which `down` deletes;
+  case 1 with neither reference nor topology, and one field in its spec, which
+  the schema asks; case 2 with an infrastructure reference only, labelled for
+  kindnet, and one control plane Machine; case 3 with a control plane
+  reference only, to a KubeadmControlPlane of one replica; the containers of
+  case 2 named as `down` takes them, one character from the name that kind
+  gives a node, which it refuses; and every object in the namespace of the
+  trial, at `v1beta2`.
 
 1. A server-side dry run of a Cluster with neither reference nor topology is
    refused by the webhook of Cluster, on the field `spec`, and writes
@@ -1628,22 +1703,30 @@ the objects; it records its outcome under "Notes and deviations".
 3. A Cluster with `spec.controlPlaneRef` to a KubeadmControlPlane, no
    `spec.infrastructureRef` and no topology.
 
-Expected, from the code; the trial confirms or corrects each row:
+Expected, from the code of the release, as the trial by hand of 2026-11-25
+confirmed or corrected each row and the first run of the test in CI showed
+("Notes and deviations"). The test asserts each row at every reading from the
+first full status of each object, but for what a controller writes a moment
+after the rest, which it derives from the reading or asserts once written:
+the controllers patch the conditions of an object first, then its spec, then
+the rest of its status (util/patch/patch.go:171-189), so a reading can find
+new conditions next to the status before them, and a generation that the
+status has not observed yet.
 
-| Case | What is read              | Expected                                                                                                                                                                                                                                                      | Facts                                                                                                                                 |
-| ---- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 2    | `ControlPlaneAvailable`   | `Unknown` `InternalError`, for good                                                                                                                                                                                                                           | R2.27                                                                                                                                 |
-| 2    | `InfrastructureReady`     | `True`, mirrored from the infrastructure cluster                                                                                                                                                                                                              | R2.26                                                                                                                                 |
-| 2    | `ControlPlaneInitialized` | `True` once the Machine has a Node; `status.initialization.controlPlaneInitialized` stays unset                                                                                                                                                               | R2.11, R2.28                                                                                                                          |
-| 2    | `RemoteConnectionProbe`   | `True` once the workload cluster answers, through the Secret `<cluster>-kubeconfig` that the Cluster controller creates                                                                                                                                       | R2.30, R3.26                                                                                                                          |
-| 2    | `WorkersAvailable`        | `True` `NoWorkers`                                                                                                                                                                                                                                            | R2.29                                                                                                                                 |
-| 2    | `Available`               | `False` until the probe first succeeds, then `Unknown` `AvailableUnknown`, never `True`                                                                                                                                                                       | R2.21, R2.22, R2.27, R2.30, R2.90                                                                                                     |
-| 2    | The model                 | Unhealthy until the probe first succeeds, then Unknown, with the note of P7; Provisioning until `ControlPlaneInitialized` is `True`, then Idle; while Unhealthy and Provisioning, in the tone of progress for 30 minutes from its creation, then of a warning | P7, D1, D2, D3, H2                                                                                                                    |
-| 3    | `InfrastructureReady`     | `Unknown` `InternalError`, for good; `status.initialization.infrastructureProvisioned` true at once                                                                                                                                                           | R2.10, R2.27                                                                                                                          |
-| 3    | `ControlPlaneAvailable`   | `False`, mirrored from a KubeadmControlPlane that is not initialized                                                                                                                                                                                          | R2.26, R2.78                                                                                                                          |
-| 3    | `RemoteConnectionProbe`   | `False` `ProbeFailed`, not established yet: the KubeadmControlPlane waits for an endpoint, writes no kubeconfig, and no probe runs                                                                                                                            | R2.30, R2.75, R3.26; core/reconcilers/cluster/cluster_controller_status.go:311-324; controllers/clustercache/cluster_cache.go:483-519 |
-| 3    | `Available`               | `False`, never `True`                                                                                                                                                                                                                                         | R2.21, R2.27                                                                                                                          |
-| 3    | The model                 | Unhealthy, with the note of P7; Provisioning for good, since its control plane is never initialized; in the tone of progress for 30 minutes from its creation, then of a warning                                                                              | P7, D1, D2, D3, H2                                                                                                                    |
+| Case | What is read              | Expected                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Facts                                                                                                                                                                                               |
+| ---- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2    | `ControlPlaneAvailable`   | `Unknown` `InternalError`, for good                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | R2.27                                                                                                                                                                                               |
+| 2    | `InfrastructureReady`     | `True`, mirrored from the infrastructure cluster with the time of its `Ready`, since its status changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | R2.26; util/conditions/mirror.go:77                                                                                                                                                                 |
+| 2    | `ControlPlaneInitialized` | `True` once the Machine has a Node; `status.initialization.controlPlaneInitialized` stays unset                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | R2.11, R2.28                                                                                                                                                                                        |
+| 2    | `RemoteConnectionProbe`   | `True` once the workload cluster answers, through the Secret `<cluster>-kubeconfig` that the Cluster controller creates and owns, not as its controller                                                                                                                                                                                                                                                                                                                                                                                                                                | R2.30, R3.26                                                                                                                                                                                        |
+| 2    | `WorkersAvailable`        | `True` `NoWorkers`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | R2.29                                                                                                                                                                                               |
+| 2    | `Available`               | `False` `NotAvailable` until the probe first succeeds, then `Unknown` `AvailableUnknown`, never `True`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | R2.21, R2.22, R2.27, R2.30, R2.90                                                                                                                                                                   |
+| 2    | The model                 | Unknown before its first full status, in its first seconds; then Unhealthy until the probe first succeeds, then Unknown, with the note of P7; Provisioning until `ControlPlaneInitialized` is `True`, then Idle; while Unhealthy and Provisioning, in the tone of progress for 30 minutes from its creation, then of a warning; the mark of an older generation while its status has not observed a change of its spec, the endpoint that it takes from its DevCluster among them, as the first run in CI read at +6.361s                                                              | P7, D1, D2, D3, H2; core/reconcilers/cluster/cluster_controller_phases.go:217-220; util/patch/patch.go:150-155                                                                                      |
+| 3    | `InfrastructureReady`     | `Unknown` `InternalError`, for good; `status.initialization.infrastructureProvisioned` true from the status that the Cluster writes a moment after its first full conditions, and for good                                                                                                                                                                                                                                                                                                                                                                                             | R2.10, R2.27; core/reconcilers/cluster/cluster_controller_phases.go:146-149; util/patch/patch.go:171-189                                                                                            |
+| 3    | `ControlPlaneAvailable`   | `False` `NotAvailable`, mirrored from a KubeadmControlPlane that is not initialized: its reason and its message once the Cluster reconciles after it, and the time of the first `False` that the Cluster wrote, before the KubeadmControlPlane had an `Available`, which the mirror keeps while the status does not change                                                                                                                                                                                                                                                             | R2.26, R2.78; util/conditions/setter.go:64                                                                                                                                                          |
+| 3    | `RemoteConnectionProbe`   | `False` `ProbeFailed`, not established yet: the KubeadmControlPlane waits for an endpoint, writes no kubeconfig, and no probe runs; each failed connection counts as a failed probe, and after five the message says that the probe failed                                                                                                                                                                                                                                                                                                                                             | R2.30, R2.75, R3.26; core/reconcilers/cluster/cluster_controller_status.go:311-339; controllers/clustercache/cluster_cache.go:483-519; controllers/clustercache/cluster_accessor.go:259-269         |
+| 3    | `Available`               | `False` `NotAvailable`, never `True`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | R2.21, R2.27                                                                                                                                                                                        |
+| 3    | The model                 | Unhealthy, with the note of P7; Provisioning for good, since its control plane is never initialized; Unknown too until its KubeadmControlPlane has a full status, since the Cluster writes `ScalingUp` `False` from its first full status while its control plane reports none; then Scaling up for good, Progressing, with its KubeadmControlPlane, which writes `ScalingUp` `True` and, with no endpoint, creates no Machine; in the tone of progress for 30 minutes from its creation, then of a warning, the KubeadmControlPlane too; the mark of an older generation as in case 2 | P1, P7, D1, D2, D3, H2; controlplane/kubeadm/reconcilers/kubeadmcontrolplane/kubeadmcontrolplane_controller.go:438-456; core/reconcilers/cluster/cluster_controller_status.go:88, 976-983, 997-1003 |
 
 ### Manual verification
 
@@ -1695,3 +1778,797 @@ checked in the main session before the approval.
 
 P32 tries S7 as three cases, since the webhook of Cluster refuses its case
 as written; the trial records its outcome here.
+
+Decided while implementing: the spec is implemented in three pull requests.
+The first has the parsers, `src/common/parsers/`, with their unit tests; the
+second the model, `src/common/status/`, with its unit tests; the third the
+cases on the fixtures of SPEC-0002 and the trial S7 on the real tier, once
+the fixtures are merged. The case of `condition-message.test.ts` that reads
+every message of the fixtures is written down there as left for the third.
+In the first, nothing automated keeps a clock or a timer out of
+`src/common/parsers/`: the program of `src/common/` has them, and Biome
+rejects only the modules of Node. The purity test of "Safety" comes with the
+second, and reads `src/common/parsers/` too.
+
+- Decided while implementing the first pull request: the five parsers are
+  production entries of `knip.jsonc`, each by its name, until a module
+  reached from another production entry imports it: the model, if the second
+  pull request gives it a production entry, otherwise the first view of
+  SPEC-0004 that imports it. The pull request that brings that import removes
+  the entry. The production pass of knip starts from the entries of
+  `src/main/` and `src/renderer/`, from which no code reaches a parser yet,
+  and it reports a module that only its tests import as an unused file
+  (AGENTS.md, "Knip"). An entry for each file keeps the check whole for every
+  other file, a new module of the same folder included, ignores no file and
+  adds no module.
+- Decided while implementing: in P26, an item whose major or minor has a
+  leading zero, such as `v01`, or is above 2^53 - 1 (P28), is not of the
+  form, and is left out for the reason that P26 gives for any item of another
+  form. A `cluster.x-k8s.io/v1beta2` label with no item of the form gives
+  Unknown, and the `v1beta1` label is not read in its place: the project
+  reads that one only when the first is missing or empty
+  (internal/contract/version.go:131-140). Labels that are not an object, and
+  a contract label that is not a string, give Unknown.
+- Decided while implementing: in P27, a message is split into lines at `\n`
+  alone, and an empty message has no line and no headline. A line has the
+  shape that the project composes when its indentation is an even number of
+  spaces and it does not end in a carriage return; then `* ` right after its
+  indentation is a bullet. The subject of a summary or of an aggregate is
+  read on a bullet only, and that of the line that closes an aggregate with
+  or without one. Any other line, and one with a tab or a `*` with no space
+  where the bullet would be, has no bullet and no subject, and keeps all of
+  its text after its spaces, a tab or a carriage return included. A line is
+  the child of the nearest line before it that is indented less, so the
+  bullets that follow a headline at its own indentation, as a scale up that
+  waits writes them, stand next to it. In a subject, a kind starts with a
+  capital letter, a name holds no white space, comma, colon or slash, a
+  count is read up to 2^53 - 1 (P28), and a type is one that the
+  definitions of the release allow
+  (core/config/crd/bases/cluster.x-k8s.io_clusters.yaml:3552). A line whose
+  count is above that limit reads no subject, and a message that is not a
+  string gives Unknown.
+- Decided while implementing, where P27 is silent: the line that closes an
+  aggregate is read also as a bullet, `* And <n> <Kind or Kinds> <text>`,
+  since a summary that indents an aggregate under its own line turns it into
+  one, two spaces deeper than the line of the summary, and puts the lines of
+  the aggregate four spaces deeper (util/conditions/merge_strategies.go:571-590);
+  both are children of the line of the summary. The shapes of a subject are
+  read where other code of the project writes them too: the lines
+  `* Node.<Type>:` of the `NodeReady` and the `NodeHealthy` of a Machine
+  (core/reconcilers/machine/machine_controller_status.go:331, 458-499), the
+  templates that the `RefVersionsUpToDate` of a ClusterClass names
+  (core/reconcilers/clusterclass/clusterclass_controller_status.go:57), and
+  the Machines that the checks of a KubeadmControlPlane name
+  (controlplane/kubeadm/pkg/workload_cluster_conditions.go:1169). The drain
+  of a Machine writes lines of the shape of an aggregate for the Pods of its
+  Node, named `<namespace>/<name>`
+  (core/reconcilers/machine/drain/drain.go:482-483, 505, 528-529, 550-553):
+  Pods of the workload cluster, which the extension never reads (A2, R3.40).
+  No name of an object of the management cluster holds a slash, so those
+  lines read no subject, and a view links none of them. A line that another
+  text happens to shape in the same way reads the same, since the parser
+  gives no meaning to the text.
+- Decided while implementing: in P28, a number above 2^53 - 1, among the
+  three numbers of a version, in its pre-release or in its build metadata,
+  gives Unknown, so that the model keeps the exact value of each; the
+  project reads a number of build metadata as an unsigned integer of 64
+  bits, and ignores the error of a larger one
+  (util/version/version.go:92-97). The same limit holds for every number
+  that the parsers read: the major and the minor of an item of a contract
+  label (P26), and the counts of a message (P27). The order of two versions
+  is one of before, equal, after, unordered, for two different words of
+  build metadata, and unknown, for an Unknown on either side. The model
+  reads Upgrading for after and for unordered, as the project does for the
+  results 1 and 2 of its comparison (internal/contract/controlplane.go:325,
+  352; util/version/version.go:105-136).
+- Decided while implementing: in P29, the set of the pending hooks holds the
+  hooks of a Cluster and the one of a Machine together, since the parser
+  reads the key and the value of an annotation, not the kind of its object.
+  The preflight checks are trimmed of the white space that `strings.TrimSpace`
+  of Go trims, as the controller trims them
+  (core/reconcilers/machineset/machineset_preflight.go:276): the characters
+  of the White_Space property of Unicode, as the documentation of
+  `unicode.IsSpace` of Go defines them, which the reviewed sources do not
+  hold. The trim of JavaScript would differ on two of them: it trims U+FEFF,
+  which Go keeps, and keeps U+0085, which Go trims. An absent annotation
+  gives no item, and a value that is not a string gives Unknown.
+- Decided while implementing: in P30, the zero time of Go is Unavailable
+  however it is written, `0001-01-01T01:00:00+01:00` included; the hours and
+  the minutes of an offset are checked as those of the time, up to 23 and
+  59; the instant counts to the millisecond, and the digits below it are
+  dropped. A value that is not absent, null, empty or a string is
+  Unavailable.
+- Decided while implementing the second pull request: the entry points of
+  the model, `src/common/status/index.ts`, are a production entry of
+  `knip.jsonc` until the first view of SPEC-0004 imports them, and the pull
+  request that brings that import removes the line. The model reaches every
+  module of `src/common/status/` and the parsers it imports, whose entries
+  go; each parser that the model does not import keeps its own entry, as the
+  first pull request decided.
+- Decided while implementing: the reading of every field with a check of its
+  type is a module of its own, `src/common/status/fields.ts`, next to those
+  that "Where it lives" names, since every family module and freshness read
+  through it. A field of the wrong type reads as unreadable, never as a value:
+  a status, a spec or a deletion time of the wrong type, conditions that are
+  not a list or an entry of them with no type, and a count that is negative,
+  not an integer or above 2^53 - 1 make the health Unknown, with a note that
+  names the field; a status, a reason, a message, a time, a generation or a
+  severity of the wrong type in a condition reads as absent, weighs Unknown
+  where it matters, and is noted with the type of its condition (corrected
+  while applying the review of the model): where the reason decides the weight
+  or the health, the wait of P5 on the `Available` of a Machine and the wait
+  for the core provider of P14, a reason that cannot be read gives Unknown,
+  and so does an address of an IPAddressClaim of the wrong type, noted. The
+  gates are read entry by entry: an entry that cannot be read, one with an
+  empty type included, or a list of the wrong type, is noted, and the
+  conditions that it might name weigh Unknown, every condition whose polarity
+  a gate can set but the summary that the gates feed, since both the
+  conditions of the project and those of a third party can be gates
+  (api/core/v1beta2/cluster_types.go:536-541;
+  api/core/v1beta2/machine_types.go:535-538). An input of the context that is
+  not an object reads as not given, and an entry of a list of the context that
+  is not an object is left out; so does the Cluster of a binding that is not
+  an object, and a role or a contract outside its closed set, null included
+  (P15). The objects that the unit tests start from are in
+  `test/status-objects.ts`, generated from the fixtures of SPEC-0002 at the
+  commit of their pull request, trimmed to the fields that the rules read,
+  with a generation that the fixtures leave out written as 1, as the API
+  server writes it.
+- Decided while implementing, where "What it takes and returns" is silent:
+  `now` is in milliseconds since the Unix epoch; `controllers` maps the
+  manifest label of a provider to its availability, `true`, `false` or
+  `unknown`, with the time of its last change; and the context gives
+  `provider`, the manifest label of the provider that serves an object of a
+  provider or an IPAddressClaim, which P24 reads from a definition that the
+  model does not read. Without `controllers` the result notes it; with an
+  entry missing or `unknown`, it notes the controller as unknown (P24); a kind
+  of the operator, which no provider serves, notes neither.
+- Decided while implementing, where "What it takes and returns" is wrong for
+  D2: `bindings` gives each binding with the object of its Cluster, rather
+  than the result of `statusOf` for that Cluster. The first provisioning and
+  the `RemoteConnectionProbe` of the Cluster, which the tone of a
+  ClusterResourceSet reads, are fields of the Cluster that the result does not
+  carry, and they are read by the same rule that reads `cluster` for every
+  other object.
+- Decided while implementing: the issues of a health are what point 3 counts,
+  whatever the word, so that the details can list them for an Unhealthy object
+  too; the word is Degraded only when the summary is `True`. The column
+  "Degraded from" of a kind of Cluster API names the conditions of the closed
+  set of the kind that point 3 counts, and a condition outside that set, one
+  of a third party, counts too unless it is a gate, as H1 says: the summary
+  leaves it out (corrected while applying the review of the model, where the
+  column had been read as the whole list). That holds for the Cluster, the
+  ClusterClass, the ExtensionConfig, the MachineSet, the MachineDeployment,
+  the KubeadmControlPlane and the KubeadmConfig, whose closed sets are those
+  of R2.19, R2.33, R2.37, R2.57, R2.62, R2.78 and R2.83; the row "none" of an
+  ExtensionConfig and of a KubeadmConfig names none of their own. On each of
+  them, every other condition of positive polarity counts but the inputs that
+  the summary merges, which count only through it: `RemoteConnectionProbe`,
+  `InfrastructureReady`, `ControlPlaneAvailable` and `WorkersAvailable` of the
+  `Available` of a Cluster, with its gates (R2.21), and `DataSecretAvailable`
+  and `CertificatesAvailable` of the `Ready` of a KubeadmConfig (R2.83); the
+  other kinds have none, since their other conditions are those that their
+  rows name or the pending changes of P4. A Machine counts every other
+  condition already; a MachinePool counts none of its own, since its health
+  comes from its Machines (H1); and the rules of P11 to P14 stand on what they
+  name. The gates of the availability of a Cluster, its own or those of its
+  ClusterClass, and the other inputs of its `Available` count only through
+  `Available`.
+- Decided while implementing: a kind with no status that is deleting has no
+  health because it has no status; its activity Deleting says that it is
+  deleting. A deletion time that is text makes an object deleting, an
+  unavailable time included, and an empty one does not.
+- Decided while implementing: a phase that is not written reads Unknown, as
+  the getters of the project read it, and one that is not text reads Unknown
+  with a note. The failure reason and message of P6 are read on the kinds
+  whose schema keeps them under `status.deprecated.v1beta1`: Cluster, Machine,
+  MachineSet, MachinePool, KubeadmControlPlane and KubeadmConfig; a
+  MachineDeployment keeps none.
+- Decided while implementing, where P22 is silent: the six reasons of
+  `TopologyReconciled` that the release deprecates and never sets are reasons
+  that it defines, and weigh Activity when the condition is `False`; Unknown
+  is for a reason that the release does not define.
+- Decided while implementing: P4 is read for the kinds that it names. A
+  `MachinesUpToDate` of a control plane of a provider weighs as any condition
+  of a provider (P15), since the conditions of a provider are an open set.
+- Decided while implementing, where P10 is silent: a Machine of a
+  MachinePool is "not `Ready`" when its `Ready` is `False`. One whose `Ready`
+  is `Unknown` is no issue, as it is no issue in the `MachinesReady` that a
+  MachineSet writes for its Machines (R2.90), and point 4 leaves an `Unknown`
+  out. A MachinePool with no Machine is Healthy only at 0 replicas; with
+  `spec.replicas` unset it is Unknown, with the note of P10. The Machines
+  that the view did not give are noted with or without a status, as the other
+  inputs are; with no status the MachinePool is Unknown, as point 2 says.
+- Decided while implementing, where P11 is silent: a MachineHealthCheck whose
+  `status.expectedMachines` or `status.currentHealthy` is unset is read by its
+  targets, as when the two differ.
+- Decided while implementing, where P12 is silent: the binding of a Cluster
+  that holds an entry for the ClusterResourceSet with no resource, as the
+  controller writes it before it reaches the Cluster, records each resource as
+  missing; the health is then the `ResourcesApplied` `False` of the project,
+  and the issues list the resources.
+- Decided while implementing, where P14 is ambiguous: "Degraded otherwise" is
+  read with `Ready` `True`, and a `Ready` that is `Unknown` gives Unknown, as
+  point 2 says. With `Ready` `True`, the issues are `PreflightCheckPassed` and
+  `ProviderInstalled` when either is not `True`, missing included, and a
+  `ProviderUpgraded` that is `False` while the versions differ. The versions
+  are compared as text, as the operator compares them
+  (cluster-api-operator:internal/controller/phase_lifecycle.go:49-54).
+- Decided while implementing, where P15 is silent: an object of a kind that
+  the model does not know and for which the view gave no role is Unknown with
+  one note, whether it is an object of a provider whose role is missing or an
+  object of another kind; its conditions are listed as those of an object of
+  a provider, and it carries no mark of freshness. A kind of Cluster API at a
+  version that A2 does not name is such a kind.
+- Decided while implementing, where P19 is wrong: the bootstrap config of a
+  provider other than KubeadmConfig honours the request of a pause as an
+  infrastructure machine does, since its contract asks the same of its
+  controller (docs/book/src/developer/providers/contracts/bootstrap-config.md:474-476).
+  An IPAM pool and a remediation request are paused by their `Paused` alone.
+- Decided while implementing, where "Freshness" is ambiguous: a paused object
+  carries no mark Older generation. Its controllers write no
+  `status.observedGeneration` while it is paused (R2.2, R2.5), so the pause is
+  the cause of the generation they do not observe, and the mark Paused says
+  it; the table of the fixtures gives the Cluster of `paused`, at generation 2
+  and observed at 1, the mark Paused alone. The marks are read for an object
+  that is deleting too, since they say what its status still describes. A
+  paused ClusterClass whose generation is not observed says on its mark Paused
+  that the topology of its Clusters is held, which P8 asks of its mark, since
+  the topology controller refuses a class whose generation it has not
+  observed, paused or not
+  (core/reconcilers/topology/cluster/cluster_controller.go:343-353); every
+  other mark Paused says it does not (corrected while applying the review of
+  the model). A kind with no status carries no mark, whatever its fields say,
+  a template of a provider with a generation and a status included (P16).
+- Decided while implementing, and corrected while applying the review of the
+  model, whose premise did not hold: the result and the list of the conditions
+  both note a ClusterClass that the view did not give, for a Cluster with a
+  topology and no gates of its own. Its gates can name the conditions of the
+  project as well as those of a third party
+  (api/core/v1beta2/cluster_types.go:536-541), so a gate that declares
+  `ControlPlaneMachinesReady` `Negative` changes the health, and the health
+  read without the class says so.
+- Decided while implementing: the check of Safety matches the five names under
+  which the fields of R3.36 lie wherever a module reads or declares them: as a
+  property by a dot, an optional chain or a key in brackets, as the key of an
+  object or of a type, as a name taken by destructuring, or as a quoted name,
+  which is how the rules read a field with `fieldOf` (added while applying the
+  review of the model). The paths matched from `spec` are among them, and so
+  is a read through a cast, `(spec as T).files`, which a match from `spec`
+  alone lets pass; none of the five names is read or declared anywhere in the
+  two folders. The check is three cases over every module, each seen failing
+  on a line planted in one module, a quoted name passed to `fieldOf` included.
+  It also finds the clock that `Date` called as a function and
+  `performance.now` read, and a dynamic import of a module named at run time,
+  by a template literal or a computed name, which the list of the imports
+  cannot check.
+- Decided while implementing: the result names the object it describes, and
+  its health carries what it rests on: the summary as read, or what stands for
+  one, the counters of P9 and P10, the targets of P11, the address of P13 and
+  the bindings of P12, Cluster by Cluster. The mark of remediation of P11 is a
+  field of the result, with `RemediationAllowed` and its weight.
+- Decided while implementing the second half of the model, where P1 is silent:
+  a condition of an activity that a kind of Cluster API writes leaves the
+  source unread when it is missing, as the project counts a missing input of
+  its own merges (R2.89, R2.92): `RollingOut`, `ScalingUp`, `ScalingDown` and
+  `Remediating` of a Cluster, a MachineDeployment and a KubeadmControlPlane,
+  the last three of a MachineSet, and `Updating` of a Machine. A MachinePool
+  writes neither `RollingOut` nor `Remediating`, so the same rule makes its
+  activity never Idle. A missing `Paused` or `Deleting` leaves nothing unread:
+  the pause falls back to its request, and Deleting comes from the deletion
+  timestamp. With no Node, a phase of a Machine that is not written, that is
+  outside its set, or that is `Unknown`, inside the set, leaves the source
+  unread, since the phase decides the Provisioning and `Unknown` says that the
+  project could not tell it.
+- Decided while implementing, where P1 is ambiguous: a Cluster reads Unknown
+  when its control plane or one of its MachineDeployments in `parts` reads
+  Unknown, a control plane of a provider that writes none of the three
+  conditions included: the Cluster reads its Provisioning and its Rolling out
+  from them (D3, P4). It does not read Unknown for a MachinePool, whose
+  Unknown comes from the two conditions it does not write, which the Cluster
+  leaves out of its own (R2.29), so a Cluster whose workers are MachinePools
+  reads Idle, as the table of the fixtures has it. The limit of that choice: a
+  MachinePool whose own Provisioning cannot be read, with no status yet or no
+  Machines from the view, leaves its Cluster reading no Provisioning through
+  it, while the pool's own result says Unknown and why.
+- Decided while implementing, where "What it takes and returns" is silent on
+  when each input is needed: an owner always needs its `machines`, and a
+  Cluster its `parts` and its `machinePools` (D3), noted with or without a
+  status and leaving the activity Unknown; a Cluster reads its `machines` only
+  for the threshold of its activities and for the remediation of its Machines
+  (P2, P21), and notes them only then, without Unknown; `healthChecks` are
+  noted only when the threshold of a Machine is needed, and 600 seconds stand
+  in; `cluster` only when the floor of P2 or the first provisioning of D2 is
+  needed; and `contract` for an object of a provider whose field of P17
+  depends on it, which is then unread. The bootstrap config of a MachinePool
+  has no Machine, and takes 600 seconds.
+- Decided while implementing, where D3 says it of Provisioning and Replacing
+  alone: a deleting object holds Deleting and nothing else, with Paused while
+  it is paused, since its deletion is what it does; a scale down that its
+  deletion makes, such as the `ScalingDown` of the Cluster of `deleting`, is
+  not shown, as the table of the fixtures shows that Cluster with Deleting
+  alone. A `Deleting` that is still `False` was written before the deletion
+  and gives the state Progressing; one that is `Unknown` gives the state
+  Unknown; its stages are a closed set on the five kinds that write it and an
+  open one on any other. Paused is never Blocked, and a reason outside its set
+  gives it the state Unknown (P1).
+- Decided while implementing, where P2 is ambiguous: the floor of the 30
+  minutes of a Cluster applies to the activities in progress and not to
+  Deleting, whose 15 minutes are the project's own staleness, and which waits
+  on no first provisioning: a Machine with no Node skips the stages of its
+  deletion that need one (R2.41). The floor raises a threshold counted from a
+  start that the project wrote, and gives none to an activity whose start it
+  did not write, which stays past its threshold (P34). "Younger than its
+  threshold" in D3 reads the threshold of the Machine with that floor, so a
+  Machine that has its Node and is not available is Provisioning through the
+  first 30 minutes of its Cluster, while its Node may wait for the network
+  add-on that its Cluster gets once it can be reached (P12).
+- Decided while implementing, where P2 is silent on how long: the wait of
+  `minReadySeconds` counts as within the threshold of its Machine until
+  `spec.minReadySeconds` after the transition of its `Ready` to `True`, which
+  is when the project turns `Available` `True`
+  (core/reconcilers/machine/machine_controller_status.go:874-916); a wait that
+  lasts longer outlasts it, as a stuck one should.
+- Decided while implementing, where P2 is silent on several Machines: the
+  Provisioning of an owner dates from the oldest of its Machines whose
+  Provisioning is in progress, with the threshold of that Machine; it is
+  Blocked when the owner is paused or every such Machine is. A Cluster reads
+  its parts the same way, and takes the state of that part; a hook that holds
+  its creation does so before its control plane is initialized (P18), so it
+  blocks only its own first provisioning. Replacing dates from the earliest of
+  the deletions that make it hold. Each activity takes the threshold of P2 by
+  its kind: one Machine for the Provisioning, the Updating and the Remediating
+  of a Machine; the shortest of the Machines of an owner or of a Cluster for
+  its Rolling out, Scaling up, Upgrading and Remediating, and for the scale up
+  of a MachinePool (P20), 600 seconds when it has none; 15 minutes for Scaling
+  down, Replacing and Deleting; 30 minutes for the first provisioning of a
+  Cluster; 600 seconds for what serves no Machine and for a kind of the
+  operator. A MachineHealthCheck counts for a Machine of its own namespace,
+  with an unset `nodeStartupTimeoutSeconds` read as the 600 that the project
+  defaults.
+- Decided while implementing: an activity has a threshold while it is in
+  progress, and so has Deleting, whose tone needs its 15 minutes (P31);
+  Paused, Rollout paused and an activity that is Blocked or Unknown have none.
+  An activity outlasts its threshold at the instant that the threshold ends,
+  which is the instant that the result names. With no time of the evaluation
+  that is a number, nothing is within its threshold, the Provisioning of a
+  Machine by its age cannot be told, and the result notes `now` as a field of
+  the wrong type.
+- Decided while implementing, where P31 is silent on the order of its rules:
+  an activity whose state is Unknown takes the tone vague; one that is Blocked
+  the tone of a warning, Rollout paused and Deleting included; Paused and
+  Rollout paused the tone terminated; Deleting terminated within its 15
+  minutes and a warning past them; an activity in progress that of progress
+  within its threshold and a warning past it. P33 comes before P1: an activity
+  of a paused object is Blocked whatever its reason.
+- Decided while implementing, where D2 does not say which objects belong to a
+  Cluster: those whose controllers honour the pause of their Cluster (P19): a
+  Machine, a MachineSet, a MachineDeployment, a MachinePool, a
+  MachineHealthCheck, a KubeadmControlPlane, a KubeadmConfig, an
+  IPAddressClaim, and an infrastructure cluster, machine or machine pool, a
+  control plane and a bootstrap config of a provider. An IPAM pool serves no
+  one Cluster, and a remediation request, which is always Unknown, needs no
+  tone. The first provisioning that they take is the Provisioning of their
+  Cluster while its `ControlPlaneInitialized` is `False` and nothing blocks
+  it; a paused Cluster, or one whose creation a hook holds, lends none.
+- Decided while implementing, where D2 is silent: a paused object takes
+  nothing for its tone, since its controllers stop with it and "Paused" is
+  among what gives the tone of the health. A ClusterResourceSet takes the
+  first provisioning of the Clusters of the bindings that hold an entry for
+  it, as P12 reads them, and notes a binding whose Cluster the view did not
+  give. A Cluster takes from each part, its MachinePools included, its
+  activities in progress and the activity that sets the tone of the part, so
+  that a part lends its tone, the Machine of a MachineDeployment included. Of
+  the activities in progress, own and taken, the one that sets a tone of
+  progress is the one within its threshold that lasts the longest, whose end
+  is the instant that the tone names; the one that sets a warning is the one
+  that outlasted its threshold last, an activity with no start last; on a tie,
+  the object's own comes first, then the order of H2.
+- Decided while implementing, where P4 is silent: a Cluster whose `RollingOut`
+  is `True` while none of its parts shows Rolling out, a paused rollout
+  included, carries the note, unless a part cannot be read, which may roll
+  out, and the Cluster then reads Unknown; one whose parts that roll out are
+  all Blocked reads Rolling out Blocked, as its Provisioning through its parts
+  does (both corrected while applying the review of the model); one whose view
+  gave no `parts` reads Rolling out from its condition alone, with the note
+  that the parts were not read. A MachineDeployment under `OnDelete` carries
+  the note with or without `spec.paused`, since nothing rolls out to be held;
+  a `spec.rollout`, its `strategy`, a strategy type or a `spec.paused` of the
+  wrong type is noted with its own path and leaves the source unread. A
+  Machine and a MachineSet carry the note whenever their `UpToDate` or
+  `MachinesUpToDate` is `False`.
+- Decided while implementing, where P14, P17, P20, P21 and P28 are silent: a
+  kind of the operator is Provisioning while `status.installedVersion` is
+  unset or empty, and its activity carries the condition that blocks it, or
+  `PreflightCheckPassed` while it waits for the core provider. A KubeadmConfig
+  reads `status.initialization.dataSecretCreated` with no `contract`, since
+  its kind is at `v1beta2`; a field of P17 of the wrong type is noted and
+  unread. An annotation `replicas-managed-by` with an empty value is an
+  outside count, as the project reads any value other than "false". When a
+  Machine has both `OwnerRemediated` and `ExternallyRemediated`, the first is
+  read, and a `Remediating` on a Machine, which the project does not write
+  (R2.45), is read after them as any condition of an activity (P1); the
+  message of a remediation that a rollout makes needless is matched anywhere
+  in the message; the Remediating of an owner reads the `OwnerRemediated` of
+  its Machines alone, as P21 says, and with no Machines from the view it is
+  Progressing and noted. The entries of `status.versions` are read in their
+  order, as the project reads them: the first one that `spec.version` comes
+  after, or is apart from by words of build metadata, decides Upgrading, and
+  one that does not parse stops the reading as unread, where the project
+  returns an error; with no `spec.version` there is no upgrade, and one that
+  does not parse, an empty one included, leaves the source unread. On a
+  Cluster with a topology, a `TopologyReconciled` that is missing, `Unknown`,
+  or `False` with a reason that the release does not define leaves its
+  Upgrading unread (P22).
+- Decided while implementing: the activities of an object of a kind that the
+  model does not know are Unknown, with Deleting from its deletion timestamp.
+  The activities change with time where their thresholds end, those that an
+  owner or a Cluster takes from a Machine or a part included, since each keeps
+  its own threshold: the earliest of those ahead is the instant that the
+  result names. The trial of S7 showed a KubeadmControlPlane with no endpoint
+  that writes `ScalingUp` `True` for good and creates no Machine, which the
+  row of case 3 does not name: the model reads it Scaling up, Progressing,
+  whose tone turns to a warning past its threshold, and no rule assumes that
+  such a scale ends.
+- Found while implementing, where the table of the fixtures and P14 are wrong
+  or silent: the Machine of "A remediation in progress" is 73 seconds old and
+  not available at the capture, so D3 makes it Provisioning next to
+  Remediating, and its MachineSet and MachineDeployment Provisioning through
+  it, which the two rows do not name; the Cluster of "With a managed topology,
+  upgrading" writes `ScalingDown` `True` and reads Scaling down next to
+  Upgrading, which its row does not name, and reads Rolling out through its
+  KubeadmControlPlane, which rolls out, when the view gives its parts (P4);
+  and the KubeadmControlPlane of case 3 of S7 scales up for good, as the note
+  above says. P14 says that past its 600 seconds the wait for the core
+  provider turns to a warning the mark of the activity and a health that is
+  Degraded: while the kind installs, its health is Unknown, whose tone never
+  changes, so only the mark turns; a Degraded health comes with the wait
+  during an upgrade, whose Upgrading has no start and takes the tone of a
+  warning at once (P34). Nothing in the object tells a wait that ends from one
+  with no `CoreProvider`, which only the operator looks for: the clock alone
+  tells them apart. The third pull request corrects the rows with its cases
+  on the fixtures (below).
+- Decided while applying the review of the model: a field that the activities
+  read is read level by level, so that a parent of the wrong type is noted
+  with its own path and leaves the source unread, never read as a field that
+  is not set and so as an activity in progress: the `status.initialization` of
+  P17, the `spec.rollout` of P4 and its `strategy`, and the `spec.topology` of
+  a Cluster, which would otherwise read Idle while it upgrades. A
+  MachineHealthCheck whose `status`, `status.targets`, `spec` or `spec.checks`
+  is of the wrong type is noted and left out of the threshold of a Machine. A
+  creation time that cannot be read is noted, and a Machine whose age decides
+  its Provisioning, with a Node and not available, then reads unread, as with
+  no time of the evaluation, and so does its owner. A kind of the operator
+  that is installed and has no `spec.version`, which the operator writes
+  before it installs
+  (cluster-api-operator:internal/controller/manifests_downloader.go:91-97), is
+  noted and unread, never Upgrading; a `PreflightCheckPassed` `False` whose
+  reason cannot be read leaves its activity Unknown, as it leaves its health,
+  and Blocked while the kind is paused, since P33 comes before P1. A contract
+  of the context outside `v1beta1` and `v1beta2` reads as not given, and the
+  field of P17 that depends on it is unread with the note.
+- Decided while applying the review of the model, where the code departed from
+  P7 with no decision: a Cluster with the note of P7 is never Healthy, as P7
+  says, so one whose `Available` is `True`, which only a status written by
+  hand can hold (R2.27), reads Unknown, with what it rests on and its issues;
+  one whose `Available` is `False` reads Unhealthy.
+- Decided while applying the review of the model, where P19 is silent: an
+  IPAddressClaim whose `spec.clusterName`, an optional field
+  (api/ipam/v1beta2/ipaddressclaim_types.go:44-49), is unset or empty belongs
+  to no Cluster: no pause is requested of it, its thresholds have no floor, it
+  takes no first provisioning for its tone, and nothing notes a Cluster that
+  the view did not give.
+- A question for the review of the milestone, found while applying the review
+  of the model, with no change to the model: P9 and P10 read the counters of a
+  MachineSet and of a MachinePool as the project writes them. A MachineSet
+  controller that cannot list its Machines keeps its last counters and writes
+  `MachinesReady` `Unknown` `InternalError`
+  (core/reconcilers/machineset/machineset_controller_status.go:77-81,
+  236-247), so the MachineSet reads Healthy on counters that may be stale, as
+  P9 says to the letter. Whether a `MachinesReady` `Unknown` with
+  `InternalError` should make such an owner Unknown is left to that review.
+- Decided while implementing the third pull request: the cases on the
+  fixtures, `src/common/status/fixtures.test.ts`, read each set with the YAML
+  reader of the scripts and build the context of each object from the same
+  set as a view builds it, with `test/status-views.ts`, which the test of S7
+  shares: the Machines of an object by their owner references, as "What it
+  takes and returns" names them; its Cluster by its `spec.clusterName` or its
+  label, else by the Cluster that owns it, else through the object that names
+  it in a reference, so that an object written by a user, with neither, has
+  its Cluster; the parts and the MachinePools of a Cluster by their own
+  results, its class when it has a topology and no gates of its own, the
+  bindings of a ClusterResourceSet with their Clusters, the MachineHealthChecks
+  of the set, and, for a kind of the development provider, its role from a
+  table of the test keyed by the kind, which on these sets gives each kind the
+  role that the reference that names it gives, the contract `v1beta2`, the
+  highest label of its definitions, and the label `infrastructure-docker` of
+  its provider (test/infrastructure/docker/config/crd/kustomization.yaml:5-6;
+  test/infrastructure/docker/config/default/kustomization.yaml:8). "Past the
+  threshold" is 30 minutes and one second after the capture, which the first
+  cases show is past every threshold of every set. The guard of a row read
+  after the first provisioning of its Cluster also asserts that its control
+  plane is initialized and its probe `True`, since the tone of an object of a
+  Cluster (D2) and the mark of P25 follow them: a capture in which they
+  differ fails on the fixture. Two rows about a Cluster itself leave out one
+  or both, harmlessly, since a Cluster carries no mark of P25 and a deleting
+  one holds Deleting alone: the Cluster of `deleting` asserts neither, and
+  that of `without-topology` asserts its control plane initialized but not
+  its probe; the MachineDeployment of `deleting`, which follows its workload
+  cluster, asserts both.
+  The table of the results expects the health with its issues, the tone with
+  the instant at which it changes, and the activities with their starts,
+  computed from the times of the set.
+- Corrected while implementing the third pull request, where a set does not
+  bear its row out: the sets are the project at the pinned release, or, for
+  `machine-pool-without-machines`, written by hand from what SPEC-0001 says of
+  it, and each row now says what its set holds.
+  - `provisioning`: the Cluster and its KubeadmControlPlane do not scale up,
+    and the Provisioning of the KubeadmControlPlane dates from the creation of
+    its Machine, as D3 and the Provisioning of an owner say, not from its own.
+  - `healthy`: the DevMachineTemplates hold the `status.capacity` that the
+    development provider writes into every template, no status of health
+    (P16); a MachineSet, which has no summary, has every replica available.
+  - `machine-without-node`: the MachineSet of the Machine with no Node is
+    beside the topology, owned by the Cluster and by no MachineDeployment. The
+    Cluster counts only its MachineDeployments and MachinePools in
+    `WorkersAvailable`
+    (core/reconcilers/cluster/cluster_controller_status.go:660-714), and its
+    worker Machines in `WorkerMachinesReady` (:68, :84, :731-741), which it has
+    not computed again since that Machine came: it reconciles on a change of
+    its control plane Machines, MachineDeployments and MachinePools, not of a
+    MachineSet or a worker Machine (the README of the set). So it reports
+    `Available`, `WorkersAvailable` and `WorkerMachinesReady` `True`: the
+    MachineDeployment leaves the row, and the Cluster reads Healthy and Idle.
+  - `rolling-out` and `scaling-up`: the Machine that starts has a Node, not
+    ready yet, so it is Provisioning only while it is younger than its
+    threshold (D3); past it, the MachineDeployment of `scaling-up` reads Idle
+    in the tone of its health, not of a warning. `rolling-out` scales down
+    too, and so does its Cluster. In `scaling-up` the KubeadmControlPlane
+    scales up as well, with a control plane Machine that has no Node yet: its
+    Cluster is Provisioning through it, the oldest part that provisions, and
+    past the thresholds in the tone of a warning, where the row said "as its
+    MachineDeployment".
+  - `scaling-up-held`: the MachineDeployment scaling up and its MachineSet
+    have their one Machine available, so neither is Provisioning (D3); only
+    the `ScalingUp` of the MachineSet says ` is blocked because`, and each
+    owner shows its own condition, with its message.
+  - `scaling-down`: `MachinesReady` is `False` for the Machine that the
+    MachineDeployment deletes, so the set shows Degraded alone; a Healthy
+    MachineDeployment scaling down is left to the unit tests.
+  - `paused`: the ClusterClass and the ClusterResourceSet follow their own
+    annotation alone (P19) and report `Paused` `False`, in a row of their own;
+    no activity holds but Paused, so its Blocked activities have nothing to
+    show in the set.
+  - `deleting`: the Cluster is at the stage `WaitingForWorkersDeletion`, with
+    no hook in `TopologyReconciled`, and its `ScalingDown` `True` is not shown,
+    since a deleting object holds Deleting alone, as decided while
+    implementing where D3 says it of Provisioning and Replacing alone (above).
+  - `upgrading`: the Cluster also reads Scaling down and Provisioning through
+    its KubeadmControlPlane, whose new Machine has no Node yet; its health is
+    Degraded from `ControlPlaneMachinesReady`.
+  - `machine-pools`: the Machines of the pool have their Nodes, since the
+    capture waits for one on each (e2e/scripts/states.mts:815), so the pool is
+    Provisioning only while its Machine is younger than its threshold, and past
+    it in the tone of its health; its Cluster counts the Unhealthy pool among
+    its issues, and is Provisioning through its parts while their Machines are
+    young.
+  - `machine-pool-without-machines`: the set, which the development provider
+    cannot show since it keeps Machines for its pools (its README), gives the
+    MachinePool `status.nodeRefs` with its Node and counters equal to its
+    replicas, as the project writes them once its Node exists (SPEC-0001,
+    R2.66 to R2.69), so it is neither Provisioning nor scaling; at 0 replicas,
+    its `status.nodeRefs` stays.
+  - `remediation`: the Machine whose remediation waits has `OwnerRemediated`
+    `False` `RemediationDeferred`, and the remediated one `MachineDeleting`;
+    `WaitingForRemediation` is only in a deprecated `v1beta1` condition. The
+    waiting Machine, not available 73 seconds after its creation, is
+    Provisioning too (D3), and its owners through it, and they are Replacing
+    since the deletion of the remediated Machine.
+  - `no-status`: every input is given from the set, so the only notes are the
+    MachinePool of unknown health of the Cluster (H1), the note of P12 and the
+    provider of the IPAddressClaim, since its pool belongs to a group that no
+    provider of the tier serves; no set holds an ExtensionConfig (below).
+- States that the corrections above dropped, found while applying the reviews
+  of the third pull request, each a capture still missing or one that the
+  views do not need:
+  - A MachinePool without Machines that is Provisioning, its
+    `status.nodeRefs` still empty (P17): not needed by the views. Only the set
+    written by hand has a MachinePool without Machines, and its Provisioning
+    has no start (P34), so it shows as the Upgrading of the KubeadmControlPlane
+    of `upgrading` shows, an activity with no duration; the unit tests read
+    P17.
+  - A MachinePool that scales, read from its counters (P20): not needed by
+    the views. Every pool of the sets has its counters equal, and the case at
+    0 replicas changes one field to show the scale, which has no start either
+    and shows as above.
+  - A paused object whose other activities are Blocked (P33): a capture still
+    missing. The Cluster of `paused` was paused with nothing in flight, so
+    Paused is all it does; a Cluster paused during a rollout shows its other
+    activities Blocked with no feature of the project turned on, and no row
+    shows a Blocked activity, which the views say (SPEC-0004). The scripts can
+    capture it as they capture `paused`, from the Cluster of `rolling-out`.
+  - A Healthy MachineDeployment that scales down: not needed by the views, and
+    not a state that the sets can hold: the Machine that it deletes turns
+    `Ready` `False` within a second of its deletion, as `scaling-down` shows,
+    and the `MachinesReady` of its owners with it, so it reads Degraded. A
+    Healthy health keeps its own tone whatever the object does (D2), as other
+    rows show, and the unit tests read the rule.
+  - The other corrections drop no state that the views show apart from the
+    rows they have: a Cluster and its control plane that scale up during the
+    first provisioning (`scaling-up` scales after it), a MachineDeployment
+    Provisioning through a Machine with no Node (the MachineSet of
+    `machine-without-node` shows it), Provisioning next to a scale on hold,
+    and `WaitingForRemediation`, which this release writes only in a
+    deprecated `v1beta1` condition.
+- Captures still missing, found while implementing the third pull request: no
+  set holds an ExtensionConfig, which is cluster-scoped
+  (core/config/crd/bases/runtime.cluster.x-k8s.io_extensionconfigs.yaml:19),
+  while the fixture sets hold only kinds with a namespace
+  (e2e/scripts/fixtures.mts:28-30), and which its webhook refuses while the
+  feature RuntimeSDK is off, as it is on the real project of the tier
+  (core/webhooks/admission/extensionconfig.go:81-88): turning the feature on
+  would not be enough. Nor does a set hold a lifecycle hook that holds a
+  Cluster (P18), which needs that feature and a runtime extension: the stage
+  `WaitingForBeforeDeleteHook` of the deletion of a Cluster with a topology
+  (core/reconcilers/cluster/cluster_controller.go:345-353), the hook
+  `BeforeClusterCreate`, which holds its creation with `TopologyReconciled`
+  `False` `ClusterCreating`
+  (core/reconcilers/topology/cluster/status.go:180-197), and those of an
+  upgrade. The unit tests read them; the views that show them, those of
+  ExtensionConfigs (SPEC-0015) and the Blocked of a Cluster, need such
+  captures, which no row claims. A Cluster paused during a rollout is missing
+  too (above).
+- A question for the review of the milestone, found while implementing the
+  third pull request, with no change to the model: D3 reads a Machine that is
+  not `Available` and younger than its threshold as Provisioning, whatever its
+  phase. The Machine of `remediation` whose remediation waits had been
+  available, and lost it when it was marked for remediation, 68 seconds after
+  its creation: at the capture, five seconds later, it reads Provisioning next
+  to Remediating, and its owners through it, until its threshold ends.
+  Whether a Machine that has been `Available` once is still Provisioning is
+  left to that review.
+- Decided while applying the reviews of the third pull request: the cases
+  assert the issues of every row, whatever the word of its health, since the
+  details list them for an Unhealthy object too (above), and the rows say
+  them. Rows and cases are added for the objects whose rules no row showed:
+  the DevMachine of the control plane Machine, the ClusterResourceSet and the
+  MachineHealthChecks of `provisioning`; the Machines of `rolling-out` that
+  are not up to date, and their MachineSet; the Clusters of
+  `scaling-up-held`, `scaling-down` and `remediation`; the Machine that
+  `scaling-down` deletes; the MachineDeployment of `deleting`; the
+  KubeadmControlPlane of `upgrading`; and the remediated Machine and the
+  MachineHealthCheck of the workers of `remediation`. The guard of the
+  thresholds asserts that every MachineHealthCheck of the sets leaves a
+  Machine its 600 seconds, as the expectations assume. Two readings that the
+  new rows show are as the spec says, and the rows say why. The
+  KubeadmControlPlane of `upgrading` is Upgrading with no start, in the tone
+  of a warning from the capture: the project writes no time for the version
+  of a control plane, and such an activity counts as past its threshold and
+  gives no tone of progress by itself (P34, P2), while its other activities
+  keep its health in the tone of progress. The Cluster of `remediation` takes
+  for its tone the Replacing of its MachineDeployment, which is not one of its
+  own activities: a Cluster takes the activities of its parts for its tone
+  (D2), Replacing is an activity of an owner of Machines (H2), and the result
+  names the MachineDeployment that holds it.
+- Seen on 2026-11-25 in the trial by hand of S7 on the real tier (P32),
+  Cluster API `v1.14.4` with its development provider, which its test of the
+  real tier asserts only once its run in CI has passed (below): the webhook of
+  Cluster refuses a Cluster with
+  neither reference nor topology, on the field `spec` with the cause
+  `Forbidden`, and nothing is written; one with no field in its `spec` is
+  refused before, by the schema, whose `spec` has `minProperties: 1`. Case 2
+  confirmed every row: `ControlPlaneAvailable` `Unknown` `InternalError`,
+  `InfrastructureReady` `True` with the time of the `Ready` of its DevCluster
+  (+4s), `RemoteConnectionProbe` `True` at +36s through the Secret of its
+  kubeconfig, which the Cluster owns, not as its controller (+7s),
+  `ControlPlaneInitialized` `True` at +38s, a second after its Machine got its
+  Node, with `status.initialization.controlPlaneInitialized` unset,
+  `WorkersAvailable` `True` `NoWorkers`, and `Available` `False` until the
+  probe, then `Unknown` `AvailableUnknown`; its first seconds have no status.
+  Case 3 confirmed `InfrastructureReady` `Unknown` `InternalError`, the probe
+  `False` `ProbeFailed` and `Available` `False`, and corrected three rows:
+  `ControlPlaneAvailable` mirrors the reason and the message of the
+  `Available` of its KubeadmControlPlane but keeps the time of the first
+  `False` that the Cluster wrote (+2s), before the KubeadmControlPlane had an
+  `Available` (+4s): a mirror takes the time of its source when it is first
+  written from a source that has the condition and when its status changes,
+  and otherwise keeps its last transition, while one first written from a
+  source that has none yet, as here, takes the time of that write
+  (util/conditions/mirror.go:76-77; util/conditions/setter.go:62-64,
+  101-110), which makes R2.26 precise (SPEC-0001, "Notes and deviations");
+  after five failed connections, each counted as a failed probe, the message
+  of the probe says that it failed
+  (controllers/clustercache/cluster_accessor.go:259-269;
+  core/reconcilers/cluster/cluster_controller_status.go:311-339); and the
+  KubeadmControlPlane, with no endpoint, writes `ScalingUp` `True` from +4s
+  for good and creates no Machine
+  (controlplane/kubeadm/reconcilers/kubeadmcontrolplane/kubeadmcontrolplane_controller.go:438-456),
+  and its Cluster with it from +5s, so the model reads Scaling up next to
+  Provisioning. The table of S7 says each. The trial saw too, with no change
+  to the model: case 2 keeps `ControlPlaneMachinesUpToDate` `Unknown` for
+  good, since a Machine outside a MachineDeployment and a
+  KubeadmControlPlane never has `UpToDate`
+  (core/reconcilers/machine/machine_controller_status.go:658-679), which is
+  no issue; a Cluster with no control plane object stops following its
+  control plane Machines once it is initialized, so its
+  `ControlPlaneMachinesReady` and its counters can be minutes old
+  (core/reconcilers/cluster/cluster_controller.go:724-748); and
+  its deprecated `v1beta1` conditions, which the model does not read, call
+  case 2 ready.
+- Decided while implementing the third pull request: S7 is a test of the real
+  tier written with Vitest, `test/real-project/s7.tests.ts`, which
+  `pnpm test:real-project` runs with `vitest.real-project.config.ts`, and only
+  the job of the real project of `test-environment.yaml`, before it takes the
+  environment down. It opens the cluster with `openRealProject` of the
+  scripts, which sets the private umask of the scripts, checks the local
+  Docker, takes the lock of the state folder, runs the checks that a capture
+  runs before it makes workload clusters, the tools and the limits of inotify
+  among them, refuses a real project without the providers of the pins, and
+  checks the target before every request, as every command does; outside CI it
+  skips when the real project cannot be reached, and in CI it fails. Its
+  namespace is `freelens-capi-s7`, and its workload clusters are named as
+  those of the scripts, `freelens-capi-s7-*`, so that `down` deletes their
+  containers as it deletes those of the captures. It reads the namespace every
+  five seconds until case 2 has settled and 240 seconds have passed since the
+  creation of the Clusters, which spans the reconciles of the
+  KubeadmControlPlane that the trial saw at +100s and +183s and the fifth
+  failed connection to the workload cluster of case 3 at +153s, and 600
+  seconds after the creation at most, ten times what case 2 took to settle in
+  the trial. A reading that fails is taken again until then, as the waits of
+  the scripts take theirs, and a refusal of the checks of the target ends the
+  test at once; it reads the kubeconfig Secrets by their metadata alone. Its
+  expectations are in `test/real-project/s7-expectations.ts`, whose unit tests
+  rebuild the readings of the trial and of the first run in CI, follow the
+  code where neither could see, contradict each row, and drive the watch with
+  a clock of their own. The mirror of case 3 is compared with its source at
+  the end of the watch, since the Cluster follows a change of its
+  KubeadmControlPlane on its next reconcile. The job of the real project has
+  75 minutes, the hour it had and the quarter of an hour of the step of the
+  tests of the real tier, which has that limit of its own: the test reads for
+  ten minutes at most and deletes its namespace in the rest, and a step cut by
+  its limit leaves its workload clusters to the step that takes the
+  environment down. The workflow runs on a pull request that changes the code
+  that the test loads, `src/common/status/` and `src/common/parsers/` without
+  their unit tests, or the tests of the real tier, as the kit asks of the
+  suites of the real project (kit, `docs/testing.md`, "What runs when"); its
+  paths start both of its jobs, the fixtures too, and the pull request of
+  SPEC-0004 that adds its sessions to the job of the real project widens them
+  to what those load.
+- Seen on 2026-11-26 in the first run of the test of S7 in CI, in the job of
+  the real project dispatched on the branch of the third pull request: cases
+  1 and 3 passed, and case 2 failed at +6.361s, where its Cluster had a
+  generation that its status had not observed yet, which the model marks as
+  an older generation, as it should, and the expectation wanted no mark. The
+  Cluster writes into its spec the endpoint of its DevCluster, and the status
+  of that reconcile observes the generation that it read
+  (core/reconcilers/cluster/cluster_controller_phases.go:217-220;
+  util/patch/patch.go:150-155): the expectation now derives the mark from
+  each reading, in case 3 too. The same question, whether the code of the
+  release writes a field from the first status or only later, asked of every
+  expectation found two more. The Cluster of case 3 writes `ScalingUp`
+  `False` from its first full status while its KubeadmControlPlane reports
+  none, which leaves that part unread, so the model reads Unknown next to
+  Provisioning until the KubeadmControlPlane has a full status
+  (core/reconcilers/cluster/cluster_controller_status.go:88, 976-983,
+  997-1003); the trial could not see it, its first reading at +30s, and no
+  reading of the run in CI found it, since its case 3 passed. And the
+  controllers patch the conditions of an object before the rest of its status
+  (util/patch/patch.go:171-189), so the
+  `status.initialization.infrastructureProvisioned` of case 3 is asserted
+  once written. The job took about 8 minutes in all, on a warm cache. The
+  test asserts these facts only once its run in CI has passed: the run on the
+  branch with these corrections is recorded in the pull request.
+- Decided while implementing the third pull request: the mutations of the
+  model that the cases on the fixtures do not catch are left to the unit tests
+  of the model, which catch every one of them but the two equivalent ones
+  (the second pull request). After the review of this one, 12 of them still
+  change a reading of the sets: 9 on objects that have no row (the objects of
+  the workers of `provisioning`, the DevMachinePools, the KubeadmControlPlane
+  of `scaling-up`) and 3 on `changesAt` alone, which the rows assert on one
+  Machine. A row for each object of the sets would make the table a copy of
+  the sets; the rows keep to what the views show.
+- Verified on 2026-11-26: the three pull requests of the spec, the parsers,
+  the model and its cases on the fixtures with the trial S7, are merged, and
+  every job of CI ran green on `main` after them, that of the real project
+  included, where S7 ran its three cases on the real project and passed. The
+  spec has no manual check.

@@ -1,0 +1,9 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachine
+metadata:
+  creationTimestamp: "2026-01-01T00:00:00Z"
+  name: freelens-capi-no-status-machine-0
+  namespace: freelens-capi-no-status
+spec:
+  backend:
+    docker: {}

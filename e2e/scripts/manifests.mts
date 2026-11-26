@@ -3,8 +3,9 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// What the scripts of the test environment give kind, kubectl and clusterctl, made from the pinned files of
-// the projects and from nothing else.
+// What the scripts of the test environment give kind, kubectl and clusterctl: made from the pinned files of
+// the projects, and, for the states of the fixtures that no template of a release gives, objects that the
+// scripts write from the schemas of the release.
 
 import { ensure } from "./checks.mts";
 
@@ -30,6 +31,36 @@ export function customResourceDefinitions(text: string): string[] {
       );
       return `${document.replace(/^\n/, "").replace(/\n*$/, "")}\n`;
     });
+}
+
+// The definitions of a chart, from the files of the folder `crds` that its archive holds, unchanged, since helm does
+// not template that folder, the files in the order of their paths: what the CI of the Sveltos extension applies of the
+// chart of Sveltos (SPEC-0004, P29). A chart with no definition there is refused.
+export function chartDefinitions(files: ReadonlyMap<string, Uint8Array>, chart: string): string[] {
+  const folder = `${chart}/crds/`;
+  const definitions = [...files.keys()]
+    .filter((path) => path.startsWith(folder) && /\.ya?ml$/.test(path))
+    .sort()
+    .flatMap((path) => customResourceDefinitions(Buffer.from(files.get(path) ?? []).toString("utf8")));
+
+  ensure(definitions.length, `The chart ${chart} has no definition in its folder crds`);
+  return definitions;
+}
+
+// The name of a definition, from its text: the `name` of its `metadata`, `<plural>.<group>`, the name that kubectl
+// applies and deletes it by. The keys of `metadata` are those at the indentation of its first line, two spaces or
+// four, as the chart of Sveltos writes them. A session takes the names before it applies the definitions, so that its
+// end deletes them also when the apply failed half way.
+export function definitionName(definition: string): string {
+  const metadata = /^metadata:[ \t]*\n((?:(?:[ \t]+[^\n]*|[ \t]*)\n)*)/m.exec(definition)?.[1] ?? "";
+  const indent = /^( +)\S/m.exec(metadata)?.[1];
+  const name =
+    indent === undefined
+      ? undefined
+      : new RegExp(`^${indent}name:[ \\t]*["']?([a-z0-9][a-z0-9.-]*)["']?[ \\t]*$`, "m").exec(metadata)?.[1];
+
+  ensure(name, "A definition has no name in its metadata");
+  return name;
 }
 
 // The CIDRs of the pods of the workload clusters, those of the configuration of the tests of Cluster API for
@@ -149,4 +180,361 @@ export function clusterctlConfiguration(
     null,
     2,
   )}\n`;
+}
+
+const CORE = "cluster.x-k8s.io";
+const ADDONS = "addons.cluster.x-k8s.io";
+const BOOTSTRAP = "bootstrap.cluster.x-k8s.io";
+const CONTROL_PLANE = "controlplane.cluster.x-k8s.io";
+const INFRASTRUCTURE = "infrastructure.cluster.x-k8s.io";
+const IPAM = "ipam.cluster.x-k8s.io";
+
+// A Kubernetes object of a kind at v1beta2 of its group.
+function object(group: string, kind: string, name: string, namespace: string, fields: Record<string, unknown>) {
+  return { apiVersion: `${group}/v1beta2`, kind, metadata: { name, namespace }, ...fields };
+}
+
+function reference(apiGroup: string, kind: string, name: string) {
+  return { apiGroup, kind, name };
+}
+
+// The arguments of kubelet that the templates of the release give the nodes of the development provider: no
+// eviction for a disk that is fuller than the defaults of kubelet allow, as kind does for its own nodes.
+const KUBELET_ARGUMENTS = [
+  { name: "eviction-hard", value: "nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%" },
+];
+
+// The network of a workload cluster: the CIDRs of the templates of the release.
+const CLUSTER_NETWORK = {
+  pods: { cidrBlocks: [WORKLOAD_POD_CIDRS.ipv4] },
+  services: { cidrBlocks: ["10.128.0.0/12"] },
+  serviceDomain: "cluster.local",
+};
+
+// A workload cluster without a managed topology, which no template of the release makes: a Cluster that names
+// its infrastructure and its control plane, one control plane Machine of a KubeadmControlPlane and two worker
+// Machines of a MachineDeployment, of the development provider, with the label of kindnet.
+export function clusterWithoutTopology(name: string, namespace: string, version: string): unknown[] {
+  const controlPlane = `${name}-control-plane`;
+  const workers = `${name}-md-0`;
+
+  return [
+    object(CORE, "Cluster", name, namespace, {
+      metadata: { name, namespace, labels: { [KINDNET_LABEL.key]: KINDNET_LABEL.value } },
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        infrastructureRef: reference(INFRASTRUCTURE, "DevCluster", name),
+        controlPlaneRef: reference(CONTROL_PLANE, "KubeadmControlPlane", controlPlane),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevCluster", name, namespace, { spec: { backend: { docker: {} } } }),
+    object(INFRASTRUCTURE, "DevMachineTemplate", controlPlane, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(CONTROL_PLANE, "KubeadmControlPlane", controlPlane, namespace, {
+      spec: {
+        replicas: 1,
+        version,
+        machineTemplate: { spec: { infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", controlPlane) } },
+        kubeadmConfigSpec: {
+          initConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } },
+          joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } },
+        },
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachineTemplate", workers, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(BOOTSTRAP, "KubeadmConfigTemplate", workers, namespace, {
+      spec: {
+        template: { spec: { joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } } } },
+      },
+    }),
+    object(CORE, "MachineDeployment", workers, namespace, {
+      spec: {
+        clusterName: name,
+        replicas: 2,
+        selector: { matchLabels: { [`${CORE}/deployment-name`]: workers } },
+        template: {
+          metadata: { labels: { [`${CORE}/deployment-name`]: workers } },
+          spec: {
+            clusterName: name,
+            version,
+            bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfigTemplate", workers) },
+            infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", workers),
+          },
+        },
+      },
+    }),
+  ];
+}
+
+// The provider ID that kubelet gives the Node of a Machine that never finds it: the Machine looks for its own,
+// which the development provider sets on a Node only when the Node has none.
+export const FOREIGN_PROVIDER_ID = "test-environment:///a-node-of-no-machine";
+
+// A MachineSet of one Machine, apart from the topology of its Cluster, whose Node registers with a provider ID
+// that is not the one of its Machine, so that the Machine, provisioned, never gets a Node.
+export function machineSetWithoutNode(cluster: string, namespace: string, version: string): unknown[] {
+  const name = `${cluster}-without-node`;
+
+  return [
+    object(BOOTSTRAP, "KubeadmConfigTemplate", name, namespace, {
+      spec: {
+        template: {
+          spec: {
+            joinConfiguration: {
+              nodeRegistration: {
+                kubeletExtraArgs: [...KUBELET_ARGUMENTS, { name: "provider-id", value: FOREIGN_PROVIDER_ID }],
+              },
+            },
+          },
+        },
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachineTemplate", name, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(CORE, "MachineSet", name, namespace, {
+      spec: {
+        clusterName: cluster,
+        replicas: 1,
+        selector: { matchLabels: { [`${CORE}/set-name`]: name } },
+        template: {
+          metadata: { labels: { [`${CORE}/set-name`]: name } },
+          spec: {
+            clusterName: cluster,
+            version,
+            bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfigTemplate", name) },
+            infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", name),
+          },
+        },
+      },
+    }),
+  ];
+}
+
+// One object of each kind of the fixtures, those that have a status and those that have none, two of
+// DevMachineTemplate and of KubeadmConfig, and none of the Docker kinds of the development provider, which no
+// template of the release uses, as a user writes it: no controller has reconciled one of them, so none has a
+// status yet. They make one Cluster without a topology, whose parts name each other, and its ClusterClass, with
+// a fictitious pool of addresses.
+export function objectsWithoutStatus(
+  name: string,
+  namespace: string,
+  versions: { kubernetes: string; clusterApi: string },
+): unknown[] {
+  const version = versions.kubernetes;
+  const controlPlane = `${name}-control-plane`;
+  const workers = `${name}-md-0`;
+  const pool = `${name}-mp-0`;
+  const machine = `${name}-machine-0`;
+  const set = `${name}-set`;
+  const addresses = reference("ipam.test-environment.freelens.app", "AddressPool", name);
+  const machineSpec = (bootstrap: string, infrastructure: string) => ({
+    clusterName: name,
+    version,
+    bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfigTemplate", bootstrap) },
+    infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", infrastructure),
+  });
+
+  return [
+    ...clusterWithoutTopology(name, namespace, version),
+    object(CORE, "MachineSet", set, namespace, {
+      spec: {
+        clusterName: name,
+        replicas: 1,
+        selector: { matchLabels: { [`${CORE}/set-name`]: set } },
+        template: { metadata: { labels: { [`${CORE}/set-name`]: set } }, spec: machineSpec(workers, workers) },
+      },
+    }),
+    object(CORE, "Machine", machine, namespace, {
+      spec: {
+        clusterName: name,
+        version,
+        bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfig", machine) },
+        infrastructureRef: reference(INFRASTRUCTURE, "DevMachine", machine),
+      },
+    }),
+    object(BOOTSTRAP, "KubeadmConfig", machine, namespace, {
+      spec: { joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } } },
+    }),
+    object(INFRASTRUCTURE, "DevMachine", machine, namespace, { spec: { backend: { docker: {} } } }),
+    object(CORE, "MachinePool", pool, namespace, {
+      spec: {
+        clusterName: name,
+        replicas: 1,
+        template: {
+          spec: {
+            clusterName: name,
+            version,
+            bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfig", pool) },
+            infrastructureRef: reference(INFRASTRUCTURE, "DevMachinePool", pool),
+          },
+        },
+      },
+    }),
+    object(BOOTSTRAP, "KubeadmConfig", pool, namespace, {
+      spec: { joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } } },
+    }),
+    object(INFRASTRUCTURE, "DevMachinePool", pool, namespace, { spec: { backend: { docker: {} } } }),
+    object(INFRASTRUCTURE, "DevMachinePoolTemplate", pool, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(INFRASTRUCTURE, "DevClusterTemplate", name, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(CONTROL_PLANE, "KubeadmControlPlaneTemplate", controlPlane, namespace, {
+      spec: {
+        template: {
+          spec: {
+            kubeadmConfigSpec: {
+              initConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } },
+              joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } },
+            },
+          },
+        },
+      },
+    }),
+    object(CORE, "ClusterClass", name, namespace, {
+      spec: {
+        controlPlane: {
+          templateRef: {
+            apiVersion: `${CONTROL_PLANE}/v1beta2`,
+            kind: "KubeadmControlPlaneTemplate",
+            name: controlPlane,
+          },
+          machineInfrastructure: {
+            templateRef: { apiVersion: `${INFRASTRUCTURE}/v1beta2`, kind: "DevMachineTemplate", name: controlPlane },
+          },
+        },
+        infrastructure: {
+          templateRef: { apiVersion: `${INFRASTRUCTURE}/v1beta2`, kind: "DevClusterTemplate", name },
+        },
+        workers: {
+          machineDeployments: [
+            {
+              class: "default-worker",
+              bootstrap: {
+                templateRef: { apiVersion: `${BOOTSTRAP}/v1beta2`, kind: "KubeadmConfigTemplate", name: workers },
+              },
+              infrastructure: {
+                templateRef: { apiVersion: `${INFRASTRUCTURE}/v1beta2`, kind: "DevMachineTemplate", name: workers },
+              },
+            },
+          ],
+        },
+      },
+    }),
+    object(CORE, "MachineHealthCheck", workers, namespace, {
+      spec: {
+        clusterName: name,
+        selector: { matchLabels: { [`${CORE}/deployment-name`]: workers } },
+        checks: {
+          nodeStartupTimeoutSeconds: 600,
+          unhealthyNodeConditions: [{ type: "Ready", status: "Unknown", timeoutSeconds: 300 }],
+        },
+      },
+    }),
+    object(CORE, "MachineDrainRule", name, namespace, {
+      spec: { drain: { behavior: "Skip" }, machines: [{ selector: {} }], pods: [{ selector: {} }] },
+    }),
+    object(ADDONS, "ClusterResourceSet", name, namespace, {
+      spec: {
+        clusterSelector: { matchLabels: { [KINDNET_LABEL.key]: KINDNET_LABEL.value } },
+        resources: [{ kind: "ConfigMap", name: `${name}-add-on` }],
+      },
+    }),
+    object(ADDONS, "ClusterResourceSetBinding", name, namespace, { spec: { clusterName: name } }),
+    object(IPAM, "IPAddressClaim", name, namespace, { spec: { poolRef: addresses } }),
+    object(IPAM, "IPAddress", name, namespace, {
+      spec: { address: "10.0.0.10", prefix: 24, gateway: "10.0.0.1", claimRef: { name }, poolRef: addresses },
+    }),
+    {
+      apiVersion: "clusterctl.cluster.x-k8s.io/v1alpha3",
+      kind: "Provider",
+      metadata: { name: "infrastructure-docker", namespace },
+      providerName: "docker",
+      type: "InfrastructureProvider",
+      version: versions.clusterApi,
+    },
+  ];
+}
+
+// The trial of S7 of SPEC-0001 on the real project (SPEC-0003, "With the real project: S7", P32): a namespace of its
+// own, and two workload clusters in it, named as the scripts name theirs, which `down` deletes with the others.
+export const S7 = {
+  namespace: "freelens-capi-s7",
+  // Case 1: a Cluster with neither reference nor topology, only ever sent as a server-side dry run.
+  noReference: "freelens-capi-s7-no-reference",
+  // Case 2: an infrastructure reference only, and one control plane Machine of its own.
+  infrastructureOnly: "freelens-capi-s7-infra-only",
+  // Case 3: a control plane reference only, to a KubeadmControlPlane of one replica.
+  controlPlaneOnly: "freelens-capi-s7-cp-only",
+} as const;
+
+// Case 1 of S7: a Cluster with neither `spec.controlPlaneRef`, `spec.infrastructureRef` nor `spec.topology`, which
+// the webhook of Cluster refuses (core/webhooks/admission/cluster.go:183-191). Its `spec` has a field, its network:
+// one with no field is refused before, by the schema, whose `spec` has `minProperties: 1`.
+export function s7ClusterWithNoReference(): unknown {
+  return object(CORE, "Cluster", S7.noReference, S7.namespace, { spec: { clusterNetwork: CLUSTER_NETWORK } });
+}
+
+// Cases 2 and 3 of S7, written from the schemas of the release, with the end-to-end test of the project that adopts
+// a control plane Machine as a reference for their shape only
+// (test/e2e/data/infrastructure-docker/main/cluster-template-kcp-adoption/step1/cluster-with-cp0.yaml):
+// - a Cluster with `spec.infrastructureRef` to a DevCluster, no `spec.controlPlaneRef` and no topology, with the label
+//   of kindnet, and one control plane Machine with its KubeadmConfig and its DevMachine;
+// - a Cluster with `spec.controlPlaneRef` to a KubeadmControlPlane of one replica, no `spec.infrastructureRef` and no
+//   topology.
+export function s7Clusters(version: string): unknown[] {
+  const { namespace, infrastructureOnly: infrastructure, controlPlaneOnly: controlPlane } = S7;
+  const machine = `${infrastructure}-control-plane-0`;
+  const controlPlaneLabel = { [`${CORE}/control-plane`]: "" };
+  const nodeRegistration = { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } };
+
+  return [
+    object(INFRASTRUCTURE, "DevCluster", infrastructure, namespace, { spec: { backend: { docker: {} } } }),
+    object(CORE, "Cluster", infrastructure, namespace, {
+      metadata: { name: infrastructure, namespace, labels: { [KINDNET_LABEL.key]: KINDNET_LABEL.value } },
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        infrastructureRef: reference(INFRASTRUCTURE, "DevCluster", infrastructure),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachine", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: { backend: { docker: {} } },
+    }),
+    object(BOOTSTRAP, "KubeadmConfig", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: { initConfiguration: nodeRegistration },
+    }),
+    object(CORE, "Machine", machine, namespace, {
+      metadata: { name: machine, namespace, labels: controlPlaneLabel },
+      spec: {
+        clusterName: infrastructure,
+        version,
+        bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfig", machine) },
+        infrastructureRef: reference(INFRASTRUCTURE, "DevMachine", machine),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevMachineTemplate", controlPlane, namespace, {
+      spec: { template: { spec: { backend: { docker: {} } } } },
+    }),
+    object(CONTROL_PLANE, "KubeadmControlPlane", controlPlane, namespace, {
+      spec: {
+        replicas: 1,
+        version,
+        machineTemplate: { spec: { infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", controlPlane) } },
+        kubeadmConfigSpec: { initConfiguration: nodeRegistration, joinConfiguration: nodeRegistration },
+      },
+    }),
+    object(CORE, "Cluster", controlPlane, namespace, {
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        controlPlaneRef: reference(CONTROL_PLANE, "KubeadmControlPlane", controlPlane),
+      },
+    }),
+  ];
 }
