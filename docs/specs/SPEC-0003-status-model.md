@@ -1,6 +1,6 @@
 # SPEC-0003: Status model
 
-- **Status:** Approved
+- **Status:** Verified
 - **Milestone:** `M1` (see [ROADMAP.md](../development/ROADMAP.md))
 - **Reviewed project:** Cluster API `v1.14.4`, commit
   `4356c154f4a76b8939748ef7ebc2d0793ffe47e8`, and the Cluster API Operator
@@ -2567,3 +2567,8 @@ second, and reads `src/common/parsers/` too.
   of `scaling-up`) and 3 on `changesAt` alone, which the rows assert on one
   Machine. A row for each object of the sets would make the table a copy of
   the sets; the rows keep to what the views show.
+- Verified on 2026-11-26: the three pull requests of the spec, the parsers,
+  the model and its cases on the fixtures with the trial S7, are merged, and
+  every job of CI ran green on `main` after them, that of the real project
+  included, where S7 ran its three cases on the real project and passed. The
+  spec has no manual check.
