@@ -3844,7 +3844,8 @@ healthy and rolling out, or unhealthy and provisioning.
 - **S7.** The inference of R2.27: a Cluster with no reference and no
   topology reports `Unknown` on the conditions of the missing parts, and so
   never `Available`. Tried on a running management cluster by the spec of
-  the status model.
+  the status model: by hand on 2026-11-25, and since by its test of the real
+  tier ("Notes and deviations").
 - **S8.** How a change of the topology of a Cluster is previewed before it
   is applied. A dry run of the patch on the server runs the webhooks of the
   Cluster, not the controller of the topology (R4): it checks the change,
@@ -3882,3 +3883,24 @@ healthy and rolling out, or unhealthy and provisioning.
   conditions. The development provider keeps Machines for its pools, so
   there the counters of the pool followed the readiness of its Machines,
   which is not the general case (H1).
+- Seen on 2026-11-25, in the trial of S7 by hand on the real tier of the test
+  environment (SPEC-0003, P32), Cluster API `v1.14.4` with its development
+  provider, and asserted since by the test of S7 of the real tier
+  (`test/real-project/s7.tests.ts`): the inference of R2.27 holds, on the
+  two Clusters that the webhook of Cluster lets through, since it refuses one
+  with neither reference nor topology on the field `spec`
+  (core/webhooks/admission/cluster.go:183-191). A Cluster with an
+  infrastructure reference only reported `ControlPlaneAvailable` `Unknown`
+  `InternalError`, and one with a control plane reference only
+  `InfrastructureReady` `Unknown` `InternalError`, for the 15 minutes of the
+  trial; neither reported `Available` `True`. It made R2.26 precise: a
+  condition that the Cluster mirrors takes the `lastTransitionTime` of the
+  condition of its provider only when its own status changes; when it does
+  not, it keeps the time of its own first transition
+  (util/conditions/setter.go:64; util/conditions/mirror.go:76-77). The
+  `ControlPlaneAvailable` `False` of the second Cluster kept the time of the
+  fallback that the Cluster wrote two seconds after its creation, before its
+  KubeadmControlPlane had an `Available`, which that wrote two seconds later,
+  with the reason and the message that the mirror then copied; the
+  `InfrastructureReady` of the first Cluster, which turned `True`, took the
+  time of the `Ready` of its infrastructure cluster.

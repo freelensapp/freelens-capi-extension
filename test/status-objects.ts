@@ -8,7 +8,7 @@
 //
 // A case that needs a state the project does not produce on demand changes one field of a copy, with the helpers
 // below, and says which. The cases that read the fixture files themselves, with the table of "The fixtures of
-// SPEC-0002 give these results", come with the third pull request of SPEC-0003.
+// SPEC-0002 give these results", are in src/common/status/fixtures.test.ts.
 
 import type {
   ClusterClassObject,

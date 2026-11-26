@@ -65,6 +65,7 @@ import {
   kindnetManifest,
   kindnetResources,
   PROVIDERS,
+  S7,
 } from "./manifests.mts";
 import { CLUSTER_API_SOURCES, kubernetesMinor, readPins } from "./pins.mts";
 import { changedFiles, fingerprints, kubeconfigFiles, preparePrivateFolder, stateFolder, takeLock } from "./state.mts";
@@ -140,6 +141,11 @@ const WORKLOADS: readonly Workload[] = [
 const CAPTURE_WORKLOADS: readonly WorkloadName[] = FIXTURE_STATES.filter((state) => state.capture).map((state) => ({
   name: state.namespace,
 }));
+// The workload clusters of the trial of S7, a test of the real tier: only the first has an infrastructure, and so
+// containers, but a run that was killed leaves nothing either way.
+const S7_WORKLOADS: readonly WorkloadName[] = [{ name: S7.infrastructureOnly }, { name: S7.controlPlaneOnly }];
+// The workload clusters whose containers `down` deletes: those of `up`, of the captures and of the trial of S7.
+export const DOWN_WORKLOADS: readonly WorkloadName[] = [...WORKLOADS, ...CAPTURE_WORKLOADS, ...S7_WORKLOADS];
 const NAMESPACE = "default";
 const FIELD_MANAGER = "freelens-capi-environment";
 const AVAILABLE_WITHIN_MINUTES = 20;
@@ -850,7 +856,7 @@ function down(): void {
     },
     MANAGEMENT,
     DEFINITIONS,
-    [...WORKLOADS, ...CAPTURE_WORKLOADS],
+    DOWN_WORKLOADS,
   );
 }
 
@@ -1117,6 +1123,77 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
     }
   });
   ensure(!failures.length, `${failures.length} of ${states.length} captures failed:\n- ${failures.join("\n- ")}`);
+}
+
+// The cluster of the real project, as a test of the real tier reaches it (docs/development/TESTING.md, "Tests of the
+// real tier"): through the kubeconfig of the scripts, with the target checked before every request, as every command
+// of the scripts checks it, so that a test refuses any other cluster and writes to this one alone.
+export interface RealProjectSession {
+  // kubectl on the cluster of the real project, and its output. A failure throws, with the last lines of its error.
+  kubectl(args: string[], options?: { input?: string; timeout?: number }): string;
+  // A server-side apply of the objects of a manifest, by the field manager of the scripts.
+  apply(manifest: string): void;
+  // The ConfigMap with kindnet and the ClusterResourceSet that applies it, for a namespace.
+  kindnet(namespace: string): string;
+  // The version of Kubernetes of the workload clusters, from the pins.
+  kubernetesVersion: string;
+  // Releases the lock of the state folder, and fails when the kubeconfig of the user changed meanwhile.
+  close(): void;
+}
+
+// Opens the cluster of the real project for a test, as a command of the scripts opens it: the local Docker first,
+// then the state folder under the lock of the run, a real project with the providers of the pins and no other, and
+// the files of the pins it uses, checked. It fails, holding nothing, when any of them is not so.
+export async function openRealProject(): Promise<RealProjectSession> {
+  const { pins } = readPins(ROOT);
+
+  localDocker();
+  preparePrivateFolder(STATE, ROOT);
+
+  const files = kubeconfigFiles(process.env, homedir(), STATE);
+  const before = fingerprints(files);
+  const release = takeLock(STATE, process.pid, alive);
+
+  try {
+    verifyTarget(MANAGEMENT);
+
+    const { missing, other } = providersAgainstPins(installedProviders(), pins.clusterApi.version);
+
+    ensure(
+      !missing.length,
+      `The cluster of the real project lacks ${missing.map((provider) => `${provider.type} ${provider.name}`).join(", ")}: run pnpm e2e:cluster:up first`,
+    );
+    ensure(!other.length, `${other.join("; ")}: take the environment down, and bring it up again`);
+
+    const kindnet = kindnetManifest(
+      (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
+    );
+
+    return {
+      kubectl: (args, options = {}) => kubectl(MANAGEMENT, args, { quiet: true, ...options }),
+      apply: (manifest) => {
+        kubectl(MANAGEMENT, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
+          input: manifest,
+          quiet: true,
+        });
+      },
+      kindnet: (namespace) => kindnetResources(kindnet, namespace),
+      kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
+      close: () => {
+        release();
+
+        const changed = changedFiles(before, fingerprints(files));
+
+        ensure(
+          !changed.length,
+          `The kubeconfig ${changed.join(", ")} changed during the run. The scripts never write it: check which program did`,
+        );
+      },
+    };
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
 
 // kubectl on the cluster of the definitions.

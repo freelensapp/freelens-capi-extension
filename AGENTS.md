@@ -217,6 +217,7 @@ pnpm knip:check           # Unused files, unused and unlisted dependencies (knip
 # Tests
 pnpm test:unit            # vitest
 pnpm test:integration     # vitest, against Freelens dev with a kind cluster
+pnpm test:real-project    # vitest, the tests of the real tier, on the real project (its job of CI alone)
 
 # Test environment (docs/development/TESTING.md)
 pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
@@ -255,7 +256,9 @@ src/
                                  #   of each family of kinds, freshness, activity and tone, each with its unit test
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
+test/status-views.ts             # The model read with the context that a view builds from a set of objects
 test/environment.test.ts         # Unit tests of the scripts of the test environment
+test/real-project/               # Tests of the real tier, `*.tests.ts`: S7 on the real project, and its expectations
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
 integration/__tests__/           # Integration tests, run against Freelens dev over CDP, and their shared module
@@ -1034,17 +1037,17 @@ problem does not show.
 
 ### Workflows
 
-| Workflow                 | Runs                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| `type-check.yaml`        | `pnpm type:check`                                                                       |
-| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                      |
-| `unit-tests.yaml`        | `pnpm test:unit`                                                                        |
-| `trunk-check.yaml`       | `trunk check --all`                                                                     |
-| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                           |
-| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version           |
-| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`   |
-| `test-environment.yaml`  | the fixtures and the real project of the test environment (docs/development/TESTING.md) |
-| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                           |
+| Workflow                 | Runs                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `type-check.yaml`        | `pnpm type:check`                                                                                                        |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                                                       |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                                                                         |
+| `trunk-check.yaml`       | `trunk check --all`                                                                                                      |
+| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                                                            |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version                                            |
+| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`                                    |
+| `test-environment.yaml`  | the fixtures and the real project of the test environment, with the tests of the real tier (docs/development/TESTING.md) |
+| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                                                            |
 
 The type check has a workflow of its own, on pull requests and on pushes to
 `main`, as in Freelens. It runs every program, tests, tooling and environment

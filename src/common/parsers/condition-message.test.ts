@@ -1,11 +1,18 @@
 // The messages of the conditions (SPEC-0003, "Tests", "Unit", P27): the lines, nested by indentation, with the
 // bullet and the subject of each line that the project composes, and every other line kept as text. Every case
 // also checks that the lines, read in their order, give back the message: none is dropped, merged or reordered.
+// One case reads every message of the fixtures of SPEC-0002, with the YAML reader of the scripts of the test
+// environment.
 
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FIXTURES_FOLDER, readFixtureSet } from "../../../e2e/scripts/fixtures.mts";
 import { parseConditionMessage } from "./condition-message";
 
 import type { MessageLine, MessageSubject } from "./condition-message";
+
+const FIXTURES = resolve(import.meta.dirname, "..", "..", "..", FIXTURES_FOLDER);
 
 function line(
   written: string,
@@ -20,6 +27,37 @@ function line(
 
 function flatten(lines: MessageLine[]): MessageLine[] {
   return lines.flatMap((each) => [each, ...flatten(each.children)]);
+}
+
+// Every message of a condition in the fixtures of SPEC-0002, with where it is: the conditions of each status, those
+// of `v1beta2` that an object of a provider of the `v1beta1` contract keeps, and the deprecated ones of `v1beta1`.
+function fixtureMessages(): [string, string][] {
+  const messages: [string, string][] = [];
+  const lists: readonly (readonly string[])[] = [
+    ["conditions"],
+    ["v1beta2", "conditions"],
+    ["deprecated", "v1beta1", "conditions"],
+  ];
+
+  for (const state of readdirSync(FIXTURES, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+    for (const object of readFixtureSet(resolve(FIXTURES, state.name))) {
+      for (const keys of lists) {
+        const conditions = keys.reduce<unknown>(
+          (value, key) => (value as Record<string, unknown> | undefined)?.[key],
+          object.status,
+        );
+
+        for (const condition of Array.isArray(conditions) ? conditions : []) {
+          const { type, message } = condition as { type?: string; message?: unknown };
+
+          if (typeof message === "string") {
+            messages.push([`${state.name} ${object.kind} ${object.metadata.name} ${keys.join(".")} ${type}`, message]);
+          }
+        }
+      }
+    }
+  }
+  return messages;
 }
 
 // The lines of a message, after checking that they give it back.
@@ -385,9 +423,19 @@ describe("the message of a condition", () => {
     ]);
   });
 
-  it.todo(
-    "for every message of the fixtures of SPEC-0002, as many lines out as in: added with the fixtures, in the third pull request of SPEC-0003",
-  );
+  it("reads every message of the fixtures of SPEC-0002 into as many lines as it has, an empty message into none", () => {
+    const messages = fixtureMessages();
+
+    expect(messages.filter(([, message]) => message === "").length).toBeGreaterThan(0);
+    expect(messages.filter(([, message]) => message.includes("\n")).length).toBeGreaterThan(0);
+    for (const [where, message] of messages) {
+      const parsed = parseConditionMessage(message);
+      const lines = parsed.state === "read" ? flatten(parsed.lines).map((each) => each.written) : undefined;
+
+      expect(lines?.length, where).toBe(message === "" ? 0 : message.split("\n").length);
+      expect(lines?.join("\n"), where).toBe(message);
+    }
+  });
 
   it.each([
     ["a number", 3],
