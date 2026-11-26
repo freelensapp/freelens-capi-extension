@@ -252,7 +252,8 @@ src/
   main/index.ts                  # Main entry (Main.LensExtension)
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
   renderer/api/                  # The models: Cluster at v1beta2 (cluster/), the kinds that the view of Clusters
-                                 #   reads as the context of the status model (context/), and their shared types
+                                 #   reads as the context of the status model and those that the tree of a Cluster
+                                 #   adds (context/), and their shared types
   renderer/pages/                # The page of the Clusters and its list (SPEC-0004)
   renderer/details/              # The details of a Cluster (SPEC-0004): the drawer that the page opens over its list,
                                  #   the view of one Cluster and the panel in the details of the host
@@ -298,7 +299,8 @@ source maps. `main` and `renderer` in `package.json` point at the two entries.
 The models of this extension follow the pattern of
 freelensapp/freelens-example-extension: the model of Cluster at `v1beta2`,
 and the models that SPEC-0004 gives the kinds that the view of Clusters reads
-only as the context of the status model (SPEC-0004, P1).
+only as the context of the status model (SPEC-0004, P1), with those that
+SPEC-0005 adds for the tree of a Cluster (SPEC-0005, P6).
 
 A model is a subclass of `Renderer.K8sApi.LensExtensionKubeObject`, one file
 per API version: `src/renderer/api/cluster/cluster-v1beta2.ts`, exporting a
@@ -434,11 +436,15 @@ A new kind, or a new version of a kind, takes the same set of files as
    kubebuilder, otherwise the `openAPIV3Schema` of the CRD.
    - Every Go struct has a TypeScript interface of the same name, with the
      same fields under their `json` names. The one exception is a kind that a
-     view reads only as the context of the status model: its model types, as
-     its spec and its status, the plain-data types of the status model for the
-     fields that its rules read, and nothing else, until the spec of its own
-     view gives it its whole types (SPEC-0004, P1). The spec of a
-     KubeadmControlPlane holds fields that SPEC-0001, A3 never reads.
+     view reads only as the context of the status model, or as a node of the
+     tree of a Cluster: its model types, as its spec and its status, the
+     plain-data types of the status model for the fields that its rules read,
+     and the fields that the tree follows, its references, its version and
+     the names that its details show (SPEC-0005, P6), and nothing else, until
+     the spec of its own view gives it its whole types (SPEC-0004, P1). The
+     specs of a KubeadmControlPlane and of a KubeadmConfig hold fields that
+     SPEC-0001, A3 never reads: of a KubeadmConfig and of its template no
+     field of the spec is typed.
    - A field is optional in the interface when the CRD does not require it.
      `controller-gen` decides that from the markers, not from the `json` tag:
      `+required` (or `+kubebuilder:validation:Required`) makes the field

@@ -3,13 +3,16 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// The models of the kinds that the view of Clusters reads only as the context of the status model (SPEC-0004, P1):
-// the parts and the Machines of a Cluster, its MachineHealthChecks and its ClusterClass, and the seven kinds of the
-// Cluster API Operator. Each has the `static` metadata of the pattern (AGENTS.md, "CRD KubeObject Pattern"), through
-// which the store that the host keeps for it is reached, and, as its spec and its status, the plain-data types of the
-// status model for the fields that its rules read (SPEC-0003, "Where it lives"), and nothing else: no view reads
-// another field of these kinds, and the spec of a KubeadmControlPlane holds fields that SPEC-0001, A3 never reads. The
-// whole types of each come with the spec of its own view, in M2, which replaces them.
+// The models of the kinds that the views read only as the context of the status model (SPEC-0004, P1), and of the
+// kinds that the tree of a Cluster adds (SPEC-0005, P6): the parts and the Machines of a Cluster, its
+// MachineHealthChecks and its ClusterClass, the seven kinds of the Cluster API Operator, and, for the tree, the
+// KubeadmConfigs and their templates, the ClusterResourceSets and their bindings, the IPAddressClaims and the
+// IPAddresses. Each has the `static` metadata of the pattern (AGENTS.md, "CRD KubeObject Pattern"), through which the
+// store that the host keeps for it is reached, and, as its spec and its status, the plain-data types of the status
+// model for the fields that its rules read (SPEC-0003, "Where it lives"), and the fields that the tree follows, written
+// from the schemas of the release (SPEC-0005, P6), and nothing else: no view reads another field of these kinds, and
+// the specs of a KubeadmControlPlane and of a KubeadmConfig hold fields that SPEC-0001, A3 never reads, which a model
+// never types. The whole types of each come with the spec of its own view, in M2, which replaces them.
 //
 // None of them is in `customResources`: they have no page, and there they would leave the Custom Resources tree of
 // the host with nothing in their place (AGENTS.md, "CRD KubeObject Pattern").
@@ -18,6 +21,10 @@ import { Renderer } from "@freelensapp/extensions";
 
 import type {
   ClusterClassObject,
+  ClusterResourceSetBindingObject,
+  ClusterResourceSetObject,
+  IPAddressClaimObject,
+  KubeadmConfigObject,
   KubeadmControlPlaneObject,
   MachineDeploymentObject,
   MachineHealthCheckObject,
@@ -26,6 +33,13 @@ import type {
   MachineSetObject,
   OperatorProviderObject,
 } from "../../../common/status/index";
+import type {
+  ContractVersionedObjectReference,
+  LabelSelector,
+  MachineHealthCheckRemediationTemplateReference,
+  MachineSpec,
+  MachineTemplateSpec,
+} from "../types";
 
 type Metadata = Renderer.K8sApi.NamespaceScopedMetadata;
 type CRD = Renderer.K8sApi.LensExtensionKubeObjectCRD;
@@ -33,10 +47,17 @@ type CRD = Renderer.K8sApi.LensExtensionKubeObjectCRD;
 // The status of a kind, as the status model types it; the object has none until a controller writes one.
 type StatusOf<T extends { readonly status?: unknown }> = NonNullable<T["status"]>;
 
+// The spec of a kind of which the models type no field: those of a KubeadmConfig and of its template hold the fields
+// that SPEC-0001, A3 never reads (R3.35, R3.36).
+type NoFields = Readonly<Record<never, never>>;
+
+// The spec of a Machine: the fields of the status model, and those that the tree follows (SPEC-0005, P6).
+type MachineModelSpec = MachineObject["spec"] & MachineSpec;
+
 export class Machine extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<MachineObject>,
-  MachineObject["spec"]
+  MachineModelSpec
 > {
   declare kind: "Machine";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -56,10 +77,18 @@ export class Machine extends Renderer.K8sApi.LensExtensionKubeObject<
 export class MachineApi extends Renderer.K8sApi.KubeApi<Machine> {}
 export class MachineStore extends Renderer.K8sApi.KubeObjectStore<Machine, MachineApi> {}
 
+// The spec of a MachineSet, a MachineDeployment and a MachinePool: the fields of the status model, and the template of
+// their Machines, of which the tree follows the references and the version (SPEC-0005, P6;
+// api/core/v1beta2/machineset_types.go:100; api/core/v1beta2/machinedeployment_types.go:277;
+// api/core/v1beta2/machinepool_types.go:82).
+interface WithTemplate {
+  template: MachineTemplateSpec;
+}
+
 export class MachineSet extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<MachineSetObject>,
-  MachineSetObject["spec"]
+  MachineSetObject["spec"] & WithTemplate
 > {
   declare kind: "MachineSet";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -82,7 +111,7 @@ export class MachineSetStore extends Renderer.K8sApi.KubeObjectStore<MachineSet,
 export class MachineDeployment extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<MachineDeploymentObject>,
-  MachineDeploymentObject["spec"]
+  MachineDeploymentObject["spec"] & WithTemplate
 > {
   declare kind: "MachineDeployment";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -105,7 +134,7 @@ export class MachineDeploymentStore extends Renderer.K8sApi.KubeObjectStore<Mach
 export class MachinePool extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<MachinePoolObject>,
-  MachinePoolObject["spec"]
+  MachinePoolObject["spec"] & WithTemplate
 > {
   declare kind: "MachinePool";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -125,11 +154,23 @@ export class MachinePool extends Renderer.K8sApi.LensExtensionKubeObject<
 export class MachinePoolApi extends Renderer.K8sApi.KubeApi<MachinePool> {}
 export class MachinePoolStore extends Renderer.K8sApi.KubeObjectStore<MachinePool, MachinePoolApi> {}
 
-// Of the spec, the replicas and the version alone (SPEC-0001, A3 and R3.36).
+// The template of the Machines of a KubeadmControlPlane, of which the tree follows the reference to the template of its
+// infrastructure machines, the field of the contract of a control plane at v1beta2 (SPEC-0005, P6;
+// api/controlplane/kubeadm/v1beta2/kubeadm_control_plane_types.go:459, 482-503).
+export interface KubeadmControlPlaneMachineTemplate {
+  spec: KubeadmControlPlaneMachineTemplateSpec;
+}
+
+export interface KubeadmControlPlaneMachineTemplateSpec {
+  infrastructureRef: ContractVersionedObjectReference;
+}
+
+// Of the spec, the replicas, the version and the reference to the template of its Machines alone, none of them a field
+// of R3.36 (SPEC-0001, A3; SPEC-0005, P6).
 export class KubeadmControlPlane extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<KubeadmControlPlaneObject>,
-  KubeadmControlPlaneObject["spec"]
+  KubeadmControlPlaneObject["spec"] & { machineTemplate: KubeadmControlPlaneMachineTemplate }
 > {
   declare kind: "KubeadmControlPlane";
   declare apiVersion: "controlplane.cluster.x-k8s.io/v1beta2";
@@ -152,10 +193,16 @@ export class KubeadmControlPlaneStore extends Renderer.K8sApi.KubeObjectStore<
   KubeadmControlPlaneApi
 > {}
 
+// The remediation of a MachineHealthCheck, of which the details name the template of its remediation requests
+// (SPEC-0005, P6, P8; api/core/v1beta2/machinehealthcheck_types.go:83, 128-142, 169-194).
+export interface MachineHealthCheckRemediation {
+  templateRef?: MachineHealthCheckRemediationTemplateReference;
+}
+
 export class MachineHealthCheck extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<MachineHealthCheckObject>,
-  MachineHealthCheckObject["spec"]
+  MachineHealthCheckObject["spec"] & { remediation?: MachineHealthCheckRemediation }
 > {
   declare kind: "MachineHealthCheck";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -178,10 +225,21 @@ export class MachineHealthCheckStore extends Renderer.K8sApi.KubeObjectStore<
   MachineHealthCheckApi
 > {}
 
+// A variable and a patch of a ClusterClass, of which the details show the names alone, never a value (SPEC-0005, P20;
+// api/core/v1beta2/clusterclass_types.go:128, 137, 885-890, 1293-1298): the schema of a variable and the definitions of
+// a patch are not typed.
+export interface ClusterClassVariable {
+  name: string;
+}
+
+export interface ClusterClassPatch {
+  name: string;
+}
+
 export class ClusterClass extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<ClusterClassObject>,
-  ClusterClassObject["spec"]
+  ClusterClassObject["spec"] & { variables?: ClusterClassVariable[]; patches?: ClusterClassPatch[] }
 > {
   declare kind: "ClusterClass";
   declare apiVersion: "cluster.x-k8s.io/v1beta2";
@@ -360,6 +418,168 @@ export class RuntimeExtensionProviderStore extends Renderer.K8sApi.KubeObjectSto
   RuntimeExtensionProviderApi
 > {}
 
+// The kinds that the tree of a Cluster adds (SPEC-0005, P6), at v1beta2 (bootstrap/kubeadm/config/crd/bases and
+// core/config/crd/bases): their definitions name no short name.
+
+// No field of its spec, which holds the fields of R3.36 (SPEC-0001, A3).
+export class KubeadmConfig extends Renderer.K8sApi.LensExtensionKubeObject<
+  Metadata,
+  StatusOf<KubeadmConfigObject>,
+  NoFields
+> {
+  declare kind: "KubeadmConfig";
+  declare apiVersion: "bootstrap.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "KubeadmConfig";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/bootstrap.cluster.x-k8s.io/v1beta2/kubeadmconfigs";
+
+  static readonly crd: CRD = {
+    apiVersions: ["bootstrap.cluster.x-k8s.io/v1beta2"],
+    plural: "kubeadmconfigs",
+    singular: "kubeadmconfig",
+  };
+}
+
+export class KubeadmConfigApi extends Renderer.K8sApi.KubeApi<KubeadmConfig> {}
+export class KubeadmConfigStore extends Renderer.K8sApi.KubeObjectStore<KubeadmConfig, KubeadmConfigApi> {}
+
+// A template has no status (SPEC-0003, P16), and no field of its spec is typed, for the reason of a KubeadmConfig.
+export class KubeadmConfigTemplate extends Renderer.K8sApi.LensExtensionKubeObject<Metadata, never, NoFields> {
+  declare kind: "KubeadmConfigTemplate";
+  declare apiVersion: "bootstrap.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "KubeadmConfigTemplate";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/bootstrap.cluster.x-k8s.io/v1beta2/kubeadmconfigtemplates";
+
+  static readonly crd: CRD = {
+    apiVersions: ["bootstrap.cluster.x-k8s.io/v1beta2"],
+    plural: "kubeadmconfigtemplates",
+    singular: "kubeadmconfigtemplate",
+  };
+}
+
+export class KubeadmConfigTemplateApi extends Renderer.K8sApi.KubeApi<KubeadmConfigTemplate> {}
+export class KubeadmConfigTemplateStore extends Renderer.K8sApi.KubeObjectStore<
+  KubeadmConfigTemplate,
+  KubeadmConfigTemplateApi
+> {}
+
+// The spec: the resources of the status model, and the selector of its Clusters, which the tree reads as its controller
+// does (SPEC-0005, P7; api/addons/v1beta2/clusterresourceset_types.go:61).
+export class ClusterResourceSet extends Renderer.K8sApi.LensExtensionKubeObject<
+  Metadata,
+  StatusOf<ClusterResourceSetObject>,
+  ClusterResourceSetObject["spec"] & { clusterSelector: LabelSelector }
+> {
+  declare kind: "ClusterResourceSet";
+  declare apiVersion: "addons.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "ClusterResourceSet";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/addons.cluster.x-k8s.io/v1beta2/clusterresourcesets";
+
+  static readonly crd: CRD = {
+    apiVersions: ["addons.cluster.x-k8s.io/v1beta2"],
+    plural: "clusterresourcesets",
+    singular: "clusterresourceset",
+  };
+}
+
+export class ClusterResourceSetApi extends Renderer.K8sApi.KubeApi<ClusterResourceSet> {}
+export class ClusterResourceSetStore extends Renderer.K8sApi.KubeObjectStore<
+  ClusterResourceSet,
+  ClusterResourceSetApi
+> {}
+
+// A binding has no status: what each ClusterResourceSet applied to its Cluster is in its spec (SPEC-0001, R2.85).
+export class ClusterResourceSetBinding extends Renderer.K8sApi.LensExtensionKubeObject<
+  Metadata,
+  never,
+  ClusterResourceSetBindingObject["spec"]
+> {
+  declare kind: "ClusterResourceSetBinding";
+  declare apiVersion: "addons.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "ClusterResourceSetBinding";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/addons.cluster.x-k8s.io/v1beta2/clusterresourcesetbindings";
+
+  static readonly crd: CRD = {
+    apiVersions: ["addons.cluster.x-k8s.io/v1beta2"],
+    plural: "clusterresourcesetbindings",
+    singular: "clusterresourcesetbinding",
+  };
+}
+
+export class ClusterResourceSetBindingApi extends Renderer.K8sApi.KubeApi<ClusterResourceSetBinding> {}
+export class ClusterResourceSetBindingStore extends Renderer.K8sApi.KubeObjectStore<
+  ClusterResourceSetBinding,
+  ClusterResourceSetBindingApi
+> {}
+
+// The spec of the status model: the Cluster that a claim names, and its pool (api/ipam/v1beta2/ipaddressclaim_types.go:44-53).
+export class IPAddressClaim extends Renderer.K8sApi.LensExtensionKubeObject<
+  Metadata,
+  StatusOf<IPAddressClaimObject>,
+  IPAddressClaimObject["spec"]
+> {
+  declare kind: "IPAddressClaim";
+  declare apiVersion: "ipam.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "IPAddressClaim";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/ipam.cluster.x-k8s.io/v1beta2/ipaddressclaims";
+
+  static readonly crd: CRD = {
+    apiVersions: ["ipam.cluster.x-k8s.io/v1beta2"],
+    plural: "ipaddressclaims",
+    singular: "ipaddressclaim",
+  };
+}
+
+export class IPAddressClaimApi extends Renderer.K8sApi.KubeApi<IPAddressClaim> {}
+export class IPAddressClaimStore extends Renderer.K8sApi.KubeObjectStore<IPAddressClaim, IPAddressClaimApi> {}
+
+// The spec of an IPAddress, which has no status (SPEC-0001, R3.18; api/ipam/v1beta2/ipaddress_types.go:24-87): its
+// claim, its pool, the address, its prefix and its gateway.
+export interface IPAddressSpec {
+  claimRef: IPAddressClaimReference;
+  poolRef: IPPoolReference;
+  address: string;
+  prefix: number;
+  gateway?: string;
+}
+
+export interface IPAddressClaimReference {
+  name: string;
+}
+
+export interface IPPoolReference {
+  name: string;
+  kind: string;
+  apiGroup: string;
+}
+
+export class IPAddress extends Renderer.K8sApi.LensExtensionKubeObject<Metadata, never, IPAddressSpec> {
+  declare kind: "IPAddress";
+  declare apiVersion: "ipam.cluster.x-k8s.io/v1beta2";
+
+  static readonly kind = "IPAddress";
+  static readonly namespaced = true;
+  static readonly apiBase = "/apis/ipam.cluster.x-k8s.io/v1beta2/ipaddresses";
+
+  static readonly crd: CRD = {
+    apiVersions: ["ipam.cluster.x-k8s.io/v1beta2"],
+    plural: "ipaddresses",
+    singular: "ipaddress",
+  };
+}
+
+export class IPAddressApi extends Renderer.K8sApi.KubeApi<IPAddress> {}
+export class IPAddressStore extends Renderer.K8sApi.KubeObjectStore<IPAddress, IPAddressApi> {}
+
 // The models of the context, in the order in which "What the view reads" of SPEC-0004 lists them.
 export const CONTEXT_MODELS = [
   Machine,
@@ -389,4 +609,14 @@ export const OPERATOR_MODELS = [
   AddonProvider,
   IPAMProvider,
   RuntimeExtensionProvider,
+] as const;
+
+// The kinds that the tree adds, in the order in which "What the tree reads" of SPEC-0005 lists them (P6).
+export const TREE_MODELS = [
+  KubeadmConfig,
+  KubeadmConfigTemplate,
+  ClusterResourceSet,
+  ClusterResourceSetBinding,
+  IPAddressClaim,
+  IPAddress,
 ] as const;
