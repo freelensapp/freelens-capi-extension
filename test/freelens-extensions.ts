@@ -98,6 +98,20 @@ export const host = {
   navigate: vi.fn<(location: string) => void>(),
   showDetails: vi.fn<(selfLink: string, resetSelected?: boolean) => void>(),
   navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async () => undefined),
+  // While set, a `loadAll` of a store of the extension's own class waits for it before it reads, as a list of the
+  // host waits for its answer; `deferLoads` sets it and gives the function that lets the loads end.
+  loadGate: undefined as Promise<void> | undefined,
+  deferLoads(): () => void {
+    let release = () => undefined as void;
+
+    host.loadGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      host.loadGate = undefined;
+      release();
+    };
+  },
   reset() {
     runInAction(() => {
       host.apis.clear();
@@ -115,6 +129,7 @@ export const host = {
     host.navigate.mockReset();
     host.showDetails.mockReset();
     host.navigateExtension.mockClear();
+    host.loadGate = undefined;
   },
   registerApi(api: StubApi, store?: unknown) {
     runInAction(() => host.apis.set(api.apiBase, api));
@@ -224,6 +239,8 @@ class KubeObjectStore {
   readonly #state = observable({ isLoaded: false, isLoading: false });
 
   readonly loadAll = vi.fn(async (opts?: { namespaces?: string[]; onLoadFailure?: (error: unknown) => void }) => {
+    if (host.loadGate !== undefined) await host.loadGate;
+
     const data = host.cluster.get(this.api.apiBase ?? "");
     const namespaces = opts?.namespaces ?? [];
 
@@ -515,18 +532,25 @@ class Drawer extends React.Component<StubDrawerProps> {
   }
 }
 
+// An item of the drawer with the classes that the host gives it (drawer-item.tsx): `DrawerItem` with the class of the
+// view, then its name and its value.
 function DrawerItem(props: {
   name?: React.ReactNode;
   hidden?: boolean;
+  className?: string;
   children?: React.ReactNode;
   "data-testid"?: string;
 }) {
   if (props.hidden) return null;
   return React.createElement(
     "div",
-    { "data-testid": props["data-testid"], "data-drawer-item": "" },
-    React.createElement("span", { "data-drawer-item-name": "" }, props.name),
-    React.createElement("span", null, props.children),
+    {
+      "data-testid": props["data-testid"],
+      "data-drawer-item": "",
+      className: ["DrawerItem", props.className].filter(Boolean).join(" "),
+    },
+    React.createElement("span", { "data-drawer-item-name": "", className: "name" }, props.name),
+    React.createElement("span", { className: "value" }, props.children),
   );
 }
 
@@ -552,10 +576,26 @@ function MaybeLink(props: { to?: string; children?: React.ReactNode; onClick?: (
   );
 }
 
-// The metadata of the host: the fields it shows, but those of `hideFields`,
-// whose default is the three it hides, the namespace and each owner as a link
-// to the details of the host, as the host links them
+// The metadata of the host: the fields it shows, in its order, but those of
+// `hideFields`, whose default is the three it hides, named in `data-fields`;
+// the name as text, and the namespace and each owner as a link to the details
+// of the host, as the host links them
 // (freelens:packages/core/src/renderer/components/kube-object-meta/kube-object-meta.tsx).
+const HOST_META_FIELDS = [
+  "creationTimestamp",
+  "deletionTimestamp",
+  "name",
+  "namespace",
+  "uid",
+  "selfLink",
+  "resourceVersion",
+  "labels",
+  "annotations",
+  "finalizers",
+  "ownerReferences",
+  "managedFields",
+];
+
 const KubeObjectMeta = vi.fn(
   (props: {
     object: {
@@ -566,17 +606,18 @@ const KubeObjectMeta = vi.fn(
     hideFields?: string[];
   }) => {
     const hidden = props.hideFields ?? ["uid", "resourceVersion", "selfLink"];
+    const shown = HOST_META_FIELDS.filter((field) => !hidden.includes(field));
     const namespace = props.object.getNs();
     const owners = props.object.getOwnerRefs();
 
     return React.createElement(
       "div",
-      { "data-testid": "host-meta" },
-      React.createElement("span", null, props.object.getName()),
-      namespace === undefined || hidden.includes("namespace")
+      { "data-testid": "host-meta", "data-fields": shown.join(" ") },
+      shown.includes("name") ? React.createElement("span", null, props.object.getName()) : null,
+      namespace === undefined || !shown.includes("namespace")
         ? null
         : React.createElement("a", { href: `?kube-details=/api/v1/namespaces/${namespace}` }, namespace),
-      hidden.includes("ownerReferences")
+      !shown.includes("ownerReferences")
         ? null
         : owners.map((owner) =>
             React.createElement(
@@ -670,8 +711,9 @@ export const Renderer = {
     TableRow,
     WithTooltip: Labelled,
   },
-  // The navigation of the frame: the address of the details of the host keeps
-  // the parameters of the page, as `getDetailsUrl` merges them.
+  // The navigation of the frame. `getDetailsUrl` gives the parameter of the
+  // details of the host alone, where the host merges it into the parameters
+  // that the address already has; no case reads the others.
   Navigation: {
     getDetailsUrl: (selfLink: string) => `?kube-details=${encodeURIComponent(selfLink)}`,
     showDetails: (selfLink: string, resetSelected?: boolean) => host.showDetails(selfLink, resetSelected),

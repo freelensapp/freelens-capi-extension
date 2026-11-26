@@ -5,17 +5,22 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { CAPTURE, fixtureSet, ofKind, STATES } from "../../../test/fixture-sets";
 import { Common, host, Renderer } from "../../../test/freelens-extensions";
 import { APIS, serve } from "../../../test/host-stores";
-import { hostObjects, objectsOfStates, sourceOf } from "../../../test/view-sources";
+import { hostObjects, keyOf, objectsOfStates, RESOLVED, sourceOf } from "../../../test/view-sources";
+import { parseConditionMessage } from "../../common/parsers/condition-message";
 import { clusterPartsOf, indexContext, StatusMemo } from "../../common/views/context";
+import { reduceReads } from "../../common/views/read-state";
 import { publishPageSource } from "../reads/cluster-source";
-import { ClusterPanel, ClusterView, HIDDEN_METADATA } from "./cluster-details-v1beta2";
+import styles from "./cluster-details.module.scss";
+import { ClusterPanel, ClusterView } from "./cluster-details-v1beta2";
 
 import type { Renderer as Sdk } from "@freelensapp/extensions";
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
 import type { HostObject } from "../../../test/host-stores";
 import type { SourceOptions } from "../../../test/view-sources";
+import type { MessageLine } from "../../common/parsers/condition-message";
 import type { ClusterObject } from "../../common/status/index";
+import type { ReadEvent } from "../../common/views/read-state";
 import type { Cluster } from "../api/cluster/cluster-v1beta2";
 import type { ClusterSource } from "../reads/cluster-source";
 
@@ -97,6 +102,23 @@ function tooltipOf(element: Element): string | null | undefined {
   const next = element.nextElementSibling;
 
   return next instanceof HTMLElement && next.hidden ? next.textContent : undefined;
+}
+
+// A worker Machine that the Cluster of machine-without-node owns, made from the Machine of its stand-alone MachineSet:
+// the controller makes the Cluster the owner of a stand-alone Machine
+// (core/reconcilers/machine/machine_controller.go:450-459).
+function standAloneMachine(): KubeObject {
+  const [machine] = ofKind<KubeObject>(fixtureSet("machine-without-node"), "Machine").filter((object) =>
+    object.metadata.name.endsWith("-without-node-h5zrd"),
+  );
+  const copy = structuredClone(machine) as unknown as Fields;
+
+  copy.metadata.name = "freelens-capi-without-node-stand-alone";
+  copy.metadata.labels = { "cluster.x-k8s.io/cluster-name": "freelens-capi-without-node" };
+  copy.metadata.ownerReferences = [
+    { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: "freelens-capi-without-node" },
+  ];
+  return copy as unknown as KubeObject;
 }
 
 beforeEach(() => {
@@ -294,6 +316,22 @@ describe("the status (SPEC-0004, The details, 1)", () => {
 
     expect(stale.textContent).toMatch(/^stale Paused since \d{4}-.*, \d{4}-/);
     expect(within(stale).getByTestId("host-duration")).toBeDefined();
+  });
+
+  it("shows the mark of freshness next to the health, its causes in a row of their own (P12; SPEC-0003, Freshness)", () => {
+    const objects = objectsOfStates(["paused"]);
+
+    viewOf(sourceOf(objects), clusterOf(objects));
+
+    expect(within(item("Health")).getByTestId("capi-details-health-stale").getAttribute("data-word")).toBe("stale");
+    expect(screen.getByTestId("capi-details-stale").textContent).toMatch(/^stale Paused/);
+    cleanup();
+
+    const healthy = objectsOfStates(["healthy"]);
+
+    viewOf(sourceOf(healthy), clusterOf(healthy));
+
+    expect(within(item("Health")).queryByTestId("capi-details-health-stale")).toBeNull();
   });
 
   it("shows the failure fields and the phase Failed with their label deprecated", () => {
@@ -542,23 +580,6 @@ describe("the control plane and the infrastructure (SPEC-0004, The details, 2 an
 });
 
 describe("the workers (SPEC-0004, The details, 3; P17)", () => {
-  // A worker Machine that the Cluster of machine-without-node owns, made from the Machine of its stand-alone
-  // MachineSet: the controller makes the Cluster the owner of a stand-alone Machine
-  // (core/reconcilers/machine/machine_controller.go:450-459).
-  function standAloneMachine(): KubeObject {
-    const [machine] = ofKind<KubeObject>(fixtureSet("machine-without-node"), "Machine").filter((object) =>
-      object.metadata.name.endsWith("-without-node-h5zrd"),
-    );
-    const copy = structuredClone(machine) as unknown as Fields;
-
-    copy.metadata.name = "freelens-capi-without-node-stand-alone";
-    copy.metadata.labels = { "cluster.x-k8s.io/cluster-name": "freelens-capi-without-node" };
-    copy.metadata.ownerReferences = [
-      { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: "freelens-capi-without-node" },
-    ];
-    return copy as unknown as KubeObject;
-  }
-
   it("give one row to each part that the Cluster sums, a MachineSet and a worker Machine that it owns included", () => {
     const objects = variantOf("machine-without-node", () => undefined, [standAloneMachine()]);
 
@@ -646,7 +667,8 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
 
   it("show the KubeadmControlPlane, the parts of the workers and the ClusterClass as plain text", () => {
     const openCluster = vi.fn();
-    const objects = variantOf("machine-without-node", () => undefined);
+    // The parts: a MachineDeployment, a MachineSet and a stand-alone worker Machine that the Cluster owns.
+    const objects = variantOf("machine-without-node", () => undefined, [standAloneMachine()]);
 
     viewOf(sourceOf(objects), clusterOf(objects), true, openCluster);
 
@@ -654,6 +676,7 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
     expect(screen.getAllByTestId("capi-details-part-name").map((name) => name.textContent)).toEqual([
       "freelens-capi-without-node-md-0-glbqj",
       "freelens-capi-without-node-without-node",
+      "freelens-capi-without-node-stand-alone",
     ]);
     for (const name of screen.getAllByTestId("capi-details-part-name")) expectText(name);
     expectText(screen.getByTestId("capi-details-class"));
@@ -677,6 +700,30 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
     expect(openCluster).not.toHaveBeenCalled();
   });
 
+  it("show a Cluster named in a message as a button that opens its details only when the view read it", () => {
+    const openCluster = vi.fn();
+    const objects = variantOf("healthy", (cluster) => {
+      cluster.status.conditions.push({
+        type: "ExampleGate",
+        status: "False",
+        reason: "Waiting",
+        message: "* Cluster freelens-capi-healthy: waiting\n* Cluster not-read-here: waiting",
+        lastTransitionTime: "2025-12-31T23:59:00Z",
+      });
+    });
+
+    viewOf(sourceOf(objects), clusterOf(objects), true, openCluster);
+
+    const lines = screen.getAllByTestId("capi-details-line");
+    const read = lines.find((line) => line.textContent === "* Cluster freelens-capi-healthy: waiting");
+    const unread = lines.find((line) => line.textContent === "* Cluster not-read-here: waiting");
+
+    fireEvent.click(within(read as HTMLElement).getByRole("button"));
+    expect(openCluster).toHaveBeenCalledWith("freelens-capi-healthy", "freelens-capi-healthy");
+    expect(within(unread as HTMLElement).queryByRole("button")).toBeNull();
+    expectText(unread as HTMLElement);
+  });
+
   it("show the infrastructure cluster as a link to the details of the host, at the version of its contract", () => {
     const objects = objectsOfStates(["healthy"]);
     const devCluster = objects.find((object) => object.kind === "DevCluster") as HostObject;
@@ -693,6 +740,8 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
     expect(screen.getByTestId("capi-details-infrastructure-reference-health").getAttribute("data-word")).toBe(
       "Healthy",
     );
+    // With its health alone, as "The details" give it.
+    expect(screen.queryAllByTestId("capi-details-infrastructure-reference-activity")).toEqual([]);
   });
 
   it.each([
@@ -735,9 +784,35 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
 
     expect(within(text).queryByRole("link")).toBeNull();
     expect(tooltipOf(text)).toBe("infrastructure.cluster.x-k8s.io. No such object is in the namespace of the Cluster.");
+    // The namespace was read: the row says that the object is not there, and not that it was not read.
+    expect(valueOf(screen.getByTestId("capi-details-infrastructure-reference-unread"))).toBe(
+      "No such object is in the namespace of the Cluster.",
+    );
   });
 
-  it("show the metadata of the host with the namespace and the owners hidden there, as the badge and as text", () => {
+  it("show as text, with why, an infrastructure cluster whose kind the cluster has, but not at the version of its contract", () => {
+    const objects = objectsOfStates(["healthy"]);
+    const page = sourceOf(objects);
+    // The definition names a version of the contract that the host registered no API for: no store of the kind.
+    const without = {
+      ...page.objects(),
+      infrastructures: new Map([
+        ["infrastructure.cluster.x-k8s.io/DevCluster", { key: undefined, items: [], resolution: RESOLVED.devClusters }],
+      ]),
+    };
+
+    viewOf({ ...page, objects: () => without, index: () => indexContext(without) }, clusterOf(objects));
+
+    const words =
+      "This cluster does not serve this kind at the version that the contract label of its definition names.";
+
+    expect(tooltipOf(screen.getByTestId("capi-details-infrastructure-reference"))).toBe(
+      `infrastructure.cluster.x-k8s.io. ${words}`,
+    );
+    expect(valueOf(screen.getByTestId("capi-details-infrastructure-reference-unread"))).toBe(`Not read. ${words}`);
+  });
+
+  it("show the metadata of the host with the namespace and the owners hidden there, as the badge and as text where the host puts them", () => {
     const objects = variantOf("healthy", (cluster) => {
       cluster.metadata.ownerReferences = [{ apiVersion: "example.com/v1", kind: "Owner", name: "owner-of-it" }];
     });
@@ -745,10 +820,25 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
     viewOf(sourceOf(objects), clusterOf(objects));
 
     const metadata = screen.getByTestId("capi-details-section-metadata");
-    const props = Renderer.Component.KubeObjectMeta.mock.calls.at(-1)?.[0];
+    const parts = [...metadata.children].map(
+      (part) => part.getAttribute("data-fields") ?? part.getAttribute("data-testid"),
+    );
 
-    expect(props?.hideFields).toEqual(["uid", "resourceVersion", "selfLink", "namespace", "ownerReferences"]);
-    expect(props?.hideFields).toEqual([...HIDDEN_METADATA]);
+    // The metadata of the host in three parts, each with the fields that it shows in the order of the host, the
+    // namespace after the name and the owners after the finalizers, in rows of their own; none shows the namespace,
+    // the owners, or the three fields that the host hides by default.
+    expect(parts).toEqual([
+      "creationTimestamp deletionTimestamp name",
+      "capi-details-namespace",
+      "labels annotations finalizers",
+      "capi-details-owners",
+      "managedFields",
+    ]);
+    for (const [props] of Renderer.Component.KubeObjectMeta.mock.calls.slice(-3)) {
+      expect(props.hideFields).toEqual(
+        expect.arrayContaining(["uid", "resourceVersion", "selfLink", "namespace", "ownerReferences"]),
+      );
+    }
     expect(within(metadata).queryAllByRole("link")).toEqual([]);
     expect(within(screen.getByTestId("capi-details-namespace")).getByTestId("host-namespace").textContent).toBe(
       "freelens-capi-healthy",
@@ -850,6 +940,25 @@ describe("the topology, the network and the conditions (SPEC-0004, The details, 
     expect(within(initialized as HTMLElement).getByTestId("capi-details-older-generation")).toBeDefined();
   });
 
+  it("give a long name of a condition a chance to break before each of its words, in a row whose label wraps", () => {
+    const objects = objectsOfStates(["upgrading"]);
+
+    viewOf(sourceOf(objects), clusterOf(objects));
+
+    const row = screen
+      .getAllByTestId("capi-details-condition")
+      .find(
+        (element) => element.querySelector("[data-drawer-item-name]")?.textContent === "ControlPlaneMachinesUpToDate",
+      ) as HTMLElement;
+
+    // The name as written, with a chance to break before each of its words, and the class whose label wraps in the
+    // column of the labels (the stylesheet, and its case of styles.test.ts).
+    expect(row.querySelector("[data-drawer-item-name]")?.innerHTML).toBe(
+      "Control<wbr>Plane<wbr>Machines<wbr>Up<wbr>To<wbr>Date",
+    );
+    expect(row.className.split(" ")).toContain(styles.condition);
+  });
+
   it("nest the lines of a message as the parser gives them, the names of a subject as text", () => {
     const objects = objectsOfStates(["upgrading"]);
 
@@ -868,6 +977,64 @@ describe("the topology, the network and the conditions (SPEC-0004, The details, 
     ]);
     expect(within(topology).queryByRole("link")).toBeNull();
   });
+});
+
+describe("the lines of a message (SPEC-0003, P27; DESIGN.md, Words)", () => {
+  // The lines of a message as the parser gives them, each as the project wrote it, without its indentation, with the
+  // depth at which the parser nests it.
+  function writtenLines(message: unknown): { text: string; depth: number }[] {
+    const parsed = parseConditionMessage(message);
+    const lines: { text: string; depth: number }[] = [];
+    const walk = (items: readonly MessageLine[], depth: number) => {
+      for (const item of items) {
+        lines.push({ text: item.written.trim(), depth });
+        walk(item.children, depth + 1);
+      }
+    };
+
+    if (parsed.state === "read") walk(parsed.lines, 0);
+    return lines;
+  }
+
+  // The lines that a row of the details shows, each with the depth of the list that holds it.
+  function shownLines(row: HTMLElement): { text: string; depth: number }[] {
+    return within(row)
+      .queryAllByTestId("capi-details-line")
+      .map((line) => {
+        let depth = -1;
+
+        for (
+          let element: HTMLElement | null = line;
+          element !== null && element !== row;
+          element = element.parentElement
+        ) {
+          if (element.tagName === "UL") depth++;
+        }
+        return { text: line.textContent ?? "", depth };
+      });
+  }
+
+  it.each(STATES)(
+    "show every line of each condition of %s as the project wrote it, nested as the parser gives it",
+    (state) => {
+      const objects = objectsOfStates([state]);
+      const conditions =
+        (clusterOf(objects) as unknown as { status?: { conditions?: { type: string; message?: string }[] } }).status
+          ?.conditions ?? [];
+
+      viewOf(sourceOf(objects), clusterOf(objects));
+
+      const rows = screen.queryAllByTestId("capi-details-condition");
+
+      for (const condition of conditions) {
+        const row = rows.find(
+          (element) => element.querySelector("[data-drawer-item-name]")?.textContent === condition.type,
+        ) as HTMLElement;
+
+        expect(shownLines(row), `${state}: ${condition.type}`).toEqual(writtenLines(condition.message ?? ""));
+      }
+    },
+  );
 });
 
 describe("an error in the details", () => {
@@ -932,11 +1099,16 @@ describe("the states of a view of one Cluster (P25)", () => {
     );
   });
 
+  // The host empties the namespace whose list failed: its store holds no Cluster of it.
+  function withoutCluster(objects: readonly HostObject[]): HostObject[] {
+    return objects.filter((object) => object.kind !== "Cluster");
+  }
+
   it("say that its namespace cannot be read, with the message of the answer and the permission", () => {
     const objects = objectsOfStates(["healthy"]);
     const failure = { refused: true, message: 'clusters.cluster.x-k8s.io is forbidden in "freelens-capi-healthy"' };
 
-    viewOf(sourceOf(objects, { failures: { clusters: [failure] } }), clusterOf(objects));
+    viewOf(sourceOf(withoutCluster(objects), { failures: { clusters: [failure] } }), clusterOf(objects));
 
     expect(screen.getByTestId("capi-details-not-read").textContent).toBe(
       `The namespace freelens-capi-healthy cannot be read: you may not list its Clusters.${failure.message}Reading them takes get, list and watch on clusters of cluster.x-k8s.io, in that namespace or over the whole cluster.`,
@@ -947,11 +1119,44 @@ describe("the states of a view of one Cluster (P25)", () => {
     const objects = objectsOfStates(["healthy"]);
     const failure = { refused: false, message: "the list after the watch expired failed" };
 
-    viewOf(sourceOf(objects, { refreshes: { clusters: failure } }), clusterOf(objects));
+    viewOf(sourceOf(withoutCluster(objects), { refreshes: { clusters: failure } }), clusterOf(objects));
 
     expect(screen.getByTestId("capi-details-not-read").textContent).toBe(
       `The Clusters of the namespace freelens-capi-healthy could not be read again, at ${new Date(CAPTURE + 60_000).toISOString()}${failure.message}`,
     );
+  });
+
+  it("show a Cluster that its store holds while a read that failed in another namespace holds the Clusters back, with no failure of the Clusters (P25, Partial)", () => {
+    const objects = objectsOfStates(["healthy", "paused"]);
+    const failure = { refused: true, message: 'clusters.cluster.x-k8s.io is forbidden in "freelens-capi-paused"' };
+    // The load of both namespaces was refused in that of paused, which the host emptied.
+    const source = sourceOf(
+      objects.filter((object) => !(object.kind === "Cluster" && object.getNs() === "freelens-capi-paused")),
+      { failures: { clusters: [failure] } },
+    );
+    const healthy = objects.find((object) => object.kind === "Cluster" && object.getNs() === "freelens-capi-healthy");
+
+    viewOf(source, healthy as HostObject);
+
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
+    expect(screen.queryByTestId("capi-details-not-read")).toBeNull();
+    expect(
+      screen.queryAllByTestId("capi-details-read-failure").filter((read) => read.textContent?.includes("Clusters")),
+    ).toEqual([]);
+  });
+
+  it("show a Cluster that its store holds after a refresh of the Clusters failed", () => {
+    const objects = objectsOfStates(["healthy"]);
+
+    viewOf(
+      sourceOf(objects, {
+        refreshes: { clusters: { refused: false, message: "the list after the watch expired failed" } },
+      }),
+      clusterOf(objects),
+    );
+
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
+    expect(screen.queryByTestId("capi-details-not-read")).toBeNull();
   });
 });
 
@@ -985,6 +1190,34 @@ describe("the panel in the details of the host (P16, P31)", () => {
         "conditions",
       ]);
       expect(host.builtStores.length).toBe(built);
+    } finally {
+      unpublish();
+    }
+  });
+
+  it("reads with stores of its own while the read of the page over the whole cluster is not followed (P34, P16)", async () => {
+    serve();
+
+    const objects = objectsOfStates(["healthy"]);
+    const built = host.builtStores.length;
+    const page = sourceOf(objects);
+    // The page read the Clusters once over the whole cluster, and the host does not follow them.
+    const reads = (
+      [
+        { type: "load-started", kind: keyOf("clusters"), id: 99, namespaces: ["freelens-capi-healthy"] },
+        { type: "load-ended", kind: keyOf("clusters"), id: 99, overWholeCluster: true, followed: false, at: CAPTURE },
+      ] satisfies ReadEvent[]
+    ).reduce(reduceReads, page.reads);
+    const unpublish = publishPageSource({ ...page, reads });
+
+    serveOwn(objects);
+
+    try {
+      panel(clusterOf(objects));
+      await act(async () => undefined);
+
+      expect(host.builtStores.length).toBeGreaterThan(built);
+      expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
     } finally {
       unpublish();
     }

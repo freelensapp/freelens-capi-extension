@@ -2087,7 +2087,20 @@ cluster (for-namespaced-resources.injectable.ts:56-59), with one load and its
 `subscribe`, and their failures give the state of that view alone. Their list
 and their watch set the resource version of the whole cluster that the API of
 the host keeps, from which a watch of that API over the whole cluster starts
-again, as P31 says: that limit is theirs.
+again, as P31 says: that limit is theirs. The other way round too, recorded
+after the first review of the second part: a watch of the view's own takes, each
+time it starts, the resource version of its namespace that the API of the host
+keeps, and it starts again one second after its stream ends, which the server
+ends every 600 seconds, or after an answer that has no body (kube-api.ts:815,
+827, 895-898, 915-918 at `v2.1.0`; 808, 820, 885-888, 905-908 at `v2.0.0`),
+while every watch of that API sets that version at each event in that namespace
+(kube-api.ts:1011 at `v2.1.0`, 1001 at `v2.0.0`), as the watch of the list of
+Clusters of the host under the panel does. So a watch of the view's own that
+starts again can skip events that it never received, and the view then keeps an
+older object, with no mark, until the next change of that object or the next
+load. The view reads with the APIs that the host registered, which keep one
+version for each namespace, and the extension API gives no way to keep one
+apart.
 
 The kit asks a view to show no refusal as an absence and to say what is missing
 (kit, `docs/design.md`, "States that are not the happy one"): the page says in
@@ -2306,11 +2319,19 @@ No question is open.
   `content.tsx` decides it, and the cell of the menu. The subscription is the
   host's, which the stub does not run, so the tests drive the loads through the
   adapters, as the host would.
-- Decided while implementing the second part, where P6 is silent: a value of
-  `details` names a Cluster when it is two names, neither empty, joined by one
-  `/`; any other value but the empty one, which closes the details, opens them
-  on the state that DESIGN.md gives an address with no object, with the value
-  as written, under the title "Cluster", and reads nothing.
+- Decided while implementing the second part, where P6 is silent, and
+  corrected after its first review: a value of `details` names a Cluster when
+  it is a namespace, a DNS-1123 label of at most 63 characters, and a name, a
+  DNS-1123 subdomain of at most 253, joined by one `/`, as the API server
+  takes them; any other value but the empty one, which closes the details,
+  opens them on the state that DESIGN.md gives an address with no object, with
+  the value as written, under the title "Cluster", and reads nothing. Neither
+  is `.` or `..`: the host joins the namespace into the path of its requests
+  as it is (kube-api-parse.ts:98-111, at `v2.0.0` and `v2.1.0`), and the
+  request resolves the segment, so a value such as `../x`, which the rule of
+  two names that are not empty let through, read and watched the Clusters and
+  their context over the whole cluster, or showed a user who may not list them
+  there a refusal of the namespace `..`.
 - Decided while implementing, where P13 and P15 are silent on how the focus
   finds the name: the name is a button inside the badge of its cell, which
   carries the address of its Cluster in the attribute `data-capi-cluster`; its
@@ -2347,23 +2368,53 @@ No question is open.
   when the filter of the page selects the namespace of its Cluster, the details
   of the extension those of their own page, the panel those of the page that is
   mounted; otherwise it reads with stores of its own, made again when its
-  address changes. The stores are built in the effect of the view, once for the
-  view; each run of the effect creates one `AbortController`, under which it
-  loads and subscribes every store, those that a reference names later
-  included. Their reads fold into a state of their own, with the reducer of the
-  page, from which the view takes its own states: loading, not found, a
+  address changes. After the first review of the second part, it also reads
+  with stores of its own, a watch of its namespace, while the last load of the
+  Clusters of the page was read over the whole cluster and is not followed
+  (P34), so that a change of its Cluster reaches it whatever the host follows,
+  as P16 wants. The stores are built in the effect of the view, once for each
+  API; each run of the effect creates one `AbortController`, and each store
+  reads under one of its own, which that of the run aborts: it loads, and once
+  the load has ended, unless it was aborted, it subscribes; the stores that a
+  reference names later start as they are built. When the host registers the
+  APIs of the definitions again, as it does after its store of definitions
+  failed (setup-auto-crd-api-creations.injectable.ts:45-54), the view stops the
+  stores that it built on the old APIs, their watches and their reloads with
+  them, and forgets them, as those of the new APIs start, so that no kind is
+  watched twice. Their reads fold into a state of their own, with the reducer
+  of the page, from which the view takes its own states: loading, not found, a
   namespace that cannot be read, and a refresh that failed (P25).
+- Decided while implementing, and corrected after the first review of the
+  second part, where P25 and P31 are silent on a Cluster that its store holds
+  while its kind is held back: a view of one Cluster looks for its Cluster
+  first. It is found when the store of Clusters holds it for its namespace,
+  whether that namespace was read or is held back: a load that failed in
+  another namespace holds the Clusters back in every namespace of the load,
+  and a refresh that failed in every namespace of the last load, while the
+  host empties exactly the namespaces whose list failed (kube-object.store.ts,
+  `loadItems` and `mergeItems`, at `v2.0.0` and `v2.1.0`), so a Cluster in the
+  store proves that its namespace was read, as the list that shows its row
+  knows (Partial). It is not read only when the store holds no such Cluster
+  and the namespace is held back. Once the Cluster is found, the kind of the
+  Clusters is left out of the failures that its details show; those of the
+  other kinds stay.
 - Decided while implementing, where P31 does not say which note: a view of one
   Cluster gives the model no kind of the operator, which it does not read, so
   `controllers` is not given and the model notes it as not read, "Not read, so
   not given to the status model: the availability of the controllers of its
   providers.", and not the controllers that it does not know, which a page
   that reads the operator and finds no object of a provider notes.
-- Decided while implementing: each view of one Cluster keeps the results of the
-  model under their keys, evaluates it at each render and again at the
-  earliest time that a result names, as the page does, and builds the indexes
-  of the context from its source at each render; the details of the extension
-  and the panel never share a result with the page.
+- Decided while implementing, and corrected after the first review of the
+  second part: each view of one Cluster keeps the results of the model under
+  their keys, and evaluates it at each render and again at the earliest time
+  that a result names, as the page does; it builds the indexes of the context
+  once for each change of what they read, as the page does, and never at a
+  render or a tick that changes none of them (kit, `docs/design.md`,
+  "Interaction and performance"): a view that takes the reads of the page
+  takes its indexes, and one that reads with stores of its own builds them
+  again when the state of its reads, or the key, the identity or the version
+  of an object of its stores, changes. The details of the extension and the
+  panel never share a result with the page.
 - Decided while implementing, where P17 is silent on the counters of a row: a
   MachineDeployment, a MachinePool and a MachineSet give their available
   replicas of their desired ones, `status.availableReplicas` of
@@ -2387,10 +2438,16 @@ No question is open.
   KubeadmControlPlane of `controlplane.cluster.x-k8s.io` and the KubeadmConfig
   of `bootstrap.cluster.x-k8s.io`; any other kind is of a provider, a link to
   the details of the host once the view read its object, and otherwise text
-  with the reason. In the lines of a message, a Cluster named in a subject is a
-  button that opens its details, which looks as text, through the parameter of
-  the page, and the infrastructure cluster that the Cluster names is the link of
-  its reference; every other name is text.
+  with the reason. In the lines of a message, as aligned with the code after
+  the first review of the second part, a name in a subject opens something
+  only when the view read its target: a Cluster that the view read in the
+  namespace of its Cluster is a button that opens its details through the
+  parameter of the page, underlined, in the color of the text around it, as
+  the links of the host are; an object of a provider that a reference of the
+  Cluster names, its infrastructure cluster or a control plane of a provider,
+  is the link of that reference, to the details of the host, once the view
+  read it, as P18 gives a link to the objects of a provider; every other name
+  is text.
 - Decided while implementing, where "The details" is silent: a section is hidden
   when it has nothing to show. The control plane shows with a reference, a
   Machine of its own, a counter, a version, an endpoint or a status of the
@@ -2407,6 +2464,49 @@ No question is open.
   drawer renders inside an error boundary keyed by the address, the view inside
   one keyed by its Cluster, and each section inside one of its own, keyed by
   the Cluster.
+  After the first review of the second part: the health carries the word stale
+  next to it when a mark of freshness holds, as the list does and P12 and
+  SPEC-0003 ("Freshness") say, and the marks, each with when it began, stay in
+  a row of their own, third as "The details" place them; the control plane
+  shows its health and its activities, and the infrastructure cluster its
+  health alone, as "The details" give them; and a reference whose object is
+  not in the namespace that the view read says so with no "Not read.", since
+  that namespace was read.
+- Decided while implementing, after the first review of the second part, where
+  P18 is silent: a reference whose kind the cluster defines, but with no API
+  that the host registered at the version that the contract label of its
+  definition names, says "This cluster does not serve this kind at the version
+  that the contract label of its definition names.", and not "This cluster
+  serves no such kind.", which stays the words of a kind that the cluster does
+  not serve.
+- Decided while implementing, after the first review of the second part, where
+  P32 is silent on the place of the namespace and the owners: each takes the
+  place that the host gives it, the namespace after the name and the owners
+  after the finalizers (kube-object-meta.tsx, at `v2.0.0` and `v2.1.0`). The
+  details render the metadata of the host in three parts, the creation, the
+  deletion and the name, then the labels, the annotations and the finalizers,
+  then the managed fields, each with `hideFields` that leaves out every other
+  field, and the namespace badge and the owners as text in rows of their own
+  between them; the three fields that the host hides by default stay hidden.
+- Decided while implementing, after the first review of the second part: the
+  name of a row and the button of a Cluster named in a message show their
+  focus with an outline of 2 px in the token `--primary` of the theme, drawn
+  inside their box. The host resets the outline of every element in a layer,
+  which the stylesheets of the extension, outside any layer, override
+  (app.scss:64-72 at `v2.1.0`, 67-75 at `v2.0.0`), and the badge of a cell
+  cuts what overflows it (badge.module.scss), so an outline outside the box of
+  the name would not show (kit, `docs/design.md`, "Interaction and
+  performance"). `src/renderer/styles.test.ts` checks both rules.
+- Decided while implementing the second part, after its first run in Freelens,
+  whose screenshots in six themes showed the marks of
+  `ControlPlaneMachinesUpToDate` a few pixels right of those of the other
+  conditions: the label of a condition wraps in the column that the host gives
+  the labels of its items, 30% of the row unless a label is longer
+  (drawer-item.scss, at `v2.0.0` and `v2.1.0`), before each word of its name
+  and anywhere in a word that the column does not hold, so that the marks of
+  every condition start at the same place. A column that held the longest name
+  of the closed set would narrow the values of every row, and a condition that
+  an availability gate names may be longer. The stylesheet says so.
 - Decided while implementing: the reads of one Cluster are tested in
   `src/renderer/reads/cluster-namespace-read.test.tsx`, where "Tests" names
   `cluster-namespace-read.test.ts`, since its cases render the view; the state
@@ -2422,7 +2522,12 @@ No question is open.
   `loadAll` reads the objects that a test serves for its API by the namespaces
   asked, so that the cases of P31 drive the stores of the view as the host
   would. The stub of the list layout renders a search and the click of a row,
-  as `content.tsx` handles it.
+  as `content.tsx` handles it. After the first review of the second part, its
+  `KubeObjectMeta` renders the fields that it shows, in the order of the host,
+  its items of the drawer carry the classes of the host and the class that the
+  view gives them, and the end of every `loadAll` can be held until a case lets
+  it go, so that a case tells a `subscribe` that runs before its load has
+  ended.
 - Decided while implementing: the session in Freelens,
   `integration/__tests__/clusters.tests.ts`, runs every step of "In Freelens",
   steps 1 to 8, the first part steps 1, 7 and 8 and the parts of steps 2, 3 and
@@ -2459,6 +2564,26 @@ No question is open.
   that the details of `upgrading` read the namespace with stores of their own
   by the load and the watch of its Clusters that the frame sends once they
   open.
+- Seen while implementing the second part, in its first run in Freelens, on both
+  releases, and changed in the session: in step 2 the search that had found the
+  row of `healthy` alone was in the field again when the step clicked the row of
+  `paused`, which the list did not show, and the step clicked that row at
+  `.TableCell.name`, which no cell of the page carries: the list layout of the
+  host gives each cell of a row the class of the head of its column, which the
+  lists of the host name after the column and the page takes from its CSS
+  module. The step now finds both rows with a search that keeps both, the start
+  of their names, and the cell of the name by the name that it holds, and
+  AGENTS.md says how a session finds a cell of the page ("Workflows"). Once the
+  details of the host close over those of the extension, the address has no
+  parameter `kube-details`, where step 4 expected it empty: the step takes its
+  absence, or an empty one, and says so. After the first review of the second
+  part: step 2 waits until the details have slid over the search, which they do
+  from the right in 100 ms (drawer.tsx:209 at `v2.1.0`, 218 at `v2.0.0`;
+  default-enter-duration.injectable.ts:11), by the element at the middle of the
+  search, before it checks what lies there and before its click there; and step
+  4 selects the namespaces of `rolling-out` and `healthy`, and checks that a
+  click on the namespace in the details leaves the filter with that of
+  `rolling-out` alone, which the namespace badge does and text would not.
 - Decided while implementing: step 1 checks the word, the state and the tone of
   each activity, and allows a row or an activity in flight the tone of progress
   or that of a warning, and Deleting that of a deletion or of a warning: the

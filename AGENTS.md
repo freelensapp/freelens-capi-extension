@@ -286,7 +286,8 @@ e2e/scripts/                     # The scripts of the test environment, run by N
 ```
 
 The extension registers the page of the Clusters of SPEC-0004, with its
-sidebar entry; each feature adds its files with its spec.
+sidebar entry, and the panel of the Clusters in the details of the host; each
+feature adds its files with its spec.
 
 Build output goes to `dist/`: `main.js`, `renderer.js` and `renderer.css`, with
 source maps. `main` and `renderer` in `package.json` point at the two entries.
@@ -367,14 +368,16 @@ the API of Clusters that the host registered, and never loads, registers or
 subscribes it; of it, the page reads the public getter `context` alone, the one
 way in which the extension API tells whether the host follows a list that it
 reads over the whole cluster (SPEC-0004, P34). The view of one Cluster whose
-namespace the page does not read, in the details of the page or in the panel in
-the details of the host, builds one store of the model's class for each kind
-that it reads, the Cluster included, and one `ProviderObjectStore` for each kind
-of a provider that the Cluster names, each with the API that the host
-registered for its kind; it loads them on the namespace of the Cluster alone,
-then subscribes them, ends the subscriptions when it closes, and never
-registers them with the API manager of the host, whose own views would then
-read them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
+namespace the page does not read, or reads over the whole cluster with no watch
+(P34), in the details of the page or in the panel in the details of the host,
+builds one store of the model's class for each kind that it reads, the Cluster
+included, and one `ProviderObjectStore` for each kind of a provider that the
+Cluster names, each with the API that the host registered for its kind; it loads
+each on the namespace of the Cluster alone, under an `AbortController` of its
+own, subscribes it once that load has ended, stops the stores built on the APIs
+that the host registers again, ends every subscription when it closes, and never
+registers them with the API manager of the host, whose own views would then read
+them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
 
 `src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
 and its sidebar entries (`clusterPageMenus`). The details panel and the menu
@@ -1198,7 +1201,8 @@ logged by either process:
   the panel with no reload while the host keeps the Cluster as it first read it
   (P16, P31); that the infrastructure cluster opens the details of the host of
   its object over those of the extension, which the close icon of the host shows
-  again and one Escape closes with them, while the other references are text
+  again and one Escape closes with them, while the other references are text,
+  and the namespace the badge of the host, which selects it alone in the filter
   (P18, P32); that the details of the states that have sections of their own
   show them; that a label which it sets with kubectl reaches the search of the
   list and the details of a Cluster whose namespace the page does not read,
@@ -1354,6 +1358,15 @@ fails. Any other repeated key counts, those of the extension's own views
 included, and so does one that a details panel logs over a list. `errors()`
 and the teardown wait until no decision is pending, those that start meanwhile
 included.
+
+The list layout of the host gives each cell of a row the class of the head of
+its column. The lists of the host name that class after the column, so
+`.TableCell.name` finds the cell of the name in a list of the host, as
+`hostLists` does. The cells of the list of the extension carry instead the class
+that the CSS module of its page exports for the column, whose name the build
+makes, such as `_name_` and a hash: a session finds a cell of the page by what
+it holds, the cell of the name by the test id of the name, never by the id of
+its column, which matches nothing there.
 
 The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent

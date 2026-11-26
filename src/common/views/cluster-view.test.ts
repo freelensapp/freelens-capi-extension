@@ -80,6 +80,43 @@ describe("the state of a view of one Cluster", () => {
     expect(view).toMatchObject({ state: "not-read", refused: false });
   });
 
+  it("finds a Cluster that is in the store while a load refused in another namespace holds the Clusters back (Partial)", () => {
+    const both = [NAMESPACE, "freelens-capi-paused"];
+    const reads = [
+      { type: "filter-changed", namespaces: both, selectedAll: false } as ReadEvent,
+      { type: "load-started", kind: KEY, id: 1, namespaces: both } as ReadEvent,
+      {
+        type: "load-failed",
+        kind: KEY,
+        id: 1,
+        failure: { refused: true, message: 'clusters.cluster.x-k8s.io is forbidden in "freelens-capi-paused"' },
+      } as ReadEvent,
+      { type: "load-ended", kind: KEY, id: 1, overWholeCluster: false, followed: true, at: CAPTURE } as ReadEvent,
+    ].reduce(reduceReads, NO_READS);
+
+    // The host empties the namespace whose list failed, so the store holds the Clusters of the other one alone.
+    expect(clusterViewOf(reads, { key: KEY, items: [cluster] }, NAMESPACE, cluster.metadata.name)).toEqual({
+      state: "found",
+      cluster,
+    });
+    expect(clusterViewOf(reads, { key: KEY, items: [cluster] }, "freelens-capi-paused", "a-cluster")).toMatchObject({
+      state: "not-read",
+      refused: true,
+    });
+  });
+
+  it("finds a Cluster that is in the store after a refresh of the Clusters failed, and says why another is not there", () => {
+    const reads = readsOf(started, ended, { type: "refresh-failed", kind: KEY, failure: failed, at: CAPTURE + 1000 });
+
+    expect(clusterViewOf(reads, { key: KEY, items: [cluster] }, NAMESPACE, cluster.metadata.name)).toEqual({
+      state: "found",
+      cluster,
+    });
+    expect(clusterViewOf(reads, { key: KEY, items: [cluster] }, NAMESPACE, "another")).toMatchObject({
+      state: "not-read",
+    });
+  });
+
   it("says that the Clusters of its namespace could not be read again, with the time of the refresh", () => {
     const view = clusterViewOf(
       readsOf(started, ended, { type: "refresh-failed", kind: KEY, failure: failed, at: CAPTURE + 1000 }),

@@ -323,6 +323,11 @@ class PageSource implements ClusterSource {
     return contextObjectsOf(this.reads, this.#kinds());
   }
 
+  // The indexes that the list builds, once for each change of what they read, and not again for the details.
+  index(): ContextIndex {
+    return this.#model.indexOf(this.objects());
+  }
+
   kinds(): (KindDescriptor & { readonly key: string })[] {
     const clusters = clustersKind(this.#model.clusterStore);
 

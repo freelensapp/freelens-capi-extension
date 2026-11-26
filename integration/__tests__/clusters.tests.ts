@@ -561,24 +561,36 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       }, viewTimeout)
       .toBe(true);
 
-    // The locator inside a row starts from the frame: one that starts from the page, an ancestor of the rows, finds
-    // nothing inside a row.
-    const row = page
-      .locator(".TableRow")
-      .filter({ has: opened().getByTestId("capi-cluster-name").getByText(name, { exact: true }) });
+    const row = rowNamed(page, name);
 
     await row.getByTestId("capi-cluster-health").waitFor(viewTimeout);
     return row;
   }
 
-  // Waits until the list shows the row of one Cluster alone, once the search applies: the search of the host filters
-  // the list 250 ms after its input changes, and until then the rows that it leaves out are still listed.
-  async function listsOnly(page: Locator, name: string) {
+  // The row of a Cluster that the list shows, by its name. The locator inside a row starts from the frame: one that
+  // starts from the page, an ancestor of the rows, finds nothing inside a row.
+  function rowNamed(page: Locator, name: string): Locator {
+    return page
+      .locator(".TableRow")
+      .filter({ has: opened().getByTestId("capi-cluster-name").getByText(name, { exact: true }) });
+  }
+
+  // The cell of the name in a row of the page, by the name that it holds. A cell of the list of the extension carries
+  // the class that the CSS module of the page exports for its column, which the build names, and not the id of its
+  // column, which the cells of a list of the host carry: `.TableCell.name` finds nothing on the page, as the first run
+  // in CI showed.
+  function nameCellOf(row: Locator): Locator {
+    return row.locator(".TableCell").filter({ has: opened().getByTestId("capi-cluster-name") });
+  }
+
+  // Waits until the list shows the rows of these Clusters and no other, once the search applies: the search of the host
+  // filters the list 250 ms after its input changes, and until then the rows that it leaves out are still listed.
+  async function listsOnly(page: Locator, ...names: string[]) {
     await expect
       .poll(async () => {
-        const names = await page.getByTestId("capi-cluster-name").allTextContents();
+        const listed = await page.getByTestId("capi-cluster-name").allTextContents();
 
-        return names.length === 1 && names[0].includes(name);
+        return listed.length === names.length && names.every((name) => listed.some((text) => text.includes(name)));
       }, viewTimeout)
       .toBe(true);
   }
@@ -990,17 +1002,23 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
       const page = await openPage();
       const search = page.locator('input[placeholder^="Search"]');
-      const first = await rowOf(page, healthy.name);
-      const second = await rowOf(page, paused.name);
 
-      await search.fill("");
-      await first.waitFor(viewTimeout);
+      // Both rows at once, with a search that keeps them both, the start of their names: in the first run in CI, the
+      // search that had found the row of healthy alone was in the field again when the step clicked the row of paused.
+      await search.fill("freelens-capi-");
+      await listsOnly(page, healthy.name, paused.name);
+
+      const first = rowNamed(page, healthy.name);
+      const second = rowNamed(page, paused.name);
+
+      await first.getByTestId("capi-cluster-health").waitFor(viewTimeout);
+      await second.getByTestId("capi-cluster-health").waitFor(viewTimeout);
 
       // A click on a row, then on another, which the details cover but for its start: they show the Cluster of the
       // row clicked.
       await first.click();
       await detailsOf(healthy.name);
-      await second.locator(".TableCell.name").click({ position: { x: 2, y: 2 } });
+      await nameCellOf(second).click({ position: { x: 2, y: 2 } });
       await detailsOf(paused.name);
       expect(addressOf()).toEqual({ details: paused.address, kubeDetails: null });
 
@@ -1010,15 +1028,15 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       expect(addressOf().details).toBeNull();
       expect(await focusedName()).toBe(paused.address);
 
-      // The search is at the end of the header, which the details cover: a click there lands in the details, which
-      // stay open, with the focus out of the search. Escape closes them, and the focus goes back to the name.
+      // The search is at the end of the header, which the details cover once they have slid in: a click there lands
+      // in the details, which stay open, with the focus out of the search. Escape closes them, and the focus goes back
+      // to the name. The drawer of the host slides in over 100 ms from the right, so the step waits until the middle of
+      // the search lies under the details before it clicks there.
       await first.click();
 
       const drawer = await detailsOf(healthy.name);
-      const box = await search.boundingBox();
-
-      expect(
-        await search.evaluate((input) => {
+      const under = () =>
+        search.evaluate((input) => {
           const area = input.getBoundingClientRect();
 
           return (
@@ -1027,8 +1045,12 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
               ?.closest(".Drawer")
               ?.getAttribute("data-testid") ?? null
           );
-        }),
-      ).toBe(DETAILS);
+        });
+
+      await expect.poll(under, viewTimeout).toBe(DETAILS);
+
+      const box = await search.boundingBox();
+
       if (!box) throw new Error("The search has no box");
       await cluster.page().mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await frames();
@@ -1039,7 +1061,8 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       expect(await focusedName()).toBe(healthy.address);
 
       // With the details closed, the search takes what is typed after a click on it, and the list shows what it keeps.
-      await search.click();
+      // The click selects what the search holds, which the typing replaces.
+      await search.click({ clickCount: 3 });
       await keyboard.type(paused.name);
       expect(await search.inputValue()).toBe(paused.name);
       expect(await cluster.getByTestId(DETAILS).count()).toBe(0);
@@ -1139,7 +1162,8 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       const definition = await definitionOfKind(group, kind);
       const hostDetails = cluster.locator(".KubeObjectDetails");
 
-      await selectNamespaces(cluster, [rollingOut.namespace]);
+      // Two namespaces, so that the badge of the namespace, at the end, has a filter to change.
+      await selectNamespaces(cluster, [rollingOut.namespace, clusterOf("healthy").namespace]);
 
       const page = await openPage();
       const row = await rowOf(page, rollingOut.name);
@@ -1167,12 +1191,14 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       expect(target, kubeDetails ?? "no details of the host").not.toBeNull();
       expect(definition.versions).toContain(target?.[1]);
 
-      // The close icon of the details of the host shows those of the Cluster again.
+      // The close icon of the details of the host shows those of the Cluster again. The address then has no parameter
+      // of the details of the host, on both releases, as the first run in CI showed; an empty one would say the same.
       await hostDetails.locator('.drawer-title [data-icon-name="close"]').click();
       await hostDetails.waitFor({ state: "detached", ...viewTimeout });
       await expect.poll(drawerOnTop, viewTimeout).toBe("extension");
       expect(await titleOf(drawer)).toBe(`Cluster: ${rollingOut.name}`);
-      expect(addressOf()).toEqual({ details: rollingOut.address, kubeDetails: "" });
+      expect(addressOf().details).toBe(rollingOut.address);
+      expect(addressOf().kubeDetails ?? "").toBe("");
 
       // One Escape closes both.
       await openHostDetails();
@@ -1214,10 +1240,24 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
         await target.click();
         await frames();
-        expect(addressOf(), text).toEqual({ details: rollingOut.address, kubeDetails: "" });
+        expect(addressOf().details, text).toBe(rollingOut.address);
+        expect(addressOf().kubeDetails ?? "", text).toBe("");
         expect(await hostDetails.count(), text).toBe(0);
         expect(await titleOf(drawer), text).toBe(`Cluster: ${rollingOut.name}`);
       }
+
+      // The namespace is the badge of the host, which selects that namespace alone in the filter (P32): plain text
+      // would leave both namespaces selected.
+      await drawer.getByTestId("capi-details-namespace").getByText(rollingOut.namespace, { exact: true }).click();
+      await expect
+        .poll(
+          () =>
+            cluster.evaluate(() => [
+              ...(globalThis.FreelensExtensionApi.Renderer?.K8sApi.namespaceStore.contextNamespaces ?? []),
+            ]),
+          viewTimeout,
+        )
+        .toEqual([rollingOut.namespace]);
 
       await keyboard.press("Escape");
       await closed();

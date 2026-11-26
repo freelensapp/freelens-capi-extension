@@ -28,6 +28,7 @@
   vertical-align: middle;
 }
 
+// A Cluster named in a message, a button that opens its details: underlined, as the links of the details are.
 .textButton {
   padding: 0;
   border: 0;
@@ -36,6 +37,14 @@
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
+}
+
+// The focus of the button, which the reset of the host takes away from every element: an outline in a token of the
+// theme, drawn inside the box, so that what holds the button does not cut it (kit, `docs/design.md`, "Interaction and
+// performance").
+.textButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .since {
@@ -78,6 +87,16 @@
   p {
     margin: 0.25em 0 0;
   }
+}
+
+// The labels of the conditions wrap in the column that the host gives the labels of its items, 30% of the row unless a
+// label is longer (drawer-item.scss): between the words of a name, where the view puts a chance to break, and
+// anywhere in a word that the column does not hold. Without it, a long name of the closed set, such as
+// `ControlPlaneMachinesUpToDate`, widens the column of its row alone, and its marks stand out of line with those of the
+// other rows; holding the longest name would narrow the column of the values of every row, and a condition that an
+// availability gate names may be longer.
+.condition > :global(.name) {
+  overflow-wrap: anywhere;
 }
 
 // The nested table of the parts: the kind and the name give their room first, the marks of state keep theirs.

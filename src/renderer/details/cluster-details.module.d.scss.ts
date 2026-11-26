@@ -11,6 +11,7 @@ declare const classNames: {
   readonly note: "note";
   readonly remark: "remark";
   readonly state: "state";
+  readonly condition: "condition";
   readonly table: "table";
   readonly kind: "kind";
   readonly partName: "partName";

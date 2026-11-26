@@ -156,10 +156,12 @@ export function classReferenceOf(cluster: KubeObjectData): ClassReference | unde
 }
 
 // Why the target of a reference is not shown as a link (P18): its definition refused or failed, a definition that names
-// no version that the parser knows, a kind that the cluster does not serve, its kind not read in the namespace of the
-// Cluster, or no such object in that namespace, which was read.
+// no version that the parser knows, a kind that the cluster does not serve, a kind whose definition the cluster has
+// and whose version of the contract it does not serve, its kind not read in the namespace of the Cluster, or no such
+// object in that namespace, which was read.
 export type UnreadReason =
   | Extract<ResolvedReference, { readonly state: "unresolved" }>["reason"]
+  | "version-not-served"
   | "kind-not-read"
   | "not-found";
 
@@ -187,7 +189,8 @@ export function targetReadOf(
       failures: resolution.failure === undefined ? [] : [resolution.failure],
     };
   }
-  if (kindRead === "not-served") return { state: "unread", reason: "not-served", failures: [] };
+  // The definition names a version that the host registered no API for: the cluster has the kind, not at that version.
+  if (kindRead === "not-served") return { state: "unread", reason: "version-not-served", failures: [] };
   if (kindRead.state === "held") return { state: "unread", reason: "kind-not-read", failures: held };
   if (kindRead.state !== "read") return { state: "pending" };
   return { state: "unread", reason: "not-found", failures: [] };

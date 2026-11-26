@@ -24,8 +24,9 @@ vi.mock("../../common/views/context", async (importOriginal) => {
   return { ...actual, indexContext: vi.fn(actual.indexContext) };
 });
 
-// The cases of SPEC-0004, "Tests", "Unit", `clusters-page-v1beta2.test.tsx`, for the list of the first pull request:
-// the props that the layout of the host gets, the reads through the adapters of the page, the states and their words.
+// The cases of SPEC-0004, "Tests", "Unit", `clusters-page-v1beta2.test.tsx`: the props that the layout of the host
+// gets, the reads through the adapters of the page, the states and their words, and the details that the page opens
+// over its list, with their parameter and their focus.
 // The layout of the stub records its props and renders the parts where the host calls back into the page; the
 // subscription is the host's, which the stub does not run: the test drives the loads through the adapters, as the
 // host would.
@@ -69,7 +70,7 @@ function detailsParam(initial = "") {
 
   return {
     get: () => value.get(),
-    set: (next: string) => runInAction(() => value.set(next)),
+    set: vi.fn((next: string) => runInAction(() => value.set(next))),
     clear: () => runInAction(() => value.set("")),
   };
 }
@@ -713,6 +714,8 @@ describe("the details of the extension (P6, P13, P15)", () => {
     fireEvent.click(name);
 
     expect(param.get()).toBe(ADDRESS);
+    // The click stops at the name: the row, which opens the details too, does not set the address a second time.
+    expect(param.set).toHaveBeenCalledTimes(1);
     expect(title()).toBe("Cluster: freelens-capi-healthy");
     expect(screen.getByTestId("capi-details-section-metadata")).toBeDefined();
   });
@@ -800,15 +803,18 @@ describe("the details of the extension (P6, P13, P15)", () => {
     expect(document.activeElement).toBe(nameOf(ADDRESS));
   });
 
-  it("give the focus back to the name on Escape, also from another control", async () => {
+  it("give the focus back to the name of the Cluster whose details close on Escape, also from another control", async () => {
+    const paused = "freelens-capi-paused/freelens-capi-paused";
+
     await opened();
-    fireEvent.click(nameOf(ADDRESS));
-    nameOf("freelens-capi-paused/freelens-capi-paused").focus();
+    // The details of the second row, while the focus is on the name of the first.
+    fireEvent.click(nameOf(paused));
+    nameOf(ADDRESS).focus();
 
     fireEvent.keyDown(window, { code: "Escape", key: "Escape" });
 
     expect(screen.queryByTestId("capi-cluster-details")).toBeNull();
-    expect(document.activeElement).toBe(nameOf(ADDRESS));
+    expect(document.activeElement).toBe(nameOf(paused));
   });
 
   it("give the focus back to the name on a click outside that leaves the focus on the body", async () => {
@@ -842,6 +848,30 @@ describe("the details of the extension (P6, P13, P15)", () => {
 
     expect(search.value).toBe("paused");
     expect(document.activeElement).toBe(search);
+  });
+
+  it("give the details the indexes of the page, which a render of the details does not build again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(CAPTURE);
+
+    const stores = serve();
+
+    hold(stores, ["provisioning"]);
+    select(["freelens-capi-provisioning"]);
+    render(pageOf(detailsParam("freelens-capi-provisioning/freelens-capi-provisioning")));
+    await loadEvery(["freelens-capi-provisioning"]);
+
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
+
+    const built = vi.mocked(indexContext).mock.calls.length;
+
+    // The time that the result of the Cluster names comes: the list and the details render again, with nothing that
+    // the indexes read changed.
+    act(() => {
+      vi.advanceTimersByTime(30 * 60 * 1000);
+    });
+    expect(screen.getByTestId("capi-details-tone").textContent).toMatch(/In the tone of a warning/);
+    expect(vi.mocked(indexContext).mock.calls.length).toBe(built);
   });
 
   it("show the error page in the details alone when they throw, and leave the list", async () => {
