@@ -1,0 +1,74 @@
+// The marks of state (SPEC-0004, P21; SPEC-0003, P31): the `Badge` of the host, its word in the color of the text
+// of the theme, on a background that `color-mix` takes from the token of its tone, with a border of that token. A
+// mark of the tone of Unknown keeps the background that the host gives every badge, which is that token itself. The
+// view authors no color: the tokens of the theme do, and nothing tells a dark theme from a light one.
+
+.ok {
+  --markToken: var(--colorOk);
+}
+
+.info {
+  --markToken: var(--colorInfo);
+}
+
+.warning {
+  --markToken: var(--colorWarning);
+}
+
+.error {
+  --markToken: var(--colorError);
+}
+
+.terminated {
+  --markToken: var(--colorTerminated);
+}
+
+.vague {
+  --markToken: var(--colorVague);
+}
+
+// Two classes and the attribute of a mark outweigh the rule of the host that gives every badge its background,
+// whatever the order in which the stylesheets load.
+.mark.mark[data-tone] {
+  border: 1px solid var(--markToken);
+  background: color-mix(in srgb, var(--markToken) 20%, transparent);
+}
+
+.mark.mark[data-tone="vague"] {
+  background: var(--colorVague);
+}
+
+// A cell of marks is one line (kit, `docs/design.md`, "Lists"; SPEC-0004, P12): the rows of the list of the host
+// have one height, and a second line runs into the next row. The marks are boxes of that line, never wrapped, and
+// the ellipsis hides from the first one that does not fit; the tooltip of the cell carries the whole content.
+.cell {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.mark + .mark,
+.mark + .note {
+  margin-left: 0.25em;
+}
+
+.note {
+  white-space: nowrap;
+}
+
+// The marks of a cell and its note stand at the middle of its line, where their words line up. A mark is a box of
+// the line that cuts what overflows, and such a box stands on the baseline of the line by the bottom edge of its
+// margin, not by its words (CSS 2.1, 10.8.1): on the baseline, the words of a mark rise above those of the note.
+.cell > .mark,
+.cell > .note {
+  vertical-align: middle;
+}
+
+// The whole content of a cell, one line for each mark and each cause.
+.tooltip {
+  white-space: normal;
+  text-align: left;
+}
