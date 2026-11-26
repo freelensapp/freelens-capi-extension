@@ -36,8 +36,9 @@ import {
   weightTone,
 } from "../../common/views/cluster-details";
 import { CLUSTERS_PERMISSION, clusterViewOf } from "../../common/views/cluster-view";
-import { clusterPartsOf, indexContext, StatusMemo } from "../../common/views/context";
+import { clusterPartsOf, StatusMemo } from "../../common/views/context";
 import { detailsAddressOf } from "../../common/views/details-address";
+import { nameOf, namespaceOf } from "../../common/views/objects";
 import { ErrorBoundary } from "../components/error-boundary";
 import { Duration, Instant, MarkNote, MarkView } from "../components/marks";
 import { ClusterNamespaceRead } from "../reads/cluster-namespace-read";
@@ -88,10 +89,31 @@ const {
   Navigation,
 } = Renderer;
 
-// The fields of the metadata that the details of the extension leave to rows of their own: the three that the host
-// hides by default, which the prop replaces, and the namespace and the owners, which it would link to its own details
-// (P32).
-export const HIDDEN_METADATA = ["uid", "resourceVersion", "selfLink", "namespace", "ownerReferences"] as const;
+// The fields of the metadata that the host renders, in its order (kube-object-meta.tsx, at v2.0.0 and v2.1.0). The
+// details of the extension render them in three parts, each with `hideFields` that leaves out every other field, so
+// that the namespace, as the namespace badge, and the owners, as text, take the places that the host gives them,
+// after the name and after the finalizers, in rows of their own (P32). The three that the host hides by default, which
+// the prop replaces, stay hidden.
+const META_FIELDS = [
+  "creationTimestamp",
+  "deletionTimestamp",
+  "name",
+  "namespace",
+  "uid",
+  "selfLink",
+  "resourceVersion",
+  "labels",
+  "annotations",
+  "finalizers",
+  "ownerReferences",
+  "managedFields",
+] as const satisfies readonly Renderer.K8sApi.KubeMetaField[];
+
+type MetaField = (typeof META_FIELDS)[number];
+
+function HostMeta({ cluster, shown }: { cluster: Renderer.K8sApi.KubeObject; shown: readonly MetaField[] }) {
+  return <KubeObjectMeta object={cluster} hideFields={META_FIELDS.filter((field) => !shown.includes(field))} />;
+}
 
 // The marks of a row of the details, side by side; unlike a cell of the list, a row of the details may take two lines.
 function Marks({ children }: { children: ReactNode }) {
@@ -329,6 +351,10 @@ function StatusView({ details, host }: { details: ClusterDetails; host: ViewHost
         ) : (
           <Marks>
             <HealthMark cell={health} testId="capi-details-health" />
+            {/* The mark of freshness next to the health, as in the list; its causes are in the row of freshness. */}
+            {health.stale.length === 0 ? null : (
+              <MarkView mark={{ word: "stale", tone: "vague" }} data-testid="capi-details-health-stale" />
+            )}
             {health.poolsUnknown === 0 ? null : (
               <MarkNote>
                 {health.poolsUnknown === 1 ? "1 MachinePool" : `${health.poolsUnknown} MachinePools`} of unknown health
@@ -475,7 +501,17 @@ function ReferenceText({ reference, testId }: { reference: ReferenceView; testId
   );
 }
 
-function ReferenceRows({ reference, testId }: { reference: ReferenceView; testId: string }) {
+// The rows of a reference: the object, and its health, with its activities for the control plane; the infrastructure
+// cluster shows its health alone, as "The details" give it.
+function ReferenceRows({
+  reference,
+  testId,
+  activities = true,
+}: {
+  reference: ReferenceView;
+  testId: string;
+  activities?: boolean;
+}) {
   const { read } = reference;
 
   return (
@@ -489,7 +525,7 @@ function ReferenceRows({ reference, testId }: { reference: ReferenceView; testId
         </DrawerItem>
       ) : read.state === "unread" ? (
         <DrawerItem name="Health" data-testid={`${testId}-unread`}>
-          {`Not read. ${UNREAD_WORDS[read.reason]}`}
+          {read.reason === "not-found" ? UNREAD_WORDS[read.reason] : `Not read. ${UNREAD_WORDS[read.reason]}`}
           {read.failures.map((failure, index) => (
             <p key={`failure-${index}`} className={styles.message}>
               {failure.message}
@@ -501,9 +537,11 @@ function ReferenceRows({ reference, testId }: { reference: ReferenceView; testId
           <DrawerItem name="Health">
             <HealthMark cell={read.health} testId={`${testId}-health`} />
           </DrawerItem>
-          <DrawerItem name="Activities">
-            <ActivityMarks cell={read.activity} testId={`${testId}-activity`} />
-          </DrawerItem>
+          {activities ? (
+            <DrawerItem name="Activities">
+              <ActivityMarks cell={read.activity} testId={`${testId}-activity`} />
+            </DrawerItem>
+          ) : null}
         </>
       )}
     </>
@@ -679,7 +717,11 @@ function InfrastructureView({ section }: { section: InfrastructureSection }) {
     <div data-testid="capi-details-section-infrastructure">
       <DrawerTitle>Infrastructure</DrawerTitle>
       {section.reference === undefined ? null : (
-        <ReferenceRows reference={section.reference} testId="capi-details-infrastructure-reference" />
+        <ReferenceRows
+          reference={section.reference}
+          testId="capi-details-infrastructure-reference"
+          activities={false}
+        />
       )}
       <DrawerItem name="Provisioned" data-testid="capi-details-provisioned">
         <AnswerView answer={section.provisioned} />
@@ -762,6 +804,24 @@ function NetworkView({ section }: { section: NetworkSection }) {
   );
 }
 
+// A name with a chance to break between its words, as `ControlPlaneMachinesUpToDate` before each capital that follows
+// a lowercase letter or a digit, or after a `.`, `-`, `_` or `/`, so that a long one wraps in the column of the labels
+// (the stylesheet says why); the text stays the name as written.
+function Breakable({ text }: { text: string }) {
+  const words = text.split(/(?<=[a-z0-9])(?=[A-Z])|(?<=[./_-])/);
+
+  return (
+    <>
+      {words.map((word, index) => (
+        <React.Fragment key={`${index}-${word}`}>
+          {index === 0 ? null : <wbr />}
+          {word}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 // Each condition in the order that the controllers keep, with its weight as a mark, a negative one at rest never in
 // the tone of an issue (SPEC-0001, H3).
 function ConditionsView({ details, host }: { details: ClusterDetails; host: ViewHost }) {
@@ -772,7 +832,12 @@ function ConditionsView({ details, host }: { details: ClusterDetails; host: View
         const { condition } = view;
 
         return (
-          <DrawerItem key={condition.type} name={condition.type} data-testid="capi-details-condition">
+          <DrawerItem
+            key={condition.type}
+            name={<Breakable text={condition.type} />}
+            className={styles.condition}
+            data-testid="capi-details-condition"
+          >
             <Marks>
               <MarkView
                 mark={{ word: condition.weight, tone: weightTone(condition.weight) }}
@@ -795,20 +860,21 @@ function ConditionsView({ details, host }: { details: ClusterDetails; host: View
   );
 }
 
-// The metadata of the host, with the namespace as its badge, which selects it in the filter, and the owners as text
-// (P32).
+// The metadata of the host, with the namespace as its badge, which selects it in the filter, and the owners as text,
+// each where the host puts it (P32).
 function MetadataView({ cluster }: { cluster: Renderer.K8sApi.KubeObject }) {
   const owners = cluster.getOwnerRefs();
   const namespace = cluster.getNs();
 
   return (
     <div data-testid="capi-details-section-metadata">
-      <KubeObjectMeta object={cluster} hideFields={[...HIDDEN_METADATA]} />
+      <HostMeta cluster={cluster} shown={["creationTimestamp", "deletionTimestamp", "name"]} />
       {namespace === undefined ? null : (
         <DrawerItem name="Namespace" data-testid="capi-details-namespace">
           <NamespaceSelectBadge namespace={namespace} />
         </DrawerItem>
       )}
+      <HostMeta cluster={cluster} shown={["labels", "annotations", "finalizers"]} />
       {owners.length === 0 ? null : (
         <DrawerItem name="Controlled By" data-testid="capi-details-owners">
           {owners.map((owner) => (
@@ -816,6 +882,7 @@ function MetadataView({ cluster }: { cluster: Renderer.K8sApi.KubeObject }) {
           ))}
         </DrawerItem>
       )}
+      <HostMeta cluster={cluster} shown={["managedFields"]} />
     </div>
   );
 }
@@ -896,9 +963,24 @@ const ClusterContent = observer(({ source, namespace, cluster, host, metadata }:
 
   memo.sweep();
 
-  const index = indexContext(source.objects());
+  // The indexes of the source, built again only when what they read changes; those of the page when the details take
+  // its reads.
+  const index = source.index();
   const parts = clusterPartsOf(index, cluster, now, memo);
-  const details = clusterDetailsOf(parts, index, readFailuresOf(source.reads, source.kinds(), namespace));
+  // The Cluster is found, so its namespace was read: a hold of the Clusters, from a read of another namespace, is no
+  // failure of these details (P25).
+  const clustersKey = source.clusters().key;
+  const failures = readFailuresOf(
+    source.reads,
+    source.kinds().filter((kind) => kind.key !== clustersKey),
+    namespace,
+  );
+  // The Clusters that the view read in the namespace of the Cluster, which a message may name as a link (P18).
+  const readClusters = source
+    .clusters()
+    .items.filter((item) => namespaceOf(item) === namespace)
+    .flatMap((item) => nameOf(item) ?? []);
+  const details = clusterDetailsOf(parts, index, failures, readClusters);
   const next = statusesOf(parts)
     .map((status) => status.changesAt)
     .filter((instant): instant is number => instant !== undefined && instant > now)

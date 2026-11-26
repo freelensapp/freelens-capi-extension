@@ -18,8 +18,10 @@
 // - Topology, Network and Conditions.
 //
 // A reference to an object of Cluster API is plain text, its kind and its name, until SPEC-0005 gives it details of
-// the extension, as the maintainer decided (P18); a reference to an object of a provider is a link to the details of
-// the host when the view read the object, and otherwise text that says why.
+// the extension (P18): the maintainer decided it for the KubeadmControlPlane, the MachineDeployments, the MachinePools
+// and the ClusterClass, and P18 proposes it for the other objects of Cluster API that a view names, a MachineSet or a
+// Machine among the parts or in a message. A reference to an object of a provider is a link to the details of the
+// host when the view read the object, and otherwise text that says why.
 
 import { PENDING_HOOKS_ANNOTATION, parseListAnnotation } from "../parsers/list-annotation";
 import { activityCell, compareVersions, healthCell } from "./cluster-cells";
@@ -139,24 +141,32 @@ export const UNREAD_WORDS: Record<UnreadReason, string> = {
   "definition-failed": "Its definition could not be read.",
   "no-known-version": "Its definition names no version of the contract that this extension knows.",
   "not-served": "This cluster serves no such kind.",
+  "version-not-served":
+    "This cluster does not serve this kind at the version that the contract label of its definition names.",
   "kind-not-read": "Its kind could not be read in the namespace of the Cluster.",
   "not-found": "No such object is in the namespace of the Cluster.",
 };
 
-// The names of a subject of a line of a message, each as P18 shows it: a link to the details of the extension for a
-// Cluster; for an object of a provider that the Cluster names, the link of that reference; and text for every other
-// object, those of Cluster API among them, until SPEC-0005.
+// The names of a subject of a line of a message, each as P18 shows it, as a link only when the view read its target:
+// a Cluster of the namespace that the view read opens its details of the extension; an object of a provider that a
+// reference of the Cluster names, its control plane or its infrastructure cluster, read by the view, opens the details
+// of the host as the link of that reference does; every other name is text, those of Cluster API among them, until
+// SPEC-0005.
 export type SubjectTarget =
   | { readonly form: "cluster"; readonly namespace: string; readonly name: string }
   | { readonly form: "host"; readonly selfLink: string }
   | { readonly form: "text" };
 
 export function subjectTarget(
-  details: Pick<ClusterDetails, "cluster" | "controlPlane" | "infrastructure">,
+  details: Pick<ClusterDetails, "cluster" | "controlPlane" | "infrastructure" | "readClusters">,
   kind: string,
   name: string,
 ): SubjectTarget {
-  if (kind === "Cluster") return { form: "cluster", namespace: namespaceOf(details.cluster) ?? "", name };
+  if (kind === "Cluster") {
+    return details.readClusters.includes(name)
+      ? { form: "cluster", namespace: namespaceOf(details.cluster) ?? "", name }
+      : { form: "text" };
+  }
 
   for (const reference of [details.controlPlane?.reference, details.infrastructure?.reference]) {
     if (reference?.kind === kind && reference.name === name && reference.selfLink !== undefined) {
@@ -584,6 +594,8 @@ export interface ConditionView {
 
 export interface ClusterDetails {
   readonly cluster: ClusterObject;
+  // The names of the Clusters that the view read in the namespace of the Cluster, which a message may name.
+  readonly readClusters: readonly string[];
   // An input of the model of the Cluster is not loaded yet: its marks show the spinner.
   readonly pending: boolean;
   readonly status: StatusSection;
@@ -769,17 +781,20 @@ export function readFailuresOf(
   });
 }
 
-// The details of a Cluster, from its parts and the reads of the view that shows it.
+// The details of a Cluster, from its parts and the reads of the view that shows it: the reads that failed in its
+// namespace, and the names of the Clusters that it read there.
 export function clusterDetailsOf(
   parts: ClusterParts,
   index: ContextIndex,
   failures: readonly ReadFailureView[],
+  readClusters: readonly string[] = [],
 ): ClusterDetails {
   const { row } = parts;
   const { cluster } = row;
 
   return {
     cluster,
+    readClusters,
     pending: row.pending,
     status: statusSection(cluster, row.status, row.conditions, failures),
     controlPlane: controlPlaneSection(cluster, parts, index, row.conditions),

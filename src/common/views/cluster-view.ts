@@ -9,10 +9,14 @@
 // of the view alone: a read of the view that fails leaves the list as it is.
 //
 // - Loading: the Clusters of the namespace are not read yet, and the view shows the spinner.
-// - Found: the Cluster is in the store, in a namespace that was read.
+// - Found: the Cluster is in the store for its namespace, which was read. The view looks for it first: a load that
+//   failed in another namespace holds the Clusters back in every namespace of the load, and a refresh that failed in
+//   every namespace of the last load (P25), while the host empties exactly the namespaces whose list failed, so a
+//   Cluster in the store proves that its namespace was read, as the list that shows its row knows (Partial).
 // - Not found: the namespace was read, and no Cluster of that name is in it.
-// - Not read: the read of the Clusters of the namespace was refused or failed, or a refresh of it failed, which the
-//   view says with the message of each answer and, for a refusal, the permission it takes (SPEC-0001, R6.4).
+// - Not read: no such Cluster is in the store, and the read of the Clusters of its namespace was refused or failed,
+//   or a refresh of it failed, which the view says with the message of each answer and, for a refusal, the permission
+//   it takes (SPEC-0001, R6.4).
 
 import { nameOf, namespaceOf } from "./objects";
 import { namespaceRead } from "./read-state";
@@ -51,7 +55,12 @@ export function clusterViewOf<T extends KubeObjectData>(
   if (clusters.key === undefined) return { state: "pending" };
 
   const read = namespaceRead(reads, clusters.key, namespace);
+  const cluster =
+    read.state === "read" || read.state === "held"
+      ? clusters.items.find((item) => namespaceOf(item) === namespace && nameOf(item) === name)
+      : undefined;
 
+  if (cluster !== undefined) return { state: "found", cluster };
   if (read.state === "held") {
     const holds = holdsOf(reads, clusters.key, namespace);
     const failures = [...(holds.load?.failures ?? []), ...(holds.refresh?.failures ?? [])];
@@ -62,11 +71,7 @@ export function clusterViewOf<T extends KubeObjectData>(
       ...holds,
     };
   }
-  if (read.state !== "read") return { state: "pending" };
-
-  const cluster = clusters.items.find((item) => namespaceOf(item) === namespace && nameOf(item) === name);
-
-  return cluster === undefined ? { state: "not-found" } : { state: "found", cluster };
+  return read.state === "read" ? { state: "not-found" } : { state: "pending" };
 }
 
 // The permission that a read of the Clusters of a namespace takes (SPEC-0001, R6.4).

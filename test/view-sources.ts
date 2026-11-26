@@ -2,6 +2,7 @@
 // holds the objects of the fixtures of SPEC-0002 as the stores of the host hold them, with the state of the reads of
 // every kind in the namespaces given, as a page or a view of one Cluster would have read them.
 
+import { indexContext } from "../src/common/views/context";
 import { NO_READS, reduceReads } from "../src/common/views/read-state";
 import { DefinitionReads } from "../src/renderer/reads/definitions";
 import { CAPTURE, fixtureSet } from "./fixture-sets";
@@ -154,6 +155,7 @@ export function sourceOf(objects: readonly HostObject[], options: SourceOptions 
     controlPlanes: new Map([provider("kubeadmControlPlanes")]),
     infrastructures: new Map([provider("devClusters")]),
   };
+  const index = indexContext(contextObjects);
 
   return {
     reads,
@@ -164,6 +166,7 @@ export function sourceOf(objects: readonly HostObject[], options: SourceOptions 
     }),
     clusters: () => kindObjects(objects, "clusters") as KindObjects<ClusterObject>,
     objects: () => contextObjects,
+    index: () => index,
     kinds: () => (Object.keys(KINDS) as KindName[]).map(descriptorOf),
   };
 }

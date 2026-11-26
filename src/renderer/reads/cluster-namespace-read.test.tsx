@@ -168,18 +168,74 @@ describe("a view of one Cluster whose namespace the page does not read (P31)", (
       expect(store.loadAll.mock.calls[0][0].namespaces, store.api.kind).toEqual([NAMESPACE]);
       expect(store.subscribe, store.api.kind).toHaveBeenCalledTimes(1);
       expect(store.loadAll.mock.invocationCallOrder[0]).toBeLessThan(store.subscribe.mock.invocationCallOrder[0]);
+      // The load and the subscription of a store run under one controller, of that store alone.
+      expect(store.subscribe.mock.calls[0][0].abortController.signal, store.api.kind).toBe(
+        store.loadAll.mock.calls[0][0].reqInit.signal,
+      );
     }
 
-    // One controller, which the effect created, for every subscription.
-    const controllers = new Set(ownStores.map((store) => store.subscribe.mock.calls[0][0].abortController));
+    const controllers = ownStores.map((store) => store.subscribe.mock.calls[0][0].abortController as AbortController);
 
-    expect(controllers.size).toBe(1);
-
-    const [controller] = controllers as Set<AbortController>;
-
-    expect(controller.signal.aborted).toBe(false);
+    expect(new Set(controllers).size).toBe(ownStores.length);
+    expect(controllers.filter((controller) => controller.signal.aborted)).toEqual([]);
     unmount();
-    expect(controller.signal.aborted).toBe(true);
+    expect(controllers.filter((controller) => !controller.signal.aborted)).toEqual([]);
+  });
+
+  it("subscribes a store only once its load has ended", async () => {
+    serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
+
+    const built = host.builtStores.length;
+
+    serveOwn(objectsOfStates(["healthy"]));
+
+    // The answers to the loads wait, as those of the cluster do.
+    const release = host.deferLoads();
+
+    view(own());
+    await act(async () => undefined);
+
+    const waiting = builtSince(built);
+
+    expect(waiting.map((store) => store.api.kind)).toContain("Cluster");
+    for (const store of waiting) {
+      expect(store.loadAll, store.api.kind).toHaveBeenCalledTimes(1);
+      expect(store.subscribe, store.api.kind).not.toHaveBeenCalled();
+    }
+
+    release();
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    for (const store of waiting) expect(store.subscribe, store.api.kind).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops the stores built on the APIs that the host replaced as it starts those of the new ones", async () => {
+    serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
+
+    const built = host.builtStores.length;
+
+    serveOwn(objectsOfStates(["healthy"]));
+    view(own());
+    await act(async () => undefined);
+
+    const old = builtSince(built).find((store) => store.api.kind === "Machine");
+    const replaced = host.builtStores.length;
+
+    // The host registers the API of the Machines again, as it does after its store of definitions failed.
+    act(() => host.registerApi({ ...APIS.machines }));
+    await act(async () => undefined);
+
+    const started = builtSince(replaced);
+
+    expect(started.map((store) => store.api.kind)).toEqual(["Machine"]);
+    expect(started[0].api).not.toBe(old?.api);
+    expect(started[0].loadAll).toHaveBeenCalledTimes(1);
+    expect(started[0].subscribe).toHaveBeenCalledTimes(1);
+    // The store of the old API stops: the controller of its read is aborted, and nothing reads it again.
+    expect(old?.subscribe.mock.calls[0][0].abortController.signal.aborted).toBe(true);
+    expect(old?.loadAll).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
   });
 
   it("is what the panel in the details of the host does when no page is mounted", async () => {
@@ -279,6 +335,38 @@ describe("a view of one Cluster whose namespace the page does not read (P31)", (
 });
 
 describe("the reads of one Cluster, as a source of the view", () => {
+  it("build the indexes of the context again only when what they read changes", async () => {
+    serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME);
+
+    serveOwn(objectsOfStates(["healthy"]));
+
+    const stop = read.start();
+
+    await act(async () => undefined);
+
+    const index = read.index();
+
+    expect(read.index()).toBe(index);
+
+    // A Machine of the namespace changes its version.
+    const machines = read.stores.find((store) => store.api.kind === "Machine") as unknown as {
+      items: { replace(items: unknown[]): void } & HostObject[];
+    };
+
+    act(() => {
+      const [machine, ...others] = [...machines.items];
+
+      machines.items.replace([
+        hostObject({ ...machine, metadata: { ...machine.metadata, resourceVersion: "2" } } as Record<string, unknown>),
+        ...others,
+      ]);
+    });
+    expect(read.index()).not.toBe(index);
+    stop();
+  });
+
   it("give the model the objects of the namespace alone, and no object of the operator", async () => {
     serve(undefined, [...DEFINITIONS, DEV_CLUSTERS]);
 

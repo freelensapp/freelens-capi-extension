@@ -191,9 +191,10 @@ describe("the target of a reference (P18)", () => {
       reason: "not-served",
       failures: [],
     });
+    // The definition names a version that the cluster does not serve: the kind is there, not at that version.
     expect(targetReadOf(resolved, "not-served", [], false)).toEqual({
       state: "unread",
-      reason: "not-served",
+      reason: "version-not-served",
       failures: [],
     });
   });

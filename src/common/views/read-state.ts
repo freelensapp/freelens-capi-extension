@@ -327,6 +327,14 @@ export function namespaceRead(state: ReadsState, kind: string, namespace: string
   return { state: "pending" };
 }
 
+// Whether the host read the last load of a kind over the whole cluster, with no failure, and does not follow it (P34):
+// a change reaches what that load read only when the filter changes or the page opens again.
+export function isNotFollowed(state: ReadsState, kind: string): boolean {
+  const last = kindOf(state, kind).last;
+
+  return last !== undefined && last.overWholeCluster && last.failures.length === 0 && !last.followed;
+}
+
 // Whether the list is ready to show its rows, or its empty list (P19): not before the first load of the Clusters in
 // this mount of the page has ended, and not while a load of the Clusters runs and no row is listed.
 export function isListReady(state: ReadsState, clusters: string, rows: number): boolean {
@@ -510,7 +518,7 @@ export function listNotices(
   // A list that the host read once over the whole cluster and does not follow (P34).
   const last = reads.last;
 
-  if (last !== undefined && last.overWholeCluster && last.failures.length === 0 && !last.followed) {
+  if (last !== undefined && isNotFollowed(state, clusters.key)) {
     overList.push({
       id: "list:not-followed",
       tone: "info",

@@ -34,7 +34,15 @@ function detailsOf(states: string[], change?: (cluster: Fields) => void, options
   const index = indexContext(source.objects());
   const parts = clusterPartsOf(index, cluster as unknown as ClusterObject, CAPTURE, new StatusMemo());
 
-  return clusterDetailsOf(parts, index, readFailuresOf(source.reads, source.kinds(), cluster.metadata.namespace));
+  return clusterDetailsOf(
+    parts,
+    index,
+    readFailuresOf(source.reads, source.kinds(), cluster.metadata.namespace),
+    source
+      .clusters()
+      .items.filter((item) => item.metadata?.namespace === cluster.metadata.namespace)
+      .map((item) => item.metadata?.name ?? ""),
+  );
 }
 
 describe("the notes of the model, in words (SPEC-0003, What it takes and returns)", () => {
@@ -114,6 +122,7 @@ describe("the marks and the words of the details", () => {
         "definition-failed",
         "no-known-version",
         "not-served",
+        "version-not-served",
         "kind-not-read",
         "not-found",
       ].sort(),
@@ -144,15 +153,17 @@ describe("the marks and the words of the details", () => {
     });
   });
 
-  it("link a Cluster named in a subject to its details, and the object of a provider that the Cluster names", () => {
+  it("link a Cluster named in a subject to its details, and the object of a provider that the Cluster names, when the view read them", () => {
     const details = detailsOf(["healthy"]);
     const devCluster = details.infrastructure?.reference;
 
-    expect(subjectTarget(details, "Cluster", "another")).toEqual({
+    expect(subjectTarget(details, "Cluster", "freelens-capi-healthy")).toEqual({
       form: "cluster",
       namespace: "freelens-capi-healthy",
-      name: "another",
+      name: "freelens-capi-healthy",
     });
+    // A Cluster that the view did not read in the namespace is text.
+    expect(subjectTarget(details, "Cluster", "another")).toEqual({ form: "text" });
     expect(subjectTarget(details, "DevCluster", devCluster?.name ?? "")).toEqual({
       form: "host",
       selfLink: devCluster?.selfLink,

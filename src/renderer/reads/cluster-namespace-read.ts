@@ -13,16 +13,19 @@
 //   returns for that API stays its own;
 // - for a kind of a provider that the Cluster names, its control plane or its infrastructure cluster, one
 //   `ProviderObjectStore`, built with the API that the host registered for that kind at the version of its contract;
-// - in the effect that the view opens: for each store, one `loadAll` of that namespace, then its `subscribe`, under
-//   one `AbortController` that the effect creates, as the host does for its own subscriptions; a store that the view
-//   needs later, as a reference names a kind of a provider, is loaded and subscribed under the same controller. When
-//   the view closes, the subscriptions end.
+// - in the effect that the view opens: for each store, one `loadAll` of that namespace, then, once it has ended, its
+//   `subscribe`, under one `AbortController` that the effect creates, as the host does for its own subscriptions.
+//   Each store reads under a controller of its own, which that one aborts, so that a store that the view no longer
+//   needs stops alone: a store that the view needs later, as a reference names a kind of a provider, starts as it is
+//   built, and when the host registers the APIs again, as it does after its store of definitions failed, the stores
+//   built on the old ones stop as those of the new ones start. When the view closes, every subscription ends.
 //
-// The stores are built in the effect, once for the view, so that the second run of an effect that Freelens dev
+// The stores are built in the effect, once for each API, so that the second run of an effect that Freelens dev
 // renders in `React.StrictMode` builds nothing more, and a view that never mounts builds nothing. Each store keeps its
 // own loaded namespaces and its own items, so the read touches nothing that the page, or a list of the host, reads,
 // and its failures give the state of the view alone (P25). The view takes its context from the items of its stores,
-// which hold that namespace alone, and not from their `contextItems`, which follow the filter.
+// which hold that namespace alone, and not from their `contextItems`, which follow the filter, and builds the indexes
+// of that context again only when what they read changes, as the list does.
 //
 // It reads the namespace of its Cluster alone: the kinds of the operator, which the page reads in the namespaces of
 // the filter (P2), and a ClusterClass in another namespace (SPEC-0001, R3.12), are not read for the view, and the
@@ -30,6 +33,7 @@
 
 import { Renderer } from "@freelensapp/extensions";
 import { observable, reaction, runInAction } from "mobx";
+import { contextVersions, indexContext } from "../../common/views/context";
 import { failureOf, NO_READS, reduceReads } from "../../common/views/read-state";
 import { contractReferenceOf, resolveReference } from "../../common/views/references";
 import { Cluster, ClusterStore } from "../api/cluster/cluster-v1beta2";
@@ -55,7 +59,7 @@ import { ProviderObjectStore } from "./provider-object-store";
 import { StoreAdapter } from "./store-adapter";
 
 import type { ClusterObject } from "../../common/status/index";
-import type { ContextObjects, KindObjects, ProviderKindObjects } from "../../common/views/context";
+import type { ContextIndex, ContextObjects, KindObjects, ProviderKindObjects } from "../../common/views/context";
 import type { KindDescriptor, KindFeeds, ReadEvent, ReadsState } from "../../common/views/read-state";
 import type { ContractReference, ResolvedReference } from "../../common/views/references";
 import type { ClusterSource } from "./cluster-source";
@@ -136,6 +140,7 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
   readonly #keys = new WeakMap<ReadStore, string>();
   readonly #now: () => number;
   #nextLoad = 0;
+  #index: { readonly reads: ReadsState; readonly versions: string; readonly index: ContextIndex } | undefined;
 
   constructor(namespace: string, name: string, definitions = new DefinitionReads(), now: () => number = Date.now) {
     this.namespace = namespace;
@@ -221,6 +226,19 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
     };
   }
 
+  // The indexes of the context, built again only when what they read changes: the state of the reads, and the key, the
+  // identity and the version of every object of every store of the view, and how each reference resolves; never at a
+  // render or a tick of a timer that changes none of them (AGENTS.md, "Rules That Fail Silently").
+  index(): ContextIndex {
+    const objects = this.objects();
+    const versions = contextVersions(objects);
+
+    if (this.#index === undefined || this.#index.reads !== objects.reads || this.#index.versions !== versions) {
+      this.#index = { reads: objects.reads, versions, index: indexContext(objects) };
+    }
+    return this.#index.index;
+  }
+
   // The kinds that the view reads, by the key of their store, for what it says of a read that failed.
   kinds(): (KindDescriptor & { readonly key: string })[] {
     const models = Object.values(MODEL_KINDS).flatMap(({ model, noun, feeds }) => {
@@ -285,33 +303,47 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
   // The reads of the view, for an effect of the view, which ends them on its cleanup.
   start(): () => void {
     const controller = new AbortController();
-    const unsubscribes: (() => void)[] = [];
-    const started = new Set<OwnStore>();
+    // The reads that run, by store, each with what stops it.
+    let running = new Map<OwnStore, () => void>();
     const read = (store: OwnStore) => {
+      const own = new AbortController();
+      const abortOwn = () => own.abort();
       const adapter = new StoreAdapter(store, this, () => 0);
+      let unsubscribe: (() => void) | undefined;
 
+      controller.signal.addEventListener("abort", abortOwn);
       this.#keys.set(adapter, storeKey(store));
-      started.add(store);
       void adapter
         .loadAll({
           namespaces: [this.namespace],
-          reqInit: { signal: controller.signal },
+          reqInit: { signal: own.signal },
           onLoadFailure: () => undefined,
         })
         .then(() => {
-          if (!controller.signal.aborted) {
-            unsubscribes.push(adapter.subscribe({ onLoadFailure: () => undefined, abortController: controller }));
+          if (!own.signal.aborted) {
+            unsubscribe = adapter.subscribe({ onLoadFailure: () => undefined, abortController: own });
           }
         });
+      running.set(store, () => {
+        controller.signal.removeEventListener("abort", abortOwn);
+        own.abort();
+        unsubscribe?.();
+      });
     };
     const stopStores = reaction(
       () => this.#neededApis(),
       (apis) => {
-        for (const api of apis) {
-          const store = this.#build(api);
+        const needed = new Set(apis.map((api) => this.#build(api)));
 
-          if (!started.has(store)) read(store);
+        // A store that the view no longer needs, as one built on an API that the host replaced, stops, and the view
+        // forgets it, as the stores of the new APIs start.
+        for (const [store, stop] of running) {
+          if (needed.has(store)) continue;
+          stop();
+          this.#forget(store);
         }
+        running = new Map([...running].filter(([store]) => needed.has(store)));
+        for (const store of needed) if (!running.has(store)) read(store);
       },
       { fireImmediately: true },
     );
@@ -330,8 +362,14 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
       stopStores();
       stopDefinitions();
       controller.abort();
-      for (const unsubscribe of unsubscribes.splice(0)) unsubscribe();
+      for (const stop of running.values()) stop();
+      running.clear();
     };
+  }
+
+  // A store of the view that it no longer needs, which it forgets.
+  #forget(store: OwnStore): void {
+    runInAction(() => this.#stores.replace([...this.#stores].filter(([, built]) => built !== store)));
   }
 
   #dispatch(event: ReadEvent): void {
