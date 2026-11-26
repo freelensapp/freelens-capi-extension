@@ -320,6 +320,168 @@ describe("the objects of a Machine and of a MachineSet (P7)", () => {
   });
 });
 
+describe("Other objects, with what it holds by the same rules (P7)", () => {
+  const WORKER = "freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg";
+  const SET = "freelens-capi-healthy-md-0-m9x7h-m5gtb";
+  // The tree of healthy above Workers, and after them, as the expected trees below share them.
+  const HEAD = `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+    Machine freelens-capi-healthy-d2lgq-zqlcx
+      DevMachine freelens-capi-healthy-d2lgq-zqlcx (infrastructure machine)
+      KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx
+    Templates
+      DevMachineTemplate freelens-capi-healthy-rclml (template)
+`;
+  const TAIL = `
+  ClusterClass quick-start
+  Add-ons
+    ClusterResourceSet cni-kindnet
+      ConfigMap cni-kindnet [applied]
+    ClusterResourceSetBinding freelens-capi-healthy
+  Health checks
+    MachineHealthCheck freelens-capi-healthy-d2lgq
+    MachineHealthCheck freelens-capi-healthy-md-0-m9x7h
+`;
+  // healthy with its worker Machine 2xxxg under Other objects: it holds its DevMachine and its KubeadmConfig, which its
+  // references name, and its MachineSet holds the other Machine alone.
+  const WORKER_ELSEWHERE = `${HEAD}
+  Workers
+    MachineDeployment freelens-capi-healthy-md-0-m9x7h
+      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 (infrastructure machine)
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+${TAIL}
+  Other objects
+    Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+      DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)
+      KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+`;
+
+  function withoutOwners(objects: Writable[], kind: string): void {
+    delete named(objects, kind, WORKER).metadata.ownerReferences;
+  }
+
+  it("holds a worker Machine with no owner references, and under it the DevMachine and the KubeadmConfig that it controls and names", () => {
+    const objects = setOf("healthy");
+
+    withoutOwners(objects, "Machine");
+
+    const tree = treeOf(objects, HEALTHY);
+
+    expect(treeOutline(tree)).toEqual(outlineRows(WORKER_ELSEWHERE));
+    expect(nodeOf<ObjectNode>(tree, machineId(WORKER)).placement).toEqual({
+      by: "reason",
+      reason: { code: "no-owner" },
+    });
+    expect(nodeOf<ObjectNode>(tree, `infrastructure.cluster.x-k8s.io/DevMachine/${WORKER}`).placement).toEqual({
+      by: "reference",
+      field: "spec.infrastructureRef",
+      from: machineId(WORKER),
+    });
+    expect(nodeOf<ObjectNode>(tree, `bootstrap.cluster.x-k8s.io/KubeadmConfig/${WORKER}`).placement).toEqual({
+      by: "reference",
+      field: "spec.bootstrap.configRef",
+      from: machineId(WORKER),
+    });
+  });
+
+  it("holds the same when the DevMachine and the KubeadmConfig lost their owner references too, as after a restore", () => {
+    const objects = setOf("healthy");
+
+    for (const kind of ["Machine", "DevMachine", "KubeadmConfig"]) withoutOwners(objects, kind);
+
+    const tree = treeOf(objects, HEALTHY);
+
+    expect(treeOutline(tree)).toEqual(outlineRows(WORKER_ELSEWHERE));
+    expect(parentOf(tree, `bootstrap.cluster.x-k8s.io/KubeadmConfig/${WORKER}`)).toBe(`Machine ${WORKER}`);
+  });
+
+  it("holds a MachineSet whose MachineDeployment is gone, with its Machines, their objects and its templates", () => {
+    const objects = setOf("healthy").filter((object) => object.kind !== "MachineDeployment");
+    const tree = treeOf(objects, HEALTHY);
+
+    expect(treeOutline(tree)).toEqual(
+      outlineRows(`${HEAD}${TAIL}
+  Other objects
+    MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+      Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+        DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)
+        KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+      Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+        DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 (infrastructure machine)
+        KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+`),
+    );
+    expect(nodeOf<ObjectNode>(tree, `cluster.x-k8s.io/MachineSet/${SET}`).placement).toEqual({
+      by: "reason",
+      reason: {
+        code: "owners-not-in-tree",
+        owners: [{ group: "cluster.x-k8s.io", kind: "MachineDeployment", name: "freelens-capi-healthy-md-0-m9x7h" }],
+      },
+    });
+    expect(nodeOf<ObjectNode>(tree, machineId(WORKER)).placement).toEqual({
+      by: "controller",
+      owner: `cluster.x-k8s.io/MachineSet/${SET}`,
+    });
+  });
+
+  it("places an owner before what it owns, whatever the order of the rows of their kinds", () => {
+    // On machine-pools, an older DevMachinePool, whose MachinePool is gone, and a DevMachine that it owns, whose Machine
+    // is gone: the DevMachinePool, of a later row of P7 than the DevMachine, goes first and holds it.
+    const objects = setOf("machine-pools");
+    const pool = structuredClone(named(objects, "DevMachinePool"));
+    const machine = structuredClone(named(objects, "DevMachine", "worker-c6khcq"));
+
+    pool.metadata.name = "freelens-capi-machine-pools-mp-0-old";
+    pool.metadata.ownerReferences = [
+      { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: "freelens-capi-machine-pools" },
+      {
+        apiVersion: "cluster.x-k8s.io/v1beta2",
+        kind: "MachinePool",
+        name: "freelens-capi-machine-pools-mp-0-gone",
+        controller: true,
+      },
+    ];
+    machine.metadata.name = "worker-old";
+    machine.metadata.ownerReferences = [
+      { apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2", kind: "DevMachinePool", name: pool.metadata.name },
+      { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Machine", name: "worker-old", controller: true },
+    ];
+
+    const tree = treeOf([...objects, pool, machine], "freelens-capi-machine-pools");
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "DevMachinePool freelens-capi-machine-pools-mp-0-old (infrastructure machine pool)",
+      "  DevMachine worker-old (infrastructure machine)",
+    ]);
+    expect(nodeOf<ObjectNode>(tree, "infrastructure.cluster.x-k8s.io/DevMachine/worker-old").placement).toEqual({
+      by: "owner",
+      owner: "infrastructure.cluster.x-k8s.io/DevMachinePool/freelens-capi-machine-pools-mp-0-old",
+    });
+  });
+
+  it("leaves out, while the MachineSets load, their Machines and what those Machines own or name, never under Other objects", () => {
+    // The DevMachine and the KubeadmConfig of the Machine 2xxxg with no owner references: only that Machine names them.
+    const objects = setOf("healthy");
+
+    for (const kind of ["DevMachine", "KubeadmConfig"]) withoutOwners(objects, kind);
+
+    const rows = treeOutline(treeOf(objects, HEALTHY, { pending: ["cluster.x-k8s.io/MachineSet"] }));
+
+    expect(rows.filter((row) => row.text.includes("-m5gtb-"))).toEqual([]);
+    expect(rows.some((row) => row.text === "Other objects")).toBe(false);
+  });
+});
+
 describe("an object of a provider (P7)", () => {
   // The control plane of healthy, as a provider of its own serves it: the kind, its group and its definition changed.
   function withProviderControlPlane(contract: "v1beta1" | "v1beta2") {

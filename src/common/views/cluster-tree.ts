@@ -22,7 +22,8 @@
 //   this Cluster as the binding records them, and the binding; Health checks, with the MachineHealthChecks.
 // - An object of the Cluster that no rule above places, labelled with its name or naming it in `spec.clusterName`,
 //   sits under its controller, else the first of its owners, that the tree holds, the Cluster apart; under the row of
-//   an owner of a kind that cannot be read, made from its owner reference; or under Other objects, with its reason.
+//   an owner of a kind that cannot be read, made from its owner reference; or under Other objects, with its reason,
+//   where it holds what it owns and names by the same rules.
 // - A kind that cannot be read is a node of its own, under the Cluster (P12), and so is a kind of a provider whose
 //   definition cannot be read. An object that a reference names and that the tree cannot read, or does not find, is a
 //   row made from that reference, which says why.
@@ -435,7 +436,7 @@ const MODEL_KINDS: readonly {
   },
 ];
 
-function push<T>(map: Map<string, T[]>, key: string, value: T): void {
+function push<K, T>(map: Map<K, T[]>, key: K, value: T): void {
   const list = map.get(key);
 
   if (list === undefined) map.set(key, [value]);
@@ -448,6 +449,10 @@ function kindId(group: string, kind: string): string {
 
 function scopedAddress(group: string, kind: string, namespace: string, name: string): string {
   return `${group}/${kind}/${namespace}/${name}`;
+}
+
+function addressOfEntry(entry: TreeObject): string {
+  return scopedAddress(entry.kind.group, entry.kind.kind, entry.namespace, entry.name);
 }
 
 // The objects of a kind in the namespaces whose read is done, the others left out (SPEC-0004, P19).
@@ -1171,29 +1176,96 @@ class Placer {
     });
   }
 
-  // Other objects (P7): an object of the Cluster that no row places, with its reason. An object whose owner is of a
-  // kind still loading waits for it.
+  // Other objects (P7): an object of the Cluster that no row places, with its reason, which holds what it owns and
+  // names by the same rules. The objects go there one at a time, owners first, and the rows above place again after
+  // each, so that an object that the last one controls or names goes under it, never beside it with a false reason. An
+  // object whose owner is of a kind still loading waits for it, and so does an object whose owner, or whose Machine or
+  // MachinePool that names it, waits.
   #placeOthers(templates: boolean): void {
-    for (const entry of this.#candidates()) {
-      if (this.#isPlaced(entry) || isTemplateKind(entry.kind.kind) !== templates) continue;
-      if (this.#ownerOf(entry.object) === "wait") continue;
+    // The objects that no row placed, in the order of the rows of P7 that place their kinds, then of their addresses,
+    // whatever the order of a store.
+    const remaining = this.#candidates()
+      .filter((entry) => !this.#isPlaced(entry) && isTemplateKind(entry.kind.kind) === templates)
+      .sort((one, other) => one.kind.row - other.kind.row || compareText(addressOfEntry(one), addressOfEntry(other)));
+    const above = this.#holdersAmong(remaining);
+    const waiting = new Set(remaining.filter((entry) => this.#ownerOf(entry.object) === "wait"));
 
-      const owners = ownersOf(entry.object).filter(
-        (owner) => !(owner.group === CORE && owner.kind === "Cluster" && owner.name === this.#name),
-      );
-      const reason: PlaceReason =
-        ownersOf(entry.object).length === 0
-          ? { code: "no-owner" }
-          : owners.length === 0
-            ? { code: "owned-by-cluster", namers: this.#unreadNamersOf(entry) }
-            : {
-                code: "owners-not-in-tree",
-                owners: owners.map(({ group, kind, name }) => ({ group, kind, name })),
-              };
-      const other = this.#virtual(this.#root, "other-objects", [ROOT_ORDER.other, 0, "", ""]);
-
-      this.#placeObject(entry, other, entry.kind.row, { by: "reason", reason }, undefined);
+    for (let grown = true; grown; ) {
+      grown = false;
+      for (const entry of remaining) {
+        if (!waiting.has(entry) && (above.get(entry) ?? []).some((holder) => waiting.has(holder))) {
+          waiting.add(entry);
+          grown = true;
+        }
+      }
     }
+
+    const ready = remaining.filter((entry) => !waiting.has(entry));
+    const open = (entry: TreeObject) => !this.#isPlaced(entry);
+
+    for (;;) {
+      const left = ready.filter(open);
+      // An object that another of them would hold goes after that one; of objects that would hold each other, the
+      // first in the order above.
+      const next = left.find((entry) => !(above.get(entry) ?? []).some((holder) => open(holder))) ?? left[0];
+
+      if (next === undefined) return;
+      this.#placeOther(next);
+      this.#settle();
+    }
+  }
+
+  // The objects among these that the rows of P7 would place each of them under, once they are nodes: its owners, and
+  // the Machine or the MachinePool whose references name it.
+  #holdersAmong(entries: readonly TreeObject[]): Map<TreeObject, TreeObject[]> {
+    const byName = new Map(
+      entries.map((entry) => [`${kindId(entry.kind.group, entry.kind.kind)}/${entry.name}`, entry]),
+    );
+    const find = (group: string, kind: string, name: string) => byName.get(`${kindId(group, kind)}/${name}`);
+    const above = new Map<TreeObject, TreeObject[]>();
+    const add = (entry: TreeObject | undefined, holder: TreeObject) => {
+      if (entry !== undefined && entry !== holder) push(above, entry, holder);
+    };
+
+    for (const entry of entries) {
+      for (const owner of ownersOf(entry.object)) {
+        const holder = find(owner.group, owner.kind, owner.name);
+
+        if (holder !== undefined) add(entry, holder);
+      }
+
+      const { group, kind } = entry.kind;
+      const named =
+        group !== CORE
+          ? []
+          : kind === "Machine"
+            ? machineReferencesOf(entry.object)
+            : kind === "MachinePool"
+              ? templateReferencesOf(entry.object).filter((each) => each.role !== "template")
+              : [];
+
+      for (const { reference } of named) add(find(reference.apiGroup, reference.kind, reference.name), entry);
+    }
+    return above;
+  }
+
+  // An object under Other objects, with its reason (P7).
+  #placeOther(entry: TreeObject): void {
+    const owners = ownersOf(entry.object).filter(
+      (owner) => !(owner.group === CORE && owner.kind === "Cluster" && owner.name === this.#name),
+    );
+    const reason: PlaceReason =
+      ownersOf(entry.object).length === 0
+        ? { code: "no-owner" }
+        : owners.length === 0
+          ? { code: "owned-by-cluster", namers: this.#unreadNamersOf(entry) }
+          : {
+              code: "owners-not-in-tree",
+              owners: owners.map(({ group, kind, name }) => ({ group, kind, name })),
+            };
+    const other = this.#virtual(this.#root, "other-objects", [ROOT_ORDER.other, 0, "", ""]);
+
+    this.#placeObject(entry, other, entry.kind.row, { by: "reason", reason }, undefined);
   }
 
   // The templates (P7): each once, under the Templates of the highest object of the tree that names it. A control plane
@@ -1431,7 +1503,6 @@ class Placer {
     this.placeHealthChecks();
     this.#settle();
     this.#placeOthers(false);
-    this.#settle();
     this.#placeTemplates();
     this.#placeByOwners(true);
     this.#placeOthers(true);
