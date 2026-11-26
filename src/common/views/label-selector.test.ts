@@ -73,7 +73,37 @@ describe("the selector of a ClusterResourceSet (P7)", () => {
     ["NotIn with no values", { matchExpressions: [{ key: "zone", operator: "NotIn" }] }],
     ["Exists with values", { matchExpressions: [{ key: "env", operator: "Exists", values: ["dev"] }] }],
     ["a label of matchLabels that is not a word", { matchLabels: { cni: 1 } }],
+    ["DoesNotExist of a key with a space", { matchExpressions: [{ key: "no zone", operator: "DoesNotExist" }] }],
+    ["NotIn of a key with two slashes", { matchExpressions: [{ key: "a/b/zone", operator: "NotIn", values: ["a"] }] }],
+    [
+      "DoesNotExist of a key whose prefix is no DNS subdomain",
+      { matchExpressions: [{ key: "Example.com/zone", operator: "DoesNotExist" }] },
+    ],
+    [
+      "DoesNotExist of a key whose name is longer than 63 characters",
+      { matchExpressions: [{ key: `zone-${"x".repeat(59)}`, operator: "DoesNotExist" }] },
+    ],
+    [
+      "NotIn with a value that is no value of a label",
+      { matchExpressions: [{ key: "env", operator: "NotIn", values: ["prod env"] }] },
+    ],
   ])("selects no Cluster for a selector that Kubernetes refuses: %s", (_, selector) => {
     expect(selectorSelects(selector, LABELS)).toBe(false);
+  });
+
+  it.each([
+    ["a key of matchLabels that is not the key of a label", { matchLabels: { "-cni": "kindnet" } }],
+    ["a value of matchLabels that is not the value of a label", { matchLabels: { cni: "kindnet-" } }],
+  ])("selects no Cluster for %s, even one whose labels hold it as written, which the schema refuses", (_, selector) => {
+    // Labels written at this layer alone (SPEC-0005, "Tests", "Unit").
+    expect(selectorSelects(selector, { ...LABELS, "-cni": "kindnet", cni: "kindnet-" })).toBe(false);
+  });
+
+  it.each([
+    ["a key with a prefix", { matchExpressions: [{ key: "cluster.x-k8s.io/zone", operator: "DoesNotExist" }] }],
+    ["a name of 63 characters", { matchExpressions: [{ key: `zone-${"x".repeat(58)}`, operator: "DoesNotExist" }] }],
+    ["an empty value", { matchExpressions: [{ key: "env", operator: "NotIn", values: [""] }] }],
+  ])("selects as written a selector that Kubernetes takes: %s", (_, selector) => {
+    expect(selectorSelects(selector, LABELS)).toBe(true);
   });
 });

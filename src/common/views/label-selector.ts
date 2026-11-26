@@ -8,15 +8,41 @@
 // selector of Kubernetes, whose `matchLabels` each ask a label of that value, and whose `matchExpressions` each ask, by
 // their operator, a label with one of their values (In), with none of them or no such label (NotIn), the label
 // (Exists), or no such label (DoesNotExist). An empty or absent selector selects no Cluster, as the controller decides,
-// unlike a selector of Kubernetes elsewhere; and so does one that Kubernetes refuses to convert: an operator that it
-// does not know, In or NotIn with no values, Exists or DoesNotExist with some, or a field that is not of its type. A
-// key or a word that Kubernetes would refuse as a label is matched as written.
+// unlike a selector of Kubernetes elsewhere; and so does one that Kubernetes refuses to convert, since the controller
+// then selects nothing (clusterresourceset_controller.go:265-268): an operator that it does not know, In or NotIn with
+// no values, Exists or DoesNotExist with some, a field that is not of its type, a key that is not the key of a label,
+// or a value that is not the value of a label, as the syntax of the labels of Kubernetes gives them. The admission
+// webhook of the project refuses such a selector (core/webhooks/admission/clusterresourceset.go:78-84), which a
+// cluster without that webhook may hold.
 
 import { fieldsOf, isFields, listOf, textOf } from "./objects";
 
 import type { Fields } from "./objects";
 
 type Requirement = (labels: Fields) => boolean;
+
+// A name of a label key, and a value of a label: 63 characters at most, letters and digits at its two ends, letters,
+// digits, `-`, `_` and `.` between them; a value may also be empty. The prefix of a key, before its one `/`, is a DNS
+// subdomain of 253 characters at most: lowercase letters, digits, `-` and `.`, each of its parts with a letter or a
+// digit at its two ends.
+const NAME = /^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$/;
+const SUBDOMAIN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+
+function isName(text: string): boolean {
+  return text.length <= 63 && NAME.test(text);
+}
+
+function isKey(key: string): boolean {
+  const parts = key.split("/");
+
+  if (parts.length > 2) return false;
+  if (parts.length === 2 && (parts[0].length > 253 || !SUBDOMAIN.test(parts[0]))) return false;
+  return isName(parts[parts.length - 1]);
+}
+
+function isValue(value: string): boolean {
+  return value === "" || isName(value);
+}
 
 function has(labels: Fields, key: string): boolean {
   return Object.hasOwn(labels, key) && typeof labels[key] === "string";
@@ -30,9 +56,9 @@ function requirementOf(value: unknown): Requirement | undefined {
   const written = fields?.values;
   const values = listOf(written);
 
-  if (key === undefined || operator === undefined) return undefined;
+  if (key === undefined || operator === undefined || !isKey(key)) return undefined;
   if (written !== undefined && !Array.isArray(written)) return undefined;
-  if (values.some((entry) => typeof entry !== "string")) return undefined;
+  if (values.some((entry) => typeof entry !== "string" || !isValue(entry))) return undefined;
   switch (operator) {
     case "In":
       return values.length === 0 ? undefined : (labels) => has(labels, key) && values.includes(labels[key]);
@@ -59,7 +85,7 @@ function requirementsOf(selector: unknown): Requirement[] | undefined {
 
   const labels = Object.entries(fieldsOf(matchLabels) ?? {});
 
-  if (labels.some(([, value]) => typeof value !== "string")) return undefined;
+  if (labels.some(([key, value]) => typeof value !== "string" || !isKey(key) || !isValue(value))) return undefined;
 
   const expressions = listOf(matchExpressions).map(requirementOf);
 
