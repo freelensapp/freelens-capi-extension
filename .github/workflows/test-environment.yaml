@@ -76,8 +76,8 @@ jobs:
         shell: bash
         run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
 
-      # The job of the real project with Freelens v2.1.0 saves this cache, under the same key: restored alone here,
-      # so that the jobs, which run side by side, do not all save it.
+      # The job of the real project saves this cache, under the same key: restored alone here, so that the two jobs,
+      # which run side by side, do not both save it.
       - name: Use pnpm cache
         uses: actions/cache/restore@v6
         with:
@@ -138,7 +138,6 @@ jobs:
       matrix:
         include:
           # The Freelens releases the extension supports, by their tags, as in integration-tests.yaml.
-          - freelens_version: v2.0.0
           - freelens_version: v2.1.0
 
     # The two hours of P33, from the durations of the runs (SPEC-0004, "Notes and deviations"): the job took 8 to 10
@@ -148,7 +147,7 @@ jobs:
     timeout-minutes: 120
 
     # A new push to a pull request cancels the jobs of the real project that still run for it, each release in a group
-    # of its own, so that the two jobs of a run do not cancel each other. The runs of main and of the night each have
+    # of its own, so that the jobs of a run do not cancel each other. The runs of main and of the night each have
     # groups of their own, and none is cancelled.
     concurrency:
       group: ${{ github.event_name == 'pull_request' && format('test-environment-real-project-pr-{0}-{1}', github.event.pull_request.number, matrix.freelens_version) || format('test-environment-real-project-run-{0}-{1}', github.run_id, matrix.freelens_version) }}
@@ -183,20 +182,13 @@ jobs:
         shell: bash
         run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
 
-      # One key for the jobs of the workflow: the job of v2.1.0 alone saves the cache, and the others restore it, so
-      # that the jobs, which run side by side, do not all save it.
+      # One key for the jobs of the workflow: this job saves the cache, and the job of the fixtures restores it alone,
+      # so that the two jobs, which run side by side, do not both save it. The matrix has one release, so this step
+      # has no condition, and no step restores the cache alone in a job of the matrix, which would never run. A
+      # release added to the matrix needs both: a condition that leaves the save to the job of one release, and a step
+      # that restores the cache alone in the jobs of the others.
       - name: Use pnpm cache
-        if: matrix.freelens_version == 'v2.1.0'
         uses: actions/cache@v6
-        with:
-          path: ${{ env.pnpm_cache_dir }}
-          key: ubuntu-24.04-node-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ubuntu-24.04-node-
-
-      - name: Restore pnpm cache
-        if: matrix.freelens_version != 'v2.1.0'
-        uses: actions/cache/restore@v6
         with:
           path: ${{ env.pnpm_cache_dir }}
           key: ubuntu-24.04-node-${{ hashFiles('**/pnpm-lock.yaml') }}

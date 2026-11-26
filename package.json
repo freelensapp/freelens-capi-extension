@@ -14,7 +14,7 @@
   ],
   "engines": {
     "node": ">= 24.0.0",
-    "freelens": "^2.0.0"
+    "freelens": "^2.1.0"
   },
   "copyright": "© 2026 Freelens Authors",
   "license": "MIT",

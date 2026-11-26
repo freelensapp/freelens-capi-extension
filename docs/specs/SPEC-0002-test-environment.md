@@ -492,3 +492,5 @@ fixtures, and the jobs of CI of the two tiers.
   of the review of their fixes are merged, and every job of CI ran green on
   `main` after them, those of the fixtures and of the real project included.
   The spec has no manual check.
+- From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
+  deviations"), the sessions in Freelens run on 2.1.0 alone.

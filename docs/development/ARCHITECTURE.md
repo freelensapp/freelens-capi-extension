@@ -90,5 +90,6 @@ kubeconfig actions, which hand it only to the user who asked.
   own, it reads that namespace alone: a ClusterClass in another namespace and
   the kinds of the operator are not read for it, and the status model notes
   them (SPEC-0004, P31).
-- **Freelens.** `engines.freelens` is `^2.0.0`, as in the template, until
-  the first pull request that uses a member added in Freelens 2.1.0.
+- **Freelens.** `engines.freelens` is `^2.1.0`, and the jobs of CI run
+  Freelens 2.1.0 alone: the extension follows the latest release of Freelens
+  (SPEC-0001, A8, amended in its "Notes and deviations").
