@@ -2889,15 +2889,35 @@ the contract label of the definition for a control plane of a provider; and
   reference names, and none for a Cluster with no topology. The reaction to the
   filter of the namespaces runs before the reaction to the stores, so that the
   read state knows the namespaces of a load when a store answers at once.
-- Decided while implementing, where P6 is silent: the references that the read
-  follows to learn the kinds of the providers are those of the Machines, the
-  MachineDeployments, the MachineSets and the MachinePools whose
-  `spec.clusterName` names the Cluster, and the machine template of its control
-  plane at the version of its contract. A reference to a kind that a model of
-  the view reads is found in the store of that model, with no definition read;
-  the two references of the Cluster keep the resolution of SPEC-0004, P3. A
-  template reference of a MachineDeployment or of a MachineSet to a kind whose
-  name does not end in `Template` is not followed, as P7 tells a template.
+- Decided while implementing, where P6 and P7 are silent: the reads of the
+  tree follow the references of the objects by which the tree places what they
+  name, and no other, so that the reads and the tree follow the same
+  references: the Machines, the MachineDeployments, the MachineSets and the
+  MachinePools that their label or their `spec.clusterName` gives the Cluster,
+  in its namespace, as the tree takes the objects of its Cluster (P7); and
+  every control plane of the Cluster, the one that its reference names and any
+  other that its label gives it, a KubeadmControlPlane at `v1beta2` with no
+  definition, and an object of the kind of a provider that the Cluster names as
+  its control plane at the contract of its definition, once that resolves. So a
+  control plane that the Cluster does not name, which sits under Other objects,
+  names its machine template after the four objects of P7 that name templates,
+  and that template, which carries no label of the Cluster, has a row, as the
+  case of `without-topology` with its reference removed shows, whose kind the
+  reads read; without it the template would be in no row, and the details of
+  that control plane would link to nothing (P17). One function,
+  `followedObjectsOf` of `src/common/views/references.ts`, gives the reads
+  those objects, and one, `followedReferencesOf`, says what each object names,
+  for the reads and for the tree, which `test/tree-sources.ts` calls as the
+  read does; a case of the read and a case of the tree see each call it, and a
+  case builds the tree of every state of the fixtures from the read of that
+  state, with no row of a kind that the read never tried. A reference to a kind
+  that a model of the view reads is found in the store of that model, with no
+  definition read; the two references of the Cluster keep the resolution of
+  SPEC-0004, P3. A template reference of a MachineDeployment or of a MachineSet
+  to a kind whose name does not end in `Template` is not followed, as P7 tells
+  a template. A kind that the reads never tried reads as not read, "Not read.
+  The tree has not read its kind.", never as not served, which its definition
+  alone says (P12).
 - Decided while implementing: the read marks each load that a refresh starts,
   store by store, with `refresh` in the event `load-started` of `read-state.ts`
   (P23). `DefinitionReads` forgets a read refused or failed by replacing its map
@@ -2925,34 +2945,64 @@ the contract label of the definition for a control plane of a provider; and
   order for `machine-pools`.
 - Decided while implementing, where P7 is silent: an object of a kind of a
   provider that no reference names, such as one under Other objects, takes the
-  role of the first reference that names its kind elsewhere. The kinds that can
+  role of the first reference that names its kind elsewhere, and so does the
+  row of an owner of such a kind that cannot be read (P12). The kinds that can
   name an object that the Cluster owns, which its reason names when they could
-  not be read, are the kind of the control plane that the Cluster names, the
-  MachineDeployments, the MachineSets and the MachinePools for a template, and
-  the Machines and the MachinePools for any other object.
+  not be read, are those that the rules of P7 give: for a template, the kind of
+  the control plane that the Cluster names, the KubeadmControlPlanes, the
+  MachineDeployments, the MachineSets and the MachinePools; for a
+  KubeadmConfig, the Machines and the MachinePools; for an IPAddress, the
+  IPAddressClaims; for a ClusterResourceSet, the ClusterResourceSetBindings;
+  for an object of a provider, by the roles of its kind, the Machines for an
+  infrastructure machine, the Machines and the MachinePools for a bootstrap
+  config, and the MachinePools for an infrastructure machine pool; and none for
+  any other object, which only the Cluster, which is read, can name.
 - Decided while implementing, where P7 is silent: an object whose owner is of
   a kind still loading waits for that load, and no row places it meanwhile, so
-  that it never shows under Other objects for a moment. A template is placed
-  after every other object, so that the highest object that names it decides,
-  whatever the order in which the rows found them, and the row of the owners
-  places a template only after the templates.
-- Decided while implementing, where P7 is silent: a control plane that the
-  Cluster does not name, labelled with its name, sits under Other objects, and
-  names its machine template after the four objects of P7 that name templates,
-  so that a template that only it names, which carries no label of the
-  Cluster, has a row, as the case of `without-topology` with its reference
-  removed shows. Without it the template would be in no row, and the details of
-  that control plane would link to nothing (P17).
+  that it never shows under Other objects for a moment; so does an object whose
+  owner, or whose Machine or MachinePool that names it, waits. A template is
+  placed after every other object, so that the highest object that names it
+  decides, whatever the order in which the rows found them, and the row of the
+  owners places a template only after the templates.
+- Decided while implementing, where P7 says that Other objects holds what it
+  holds by the same rules: the objects that no row places go under Other
+  objects one at a time, in the order of the rows of P7 of their kinds and then
+  of their addresses, whatever the order of a store, an object that another of
+  them owns, or that a Machine or a MachinePool among them names, after that
+  one; and the rows of P7 place again after each, so that the objects that it
+  controls, owns or names go under it, never beside it with a reason that says
+  that their owners are not nodes of the tree. A worker Machine with no owner
+  holds its infrastructure machine and its bootstrap config, also once they
+  lost their owner references, as after a restore, and a MachineSet whose
+  MachineDeployment is gone holds its Machines, their objects and its
+  templates.
 - Decided while implementing, where P7 and P21 are silent: an IPAddress that
   the `status.addressRef` of a claim names and that its namespace does not hold
   is a row made from that reference, "Not found", under the claim. The
   resources of a ClusterResourceSet are those of its `spec.resources`, each
   matched in the binding of the Cluster by its kind and its name.
+- Decided while implementing, where P7 and P12 are silent on its row: a
+  ClusterResourceSet that the binding of the Cluster names and that the tree
+  did not read, its kind refused, failed or still loading, or the object not in
+  its namespace, is a row under Add-ons made from that name, by the field of the
+  binding that names it, which says why, since the binding places it always;
+  the node of its kind then stands for the others alone. The row holds no
+  entry, since the resources of a ClusterResourceSet are those of its
+  `spec.resources`, which the tree did not read.
+- Decided while implementing, where P7 asks a selector read as its controller
+  reads it: a selector with a key or a value that is not that of a label of
+  Kubernetes, which Kubernetes refuses to convert, selects nothing, as the
+  controller then selects nothing (clusterresourceset_controller.go:265-268).
+  The admission webhook of the project refuses such a selector
+  (core/webhooks/admission/clusterresourceset.go:78-84), so only a cluster
+  without that webhook, as the cluster of the definitions, holds one.
 - Decided while implementing, where P12 gives the words for the namespace of
   the Cluster alone: for the class read in another namespace, the reason names
   that namespace and says that the class reference of the Cluster names it, as
   "Its kind could not be read in the namespace `<namespace>`, which the class
-  reference of the Cluster names."
+  reference of the Cluster names." A class in the namespace of its Cluster,
+  whose reference names none or names that namespace, is said in the words of
+  the namespace of the Cluster.
 - Decided while implementing, where P11 is silent: the objects with no health,
   of a kind with no status or deleting, are counted last as "with no health",
   as `21 objects: 17 Healthy, 4 with no health`; the stale ones are counted for
@@ -2979,27 +3029,64 @@ the contract label of the definition for a control plane of a provider; and
   the same at `v2.0.0`), written in `tree-rows.ts`, since the extension API does
   not export it. The first part matches the words of the name of a row, its
   role, the namespace of the class read elsewhere, the words of the health,
-  "stale" and the activities as the cells of the list give them, and the words
-  of P12; the words of the cells Version and Status join them with those cells,
-  in the second part.
+  "stale" and the activities as the cells of the list give them, and, for a
+  node that cannot be read, the words that P12 puts in its cells: "Not read",
+  or "Not found" for an object that its namespace does not hold, and the
+  reason; the words of the cells Version and Status of an object join them with
+  those cells, in the second part.
 - Decided while implementing: until the page imports them, `knip.jsonc` lists
   `cluster-tree.ts`, `tree-rows.ts` and `variable-names.ts` as production
   entries, since only their tests reach them; the page removes the entries.
-- Decided while implementing: the check of Safety finds a read of `variables`,
-  `overrides` or `patches` by a member, an index, or a destructuring with a
-  shorthand or with a new name, and `variableNamesOf` returns the names as
-  `variableNames` and `patchNames`, which it does not take for such a read; in
-  `variable-names.ts` it finds `value` and every member of a patch but its
-  name, in the code, the comments left out. The check of the annotation of P20
-  comes with the details of a node, whose function reads it, in the second
-  part.
+- Decided while implementing: the check of Safety matches the names
+  `variables`, `overrides` and `patches` wherever they are read or declared,
+  as the check of R3.36 matches its names, in every module of the view but
+  `variable-names.ts`, which reads them for their names, so that a read by a
+  member, an index or any destructuring, with a new name, a default or a
+  pattern of its own, is found; it departs from "Safety", which matched reads
+  and left the declarations of the model of the Cluster out. So no model types
+  them: the model of the Cluster leaves out the variables of its topology and
+  of its parts, which the test of its types reads in the fixtures as left out
+  on purpose, a departure from the types that SPEC-0004, "What the view reads",
+  gives its topology; and the model of the ClusterClass types neither its
+  variables nor its patches, a departure from P6, whose names
+  `variableNamesOf` reads from the object, untyped. `variableNamesOf` returns
+  the names as `variableNames` and `patchNames`, which the check does not take
+  for those names; in `variable-names.ts` it finds `value` and every member of
+  a patch but its name, in the code, the comments left out. The check of the
+  annotation of P20 comes with the details of a node, whose function reads it,
+  in the second part.
 - The large Cluster of P22 comes with its generator,
   `integration/__tests__/large-cluster.ts`, and its unit test in the third
   part, with the session that applies it. Until the capture of P21 in the third
   part gives the claim of `no-status` its `spec.clusterName`, the expected tree
   of `no-status` holds no claim, and the case of P21 of `cluster-tree.test.ts`
-  writes the field. The case of P13 that shows no row before the first load of
-  every kind has ended, the kinds of the providers included, is a case of the
-  read, `firstLoadsEnded` of `cluster-namespace-read.test.tsx` and of
-  `read-state.test.ts`, since the read decides it; the page shows the spinner
-  until then in the second part.
+  writes the field.
+- Decided while implementing, where P13 puts in the tests of the rows the case
+  of no row before the first loads have ended: that case is a case of the read,
+  `firstLoadsEnded` of `cluster-namespace-read.test.tsx` and of
+  `read-state.test.ts`, since the read decides it, with the definitions still
+  read when the store of definitions failed; the page shows the spinner until
+  then in the second part. The read keeps its first loads ended once they have
+  all ended, for its life: a load that starts later, of a kind that a reference
+  names later, of the namespace that the class reference names now, or of a
+  definition that a refresh asks again, is no first load of the tree, which
+  stays shown, and its nodes show their own loading (P6, P19, P23). The refresh
+  of P23, disabled again while the first load of a kind that a reference names
+  later runs, reads the loads that run, in the second part.
+- Decided while implementing, where P19 is silent on the words of its notices:
+  the notices of the tree are those of `treeNotices` of `read-state.ts`, one
+  for each kind that the tree reads and holds back, the Clusters apart, which
+  the page says in the place of the tree: that its nodes read as not read until
+  it can be read, and so do the objects that only it names for the Machines,
+  the MachineSets, the MachineDeployments, the MachinePools and the control
+  planes, or the resources of the ClusterResourceSets for the bindings; then the
+  inputs that the model leaves out, for the Cluster of the tree and for the
+  objects of the tree that take them, as the value of `KindFeeds` of the kind
+  says, and, for the ClusterClasses, for the Cluster of the tree, whatever
+  namespace its class reference names, and never for the Clusters of that
+  namespace. The list of the Clusters keeps its words, and says nothing more of
+  a kind that the tree alone reads.
+- Decided while implementing, where P23 is silent: a refresh, or the reload
+  after a 410, that fails again with an answer that the hold of its refresh
+  already holds keeps one entry for that answer, the latest, and the hold the
+  time of the latest.
