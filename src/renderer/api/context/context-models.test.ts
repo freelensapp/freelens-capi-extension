@@ -298,16 +298,12 @@ describe("the models of the tree (SPEC-0005, P6)", () => {
     expect(reference).toBe(true);
   });
 
-  it("type the names of the variables and of the patches of a ClusterClass, and no value", () => {
-    type Variable = NonNullable<ClusterClass["spec"]["variables"]>[number];
-    type Patch = NonNullable<ClusterClass["spec"]["patches"]>[number];
+  it("type neither the variables nor the patches of a ClusterClass, whose names one function of the views reads (SPEC-0005, P20)", () => {
+    // @ts-expect-error: the variables of a class, whose schemas a value follows, are not typed
+    const variables: ClusterClass["spec"]["variables"] = undefined;
+    // @ts-expect-error: nor are its patches, which write values into its templates
+    const patches: ClusterClass["spec"]["patches"] = undefined;
 
-    const names: [Same<keyof Variable, "name">, Same<keyof Patch, "name">] = [true, true];
-    // @ts-expect-error: the schema of a variable, which a value follows, is not typed
-    const schema: Variable["schema"] = undefined;
-    // @ts-expect-error: nor are the definitions of a patch, which write its values
-    const definitions: Patch["definitions"] = undefined;
-
-    expect([names, schema, definitions]).toEqual([[true, true], undefined, undefined]);
+    expect([variables, patches]).toEqual([undefined, undefined]);
   });
 });

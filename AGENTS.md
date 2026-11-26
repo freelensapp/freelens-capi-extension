@@ -446,12 +446,16 @@ A new kind, or a new version of a kind, takes the same set of files as
      view reads only as the context of the status model, or as a node of the
      tree of a Cluster: its model types, as its spec and its status, the
      plain-data types of the status model for the fields that its rules read,
-     and the fields that the tree follows, its references, its version and
-     the names that its details show (SPEC-0005, P6), and nothing else, until
-     the spec of its own view gives it its whole types (SPEC-0004, P1). The
-     specs of a KubeadmControlPlane and of a KubeadmConfig hold fields that
-     SPEC-0001, A3 never reads: of a KubeadmConfig and of its template no
-     field of the spec is typed.
+     and the fields that the tree follows, its references and its version
+     (SPEC-0005, P6), and nothing else, until the spec of its own view gives
+     it its whole types (SPEC-0004, P1). The specs of a KubeadmControlPlane
+     and of a KubeadmConfig hold fields that SPEC-0001, A3 never reads: of a
+     KubeadmConfig and of its template no field of the spec is typed. No model
+     types a field that holds what a variable is set to, the model of a
+     Cluster included: the variables of a topology and of its parts, and the
+     variables and the patches of a ClusterClass, whose names one function of
+     `src/common/views/` reads, and whose names the check of Safety finds
+     nowhere else, read or declared (SPEC-0005, P20).
    - A field is optional in the interface when the CRD does not require it.
      `controller-gen` decides that from the markers, not from the `json` tag:
      `+required` (or `+kubebuilder:validation:Required`) makes the field
