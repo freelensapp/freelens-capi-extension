@@ -38,6 +38,7 @@ import {
 import { ClusterPanel, SourcedClusterView } from "../details/cluster-details-v1beta2";
 import { CLUSTER_VIEW_KINDS, ClusterNamespaceRead, TREE_VIEW_KINDS } from "./cluster-namespace-read";
 import { publishPageSource } from "./cluster-source";
+import { storeKey } from "./page-reads";
 import { ProviderObjectStore } from "./provider-object-store";
 
 import type { Renderer as Sdk } from "@freelensapp/extensions";
@@ -481,6 +482,66 @@ describe("the kinds of a view of one Cluster (SPEC-0005, P6)", () => {
     expect(kinds.sort()).toEqual([...expected, ...expected].sort());
   });
 
+  it("read the ClusterClasses in the namespace of the Cluster alone for the details and the panel, when its class reference names another", async () => {
+    const CLASSES = "freelens-capi-classes";
+    const objects = structuredClone(fixtureSet("healthy")) as KubeObject[];
+    const cluster = objects.find((object) => object.kind === "Cluster") as unknown as {
+      spec: { topology: { classRef: { namespace?: string } } };
+    };
+    const clusterClass = objects.find((object) => object.kind === "ClusterClass") as KubeObject;
+
+    cluster.spec.topology.classRef.namespace = CLASSES;
+    serveTree(
+      hostObjects([...objects, { ...clusterClass, metadata: { ...clusterClass.metadata, namespace: CLASSES } }]),
+    );
+
+    const built = host.builtStores.length;
+
+    view(own());
+    view(
+      <ClusterPanel
+        object={hostObjects(objects).find((object) => object.kind === "Cluster") as unknown as Cluster}
+        extension={EXTENSION}
+        openCluster={vi.fn()}
+      />,
+    );
+    await settle();
+
+    const loads = (builtSince(built) as OwnStore[]).map(
+      (store) => `${store.api.kind} ${store.loadAll.mock.calls.map(([opts]) => opts.namespaces.join(",")).join(" ")}`,
+    );
+
+    // Two views, each with its ClusterClasses in the namespace of the Cluster, and no store of the namespace of the class.
+    expect(loads.filter((line) => line.startsWith("ClusterClass "))).toEqual([
+      `ClusterClass ${NAMESPACE}`,
+      `ClusterClass ${NAMESPACE}`,
+    ]);
+    expect(loads.filter((line) => line.includes(CLASSES))).toEqual([]);
+  });
+
+  it("build no store of ClusterClasses for a Cluster with no topology, and no other store than the kinds and the references give", async () => {
+    const STATE = "freelens-capi-without-topology";
+
+    serveTree(objectsOfStates(["without-topology"]));
+
+    const read = new ClusterNamespaceRead(STATE, STATE, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect([...byKind(read).keys()].sort()).toEqual(
+      [
+        ...TREE_KINDS.filter((kind) => kind !== "ClusterClass"),
+        "DevCluster",
+        "DevMachine",
+        "DevMachineTemplate",
+      ].sort(),
+    );
+    expect(read.reads.filter?.namespaces).toEqual([STATE]);
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
   it("are those of the tree for the tree: a store of the class of each model, and one ProviderObjectStore for each kind of a provider that a reference names, never registered", async () => {
     const stores = serveTree(objectsOfStates(["healthy"]));
     const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
@@ -773,6 +834,72 @@ describe("the references that the read of the tree follows, those by which the t
     }
   });
 
+  it("follow the references of a MachinePool to its infrastructure machine pool", async () => {
+    const STATE = "freelens-capi-machine-pools";
+
+    serveTree(objectsOfStates(["machine-pools"]));
+
+    const read = new ClusterNamespaceRead(STATE, STATE, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(byKind(read).get("DevMachinePool")?.api).toBe(TREE_APIS.devMachinePools);
+    expect(read.objects().tree?.providers.get("infrastructure.cluster.x-k8s.io/DevMachinePool")?.items).toHaveLength(1);
+    stop();
+  });
+
+  it("follow no reference of an object of another Cluster of the namespace", async () => {
+    const objects = structuredClone(fixtureSet("healthy")) as KubeObject[];
+    const machine = structuredClone(objects.find((object) => object.kind === "Machine") as KubeObject) as KubeObject & {
+      metadata: { name: string; labels: Record<string, string> };
+      spec: { clusterName: string; infrastructureRef: { kind: string; name: string } };
+    };
+
+    machine.metadata.name = "another-cluster-machine";
+    machine.metadata.labels = { "cluster.x-k8s.io/cluster-name": "another" };
+    machine.spec.clusterName = "another";
+    machine.spec.infrastructureRef.kind = "DevMachinePool";
+    machine.spec.infrastructureRef.name = "another-pool";
+    serveTree(hostObjects([...objects, machine]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(read.objects().machines.items.map((item) => item.metadata.name)).toContain("another-cluster-machine");
+    expect(byKind(read).has("DevMachinePool")).toBe(false);
+    expect([...(read.objects().tree?.providers.keys() ?? [])]).not.toContain(
+      "infrastructure.cluster.x-k8s.io/DevMachinePool",
+    );
+    stop();
+  });
+
+  it("follow the template of the control plane when no MachineDeployment or MachineSet names a template of its kind", async () => {
+    const objects = structuredClone(fixtureSet("healthy")) as KubeObject[];
+
+    for (const object of objects.filter((each) => ["MachineDeployment", "MachineSet"].includes(each.kind))) {
+      (
+        object as unknown as { spec: { template: { spec: { infrastructureRef: { kind: string } } } } }
+      ).spec.template.spec.infrastructureRef.kind = "DevMachine";
+    }
+    serveTree(hostObjects(objects));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(byKind(read).get("DevMachineTemplate")?.api).toBe(TREE_APIS.devMachineTemplates);
+    expect(
+      readOfNode(
+        treeOfRead(read).nodes.get("infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-rclml"),
+      ),
+    ).toBe("object");
+    stop();
+  });
+
   it.each(STATES)(
     "give the tree of %s every kind that it places an object by, none of its rows a kind that the read never tried",
     async (state) => {
@@ -883,6 +1010,45 @@ describe("the refresh of the tree (SPEC-0005, P23)", () => {
 });
 
 describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
+  it("have not ended while a definition that a reference names is still read, with the store of definitions failed, its stores loaded", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+    runInAction(() => {
+      host.crdStore.items = [];
+      host.crdStore.failedLoading = true;
+    });
+
+    const definitions = new Map(
+      [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS].map((definition) => [definition.metadata?.name, definition]),
+    );
+    let answer = () => undefined as void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+
+    host.crdGet.mockImplementation(async (name) => {
+      await answered;
+      return definitions.get(name) ?? null;
+    });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    // Every store of the read has ended its first load; the definitions of the DevClusters and the DevMachines are not
+    // read yet.
+    expect(read.stores.every((store) => read.reads.kinds[storeKey(store)]?.last !== undefined)).toBe(true);
+    expect(read.definitions.readOf("infrastructure.cluster.x-k8s.io", "DevCluster").state).toBe("pending");
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    answer();
+    await settle();
+
+    expect(byKind(read).has("DevMachine")).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
   it("stay ended once they have ended, through a refresh that asks again for a definition that was refused", async () => {
     serveTree(objectsOfStates(["healthy"]));
     runInAction(() => {
