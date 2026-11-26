@@ -18,10 +18,10 @@
 // 3. the topology of both Clusters: the class `quick-start`, the version of the pins, and a MachineDeployment for one
 //    and a MachinePool for the other.
 //
-// The objects of the real project change as its controllers write them, so each comparison reads both sides again
-// until they agree, within its time. The session reads the cluster alone, and writes nothing to it. It reaches the
-// cluster through the scripts of the test environment, which check the target before every request, and fails on any
-// error that either process logs.
+// The objects of the real project change as its controllers write them, so the comparisons of 1 and the waits of 2 read
+// both sides again until they agree, five minutes at most each; the topology of 3 is read once. The session reads the
+// cluster alone, and writes nothing to it. It reaches the cluster through the scripts of the test environment, which
+// check the target before every request, and fails on any error that either process logs.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openRealProject } from "../../e2e/scripts/commands.mts";
@@ -43,8 +43,9 @@ import type { RealProjectSession } from "../../e2e/scripts/commands.mts";
 import type { AppSession } from "./extension-helpers";
 
 const viewTimeout = { timeout: 60 * 1000 };
-// The time within which the view and the tool agree on objects that the controllers still write.
-const settleTimeout = { timeout: 10 * 60 * 1000, interval: 5 * 1000 };
+// The time within which the view and the tool agree on objects that the controllers still write. The job runs the
+// session after the tests of the real tier and the build of Freelens dev, so the objects have long settled by then.
+const settleTimeout = { timeout: 5 * 60 * 1000, interval: 5 * 1000 };
 
 // The workload clusters of the real project, in the namespace where `pnpm e2e:cluster:up` makes them (TESTING.md, "The
 // real project").
@@ -94,11 +95,14 @@ describe.skipIf(project === undefined)("the Clusters of the real project, agains
     return drawer;
   }
 
-  // The text of the counters of a section of the details, `control-plane` or `workers`.
+  // The counters of a section of the details, `control-plane` or `workers`, from the value of their item alone: the
+  // text of the whole item would start with its name, `Machines`, next to the first count (`countersOf`).
   async function countersIn(drawer: Locator, section: string): Promise<Map<string, number | undefined>> {
     const counters = drawer.getByTestId(`capi-details-section-${section}`).getByTestId("capi-details-counters");
 
-    return countersOf((await counters.count()) === 0 ? "" : ((await counters.first().textContent()) ?? ""));
+    return countersOf(
+      (await counters.count()) === 0 ? "" : ((await counters.first().locator(".value").textContent()) ?? ""),
+    );
   }
 
   // The value of a row of a section of the details, by its name, as the host lays a row of a drawer out.
@@ -113,6 +117,8 @@ describe.skipIf(project === undefined)("the Clusters of the real project, agains
   }
 
   beforeAll(async () => {
+    // clusterctl set up once, so that a setup that fails fails here, at once, and not each wait for its whole time.
+    await real.describeCluster(MD);
     session = await connectApp();
     await installExtension(session);
     frame = await openKindCluster(session);
@@ -188,7 +194,8 @@ describe.skipIf(project === undefined)("the Clusters of the real project, agains
       await opened().frame.page().keyboard.press("Escape");
       expect(await opened().session.errors()).toEqual([]);
     },
-    12 * 60 * 1000,
+    // The details opened, two minutes at most, and the comparison, five.
+    8 * 60 * 1000,
   );
 
   it(
@@ -200,10 +207,11 @@ describe.skipIf(project === undefined)("the Clusters of the real project, agains
         .poll(async () => describedCluster(await real.describeCluster(MP), NAMESPACE, MP)?.status, settleTimeout)
         .toBe("True");
 
+      // The view then reads what the controllers wrote already, through the watch of the host.
       const drawer = await detailsOf(MP);
 
       await expect
-        .poll(async () => (await drawer.getByTestId("capi-details-health").textContent())?.trim(), settleTimeout)
+        .poll(async () => (await drawer.getByTestId("capi-details-health").textContent())?.trim(), viewTimeout)
         .toBe("Degraded");
       await expect
         .poll(async () => (await drawer.getByTestId("capi-details-issue").allTextContents()).join("\n"), viewTimeout)
@@ -211,33 +219,39 @@ describe.skipIf(project === undefined)("the Clusters of the real project, agains
       await opened().frame.page().keyboard.press("Escape");
       expect(await opened().session.errors()).toEqual([]);
     },
-    12 * 60 * 1000,
+    // The wait for the tool, five minutes at most, the details opened, two, and the two waits of the view, one each.
+    10 * 60 * 1000,
   );
 
-  it("shows the topology of both Clusters: the class quick-start, their version, a MachineDeployment and a MachinePool (3)", async () => {
-    for (const [name, part] of [
-      [MD, "MachineDeployment"],
-      [MP, "MachinePool"],
-    ] as const) {
-      const drawer = await detailsOf(name);
-      const topology = drawer.getByTestId("capi-details-section-topology");
+  it(
+    "shows the topology of both Clusters: the class quick-start, their version, a MachineDeployment and a MachinePool (3)",
+    async () => {
+      for (const [name, part] of [
+        [MD, "MachineDeployment"],
+        [MP, "MachinePool"],
+      ] as const) {
+        const drawer = await detailsOf(name);
+        const topology = drawer.getByTestId("capi-details-section-topology");
 
-      await topology.waitFor(viewTimeout);
-      expect((await topology.getByTestId("capi-details-class").locator(".value").textContent())?.trim(), name).toBe(
-        "quick-start",
-      );
-      expect(await valueOf(topology, "Version"), name).toBe(real.kubernetesVersion);
+        await topology.waitFor(viewTimeout);
+        expect((await topology.getByTestId("capi-details-class").locator(".value").textContent())?.trim(), name).toBe(
+          "quick-start",
+        );
+        expect(await valueOf(topology, "Version"), name).toBe(real.kubernetesVersion);
 
-      const parts = await topology
-        .getByTestId("capi-details-topology-part")
-        .evaluateAll((items) => items.map((item) => item.querySelector(":scope > .name")?.textContent?.trim() ?? ""));
+        const parts = await topology
+          .getByTestId("capi-details-topology-part")
+          .evaluateAll((items) => items.map((item) => item.querySelector(":scope > .name")?.textContent?.trim() ?? ""));
 
-      expect(
-        parts.map((each) => each.split(" ")[0]),
-        name,
-      ).toEqual([part]);
-      await opened().frame.page().keyboard.press("Escape");
-    }
-    expect(await opened().session.errors()).toEqual([]);
-  });
+        expect(
+          parts.map((each) => each.split(" ")[0]),
+          name,
+        ).toEqual([part]);
+        await opened().frame.page().keyboard.press("Escape");
+      }
+      expect(await opened().session.errors()).toEqual([]);
+    },
+    // For each Cluster, the details opened, two minutes at most, and the wait of the topology, one.
+    7 * 60 * 1000,
+  );
 });

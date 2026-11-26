@@ -1221,6 +1221,20 @@ async function openTest<Session extends TierSession>(open: () => Promise<Opened<
   }
 }
 
+// What `make` gives, made at the first call and kept once it succeeded: a call that fails keeps nothing, so that the
+// next call makes it again, and a session that waits on it is not held by a failure that has passed.
+export function onceItSucceeds<T>(make: () => Promise<T>): () => Promise<T> {
+  let made: Promise<T> | undefined;
+
+  return () => {
+    made ??= make().catch((error: unknown) => {
+      made = undefined;
+      throw error;
+    });
+    return made;
+  };
+}
+
 // kubectl and the server-side apply of a test on a tier.
 function tierRequests(target: Tier): Omit<TierSession, "close"> {
   return {
@@ -1259,19 +1273,18 @@ export async function openRealProject(): Promise<RealProjectSession> {
     const kindnet = kindnetManifest(
       (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
     );
-    // clusterctl and its configuration, written from the checked files once, at the first describe.
-    let binary: Promise<string> | undefined;
+    // clusterctl and its configuration, written from the checked files at the first describe, and again at the next
+    // one when that failed.
+    const binary = onceItSucceeds(() => writeRepository(pins).then(() => clusterctlBinary(pins)));
 
     return {
       ...tierRequests(MANAGEMENT),
       kindnet: (namespace) => kindnetResources(kindnet, namespace),
       kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
-      describeCluster: async (name) => {
-        binary ??= writeRepository(pins).then(() => clusterctlBinary(pins));
-        return clusterctl(await binary, MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE], {
+      describeCluster: async (name) =>
+        clusterctl(await binary(), MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE], {
           quiet: true,
-        });
-      },
+        }),
       sveltos: async () => {
         const extension = sveltosExtensionPackage(pins, DOWNLOADS);
 

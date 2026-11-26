@@ -3,11 +3,12 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// What the session of the real project compares (SPEC-0004, "With the real project", `clusters-real.tests.ts`), as
-// pure functions, which its unit test checks with no cluster: the row of a Cluster that `clusterctl describe cluster`
-// prints, the counters that the details of the extension show, and the row that those counters give, summed as the
-// project sums them (SPEC-0001, R4.21, R4.22). Its name does not match `*.tests.ts`, so Vitest does not collect it as a
-// session.
+// What the sessions of the real tier compare (SPEC-0004, "With the real project", `clusters-real.tests.ts` and
+// `clusters-sveltos.tests.ts`), as pure functions, which their unit test checks with no cluster: the row of a Cluster
+// that `clusterctl describe cluster` prints, the counters that the details of the extension show, the row that those
+// counters give, summed as the project sums them (SPEC-0001, R4.21, R4.22), and the lists of the Clusters that the
+// page of the Sveltos extension sends without a watch. Its name does not match `*.tests.ts`, so Vitest does not collect
+// it as a session.
 
 // The cells of the row of a Cluster in the table of `clusterctl describe cluster`: REPLICAS, the current of the
 // desired Machines, AVAILABLE, READY and UP TO DATE, and the STATUS and REASON of its `Available` (R4.21, R4.22).
@@ -51,15 +52,23 @@ export function describedCluster(output: string, namespace: string, name: string
   return undefined;
 }
 
-// The counters of the control plane or of the workers, as the details of the extension write them: each count with its
-// label, such as `3 desired`, or `N/A up to date` for one not written, separated by commas.
+// The counters of the control plane or of the workers, from the value of their item in the details of the extension:
+// each count with its label, such as `3 desired`, or `N/A up to date` for one not written, separated by commas. A
+// part that is not a count with its label is refused: the text of the whole item of the drawer is its name and its
+// value with nothing between them, `Machines1 desired, ...`, as the host renders it (drawer-item.tsx:47-48, at `v2.0.0`
+// and `v2.1.0`), and its first count would otherwise be lost.
 export function countersOf(text: string): Map<string, number | undefined> {
   const counters = new Map<string, number | undefined>();
 
   for (const part of text.split(",")) {
+    if (part.trim() === "") continue;
+
     const counter = /^\s*(\d+|N\/A) (.+?)\s*$/.exec(part);
 
-    if (counter) counters.set(counter[2], counter[1] === "N/A" ? undefined : Number(counter[1]));
+    if (!counter) {
+      throw new Error(`"${part.trim()}" of "${text}" is not a count with its label: read the value of the item alone`);
+    }
+    counters.set(counter[2], counter[1] === "N/A" ? undefined : Number(counter[1]));
   }
   return counters;
 }
@@ -95,4 +104,29 @@ export function summaryOf(text: string): { status: string; reason: string } | un
   const summary = /^Available: (\S+), (\S+)/.exec(text.trim());
 
   return summary === null ? undefined : { status: summary[1], reason: summary[2] };
+}
+
+// A request of the renderer, as the sessions record it: its method, its address, and when the session saw it go.
+export interface RecordedRequest {
+  readonly method: string;
+  readonly url: string;
+  readonly at: number;
+}
+
+// The lists of the Clusters at `v1beta1`, the version that the Sveltos extension reads, in a namespace or over the
+// whole cluster, without a watch, that the renderer sent from `from` to `to`, both included: such as the reloads that
+// the page of the Sveltos extension makes every 30 seconds, whatever changed (freelens-sveltos-extension:
+// src/renderer/api/subscribe-stores.ts:4, 54-62). An update that the page shows with none of them between the write
+// and the moment it shows came through a watch.
+export function clusterListsBetween(requests: readonly RecordedRequest[], from: number, to: number): RecordedRequest[] {
+  return requests.filter((request) => {
+    if (request.method !== "GET" || request.at < from || request.at > to || !URL.canParse(request.url)) return false;
+
+    const address = new URL(request.url);
+
+    return (
+      !address.searchParams.has("watch") &&
+      /^(?:\/api-kube)?\/apis\/cluster\.x-k8s\.io\/v1beta1\/(?:namespaces\/[^/]+\/)?clusters$/.test(address.pathname)
+    );
+  });
 }

@@ -353,26 +353,36 @@ leaves them out (SPEC-0004, "With the real project"; P29, P33).
   of `freelens-capi-md` and `freelens-capi-mp` with what
   `clusterctl describe cluster`, the tool of the project, prints of them, run by
   the scripts with the pinned clusterctl and no check for a newer one: the
-  status and the reason of `Available`, the counters that add up to the row of
-  each Cluster, `freelens-capi-mp` Degraded while the tool gives its `Available`
-  as `True`, and the topology of both. Each comparison reads both sides again,
-  for ten minutes at most, until they agree, since the controllers still write
-  the objects. It writes nothing.
+  status and the reason of `Available` of `freelens-capi-md`, and the counters
+  of its control plane and of its workers, from the value of their items, which
+  add up to its row; `freelens-capi-mp` Degraded, with
+  `ControlPlaneMachinesReady` among its issues, once the tool gives its
+  `Available` as `True`; and, read once, the topology of both. The comparison
+  and the waits read both sides again, five minutes at most, until they agree,
+  since the controllers still write the objects. It writes nothing.
 - `integration/__tests__/clusters-sveltos.tests.ts` is S6 of SPEC-0001: it
   installs the Sveltos extension `2.1.0` from the file of its package on the
   npm registry, with the `.sha256` beside it that Freelens checks it against,
   and applies the definitions of the chart `projectsveltos` `1.16.1`, the files
   of its folder `crds`, both downloaded by the scripts and checked against
-  their pins ("The pins"); both pages then list the same Clusters, and a label
-  that kubectl sets and removes reaches both, with no failed watch of the group
-  of Cluster API.
+  their pins ("The pins"), by the names that it takes from their manifests
+  first; both pages, each opened at the address of its own extension, then list
+  the same Clusters, a label that kubectl sets reaches both when they open, and
+  a label set and removed with one page open reaches that page through its
+  watch, and the other when it opens, with no failed watch of the group of
+  Cluster API. The page of the Sveltos extension reloads its lists every 30
+  seconds, so an update that it shows counts only when no list of the Clusters
+  without a watch went between the write and the update; when one did, the step
+  makes its write again, three times at most, and says so.
 
 They write only to the cluster of the real project, through the scripts, and
 undo what they write at their end, also when a step failed: the session of S6
 writes the label `tier` on `freelens-capi-md` and the definitions of Sveltos,
-which it removes, after it uninstalls the Sveltos extension. Outside CI each
-skips with a warning when Freelens dev does not answer or the real project
-cannot be reached through the scripts; in CI it fails instead.
+which it deletes by their names, with `--ignore-not-found`, after it uninstalls
+the Sveltos extension. Outside CI each skips with a warning when Freelens dev
+does not answer or the real project cannot be reached through the scripts; in
+CI it fails instead. Run locally, S6 uninstalls any installation of the Sveltos
+extension that the profile of Freelens dev has, and leaves none.
 
 ## Continuous integration
 
@@ -400,8 +410,12 @@ cannot be reached through the scripts; in CI it fails instead.
   a check failed (`AGENTS.md`). The restricted session,
   `integration/__tests__/clusters-restricted.tests.ts`, opens the same page as
   a second identity that it makes on that cluster, which may read part of it,
-  and deletes it at its end ("Safety"). The step of the tests has 25 minutes,
-  and the job 75.
+  and deletes it at its end ("Safety"). The step of the tests holds the worst
+  case of its sessions, each hook and each case at its own limit, 120 minutes:
+  6 for the session of the template, 42 for the session of the fixtures of
+  `healthy`, one case for each of its 17 kinds, 40 for the session of the
+  Clusters, 30 for the restricted one, and 2 for Vitest to start and collect
+  them; the job has 170, the 50 of its steps before the tests and that limit.
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in
@@ -413,10 +427,13 @@ cannot be reached through the scripts; in CI it fails instead.
   The session of the template installs the extension, as before.
 - `test-environment.yaml`, when the scripts, the pins, the fixtures, the
   toolchain, the main process and the shared modules, `src/main/` and
-  `src/common/` without their unit tests, which the tests and the sessions of
-  the real tier load, the tests of the real tier, or the sessions of the real
+  `src/common/`, which the tests and the sessions of the real tier load, the
+  view, `src/renderer/`, and the build that makes the extension that the
+  sessions install, `vite.config.mjs` and `build/`, the unit tests of the
+  sources left out, the tests of the real tier, or the sessions of the real
   tier and what they import change, on every push to `main` and every night
-  (SPEC-0004, P33; kit, `docs/testing.md`, "What runs when"). The paths start
+  (SPEC-0004, P33, "Notes and deviations"; kit, `docs/testing.md`, "What runs
+  when"). The paths start
   both of its jobs, the fixtures too. Its job of the fixtures runs
   `pnpm e2e:fixtures:check` on the cluster of the definitions. Its job of the
   real project is a matrix of the releases of Freelens of the integration
@@ -428,11 +445,15 @@ cannot be reached through the scripts; in CI it fails instead.
   `integration-tests.yaml` builds it, starts it with a profile that syncs a
   copy of the kubeconfig of the scripts for the cluster of the real project
   alone, and runs the sessions of the real tier in Freelens,
-  `pnpm test:integration:real-project`, within half an hour; then
+  `pnpm test:integration:real-project`, within a limit that holds their worst
+  case, each hook and each case at its own limit, 70 minutes: 33 for the session
+  against clusterctl, 31 for S6, and 5 for Vitest to start and for each session
+  to reach the real project through the scripts; then
   `pnpm e2e:cluster:down`, and it checks that no kind cluster and no container
-  of the scripts is left. Each job has 135 minutes, the 75 that the job of the
-  real project had and the hour of the job of the integration tests, whose
-  Freelens dev it builds. A step of the tests cut by its limit leaves their
+  of the scripts is left. Each job has 195 minutes: the hour of the real
+  project, the quarter of an hour of the tests of the real tier, the 50 minutes
+  that the integration tests give their steps before the tests to build and
+  start Freelens dev, and the 70 of the sessions. A step of the tests cut by its limit leaves their
   workload clusters to `pnpm e2e:cluster:down`, which deletes them with the
   others. A new push to a pull request cancels the jobs of the real project
   that still run for it, each release in a group of its own, so that the two
@@ -660,14 +681,19 @@ it, and it follows these rules:
   their bindings, every object with the label
   `test-environment.freelens.app/session=restricted`. It asks the cluster what
   the identity may do with SubjectAccessReviews, which store nothing.
-- **Roles that read alone.** Every role grants `get`, `list` and `watch`, never
-  on a Secret and never on every resource. Each step of a case grants what it
+- **Roles that read alone.** Every role grants `get`, `list` and `watch` at
+  most, the role of the definitions read by their names `get` alone, never on
+  a Secret and never on every resource. Each step of a case grants what it
   allows, and the session reads again only once the cluster answers so. Every
   step lets the identity list and watch the namespaces over the whole cluster,
   as the frame of a cluster does, and read in `default` what the start page of
   Freelens reads there for a user who may not list the Nodes, the overview of
-  the workloads, and every kind that the page reads, so that no read but those
-  of its cases is refused.
+  the workloads, and every kind that the page reads. A step that refuses a kind
+  in a namespace that the frame read before loads the frame again, which then
+  keeps no version from which a watch of that namespace would start, so that
+  the only reads refused are the lists and the gets that its cases expect,
+  which the session checks arrived, and never a watch (SPEC-0004, "Notes and
+  deviations").
 - **A token that stays on the machine.** The token comes from a TokenRequest
   and lasts an hour. It goes from kubectl into a kubeconfig file alone,
   `freelens-capi-restricted.kubeconfig`, readable by its user alone, with the
@@ -684,3 +710,13 @@ it, and it follows these rules:
   cluster of the identity, deletes the file, every object with its label, and
   the namespace with its ServiceAccount, and checks that they are gone. A run
   that was killed leaves them to the next, which deletes them first.
+- **Local runs.** The profile of Freelens dev keeps the namespaces that the
+  filter selects for the cluster of the identity, so a run that was killed in
+  a case can leave it on namespaces that the next run refuses at its start,
+  where it grants the first access: select `default` for that cluster, or start
+  Freelens dev on a fresh profile. With the results of a run before, Vitest runs
+  first the files that failed in it, so after a failed run of the restricted
+  session the session of the Clusters can start more than 25 minutes after the
+  fixtures were applied, and fails at its start, saying so: apply them again
+  first, `pnpm e2e:fixtures:up all`. In CI neither happens: the profile is
+  fresh, and no results of a run before are kept.

@@ -47,6 +47,22 @@ export function chartDefinitions(files: ReadonlyMap<string, Uint8Array>, chart: 
   return definitions;
 }
 
+// The name of a definition, from its text: the `name` of its `metadata`, `<plural>.<group>`, the name that kubectl
+// applies and deletes it by. The keys of `metadata` are those at the indentation of its first line, two spaces or
+// four, as the chart of Sveltos writes them. A session takes the names before it applies the definitions, so that its
+// end deletes them also when the apply failed half way.
+export function definitionName(definition: string): string {
+  const metadata = /^metadata:[ \t]*\n((?:(?:[ \t]+[^\n]*|[ \t]*)\n)*)/m.exec(definition)?.[1] ?? "";
+  const indent = /^( +)\S/m.exec(metadata)?.[1];
+  const name =
+    indent === undefined
+      ? undefined
+      : new RegExp(`^${indent}name:[ \\t]*["']?([a-z0-9][a-z0-9.-]*)["']?[ \\t]*$`, "m").exec(metadata)?.[1];
+
+  ensure(name, "A definition has no name in its metadata");
+  return name;
+}
+
 // The CIDRs of the pods of the workload clusters, those of the configuration of the tests of Cluster API for
 // the development provider (`test/e2e/config/docker.yaml` at the tag): the IPv4 one is the default of the
 // templates of the release, and kindnet routes both.

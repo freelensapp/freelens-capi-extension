@@ -5,9 +5,11 @@ name: Test environment
 # the real tier and by the sessions of the real tier in Freelens dev, on each release of Freelens of the integration
 # tests, and taken down. They run when what they run changes, on main, and every night, when an image that a pinned
 # manifest names by its tag may have moved. What they run includes the main process and the shared modules,
-# src/main and src/common, their unit tests left out, which the tests and the sessions of the real tier load, the
-# sessions of the real tier and what they import (SPEC-0004, P33). The paths start both jobs of the workflow, the
-# fixtures too. Nothing of the private state of the scripts, a kubeconfig above all, leaves the runner.
+# src/main and src/common, which the tests and the sessions of the real tier load, the view, src/renderer, and the
+# build that makes the extension that the sessions install, vite.config.mjs and build, the unit tests of the sources
+# left out, and the sessions of the real tier and what they import (SPEC-0004, P33, "Notes and deviations"). The paths
+# start both jobs of the workflow, the fixtures too. Nothing of the private state of the scripts, a kubeconfig above
+# all, leaves the runner.
 
 on:
   push:
@@ -20,10 +22,12 @@ on:
       - .github/workflows/test-environment.yaml
       - .github/workflows/integration-tests.yaml
       - .nvmrc
+      - build/**
       - e2e/**
       - integration/fixtures/**
       - integration/__tests__/clusters-real.tests.ts
       - integration/__tests__/clusters-sveltos.tests.ts
+      - integration/__tests__/expected-refusals.ts
       - integration/__tests__/extension-helpers.ts
       - integration/__tests__/real-project-checks.ts
       - package.json
@@ -31,9 +35,13 @@ on:
       - src/main/**
       - src/common/**
       - "!src/common/**/*.test.ts"
+      - src/renderer/**
+      - "!src/renderer/**/*.test.ts"
+      - "!src/renderer/**/*.test.tsx"
       - test/real-project/**
       - "!test/real-project/**/*.test.ts"
       - test/status-*.ts
+      - vite.config.mjs
       - vitest.integration.config.ts
       - vitest.integration-real-project.config.ts
       - vitest.real-project.config.ts
@@ -133,11 +141,11 @@ jobs:
           - freelens_version: v2.0.0
           - freelens_version: v2.1.0
 
-    # The sum of the budgets of the two jobs that it joins (SPEC-0004, P33): the 75 minutes of the job of the real
-    # project, the hour of the real project and the quarter of an hour of the tests of the real tier, and the hour of
-    # the job of the integration tests, whose Freelens dev it builds and whose harness its sessions use.
+    # The budgets of what it joins (SPEC-0004, P33, "Notes and deviations"): the hour of the real project, the quarter of
+    # an hour of the step of the tests of the real tier, the 50 minutes that the steps of the integration tests before
+    # their tests have to build and start Freelens dev, and the 70 minutes of the step of the sessions of the real tier.
     runs-on: ubuntu-24.04
-    timeout-minutes: 135
+    timeout-minutes: 195
 
     # A new push to a pull request cancels the jobs of the real project that still run for it, each release in a group
     # of its own, so that the two jobs of a run do not cancel each other. The runs of main and of the night each have
@@ -453,9 +461,11 @@ jobs:
       # and reach it through the scripts, which check the target before every request. They write only to that
       # cluster: a label on freelens-capi-md and the definitions of Sveltos, which they remove at their end. The
       # sessions are deterministic, so a failure is not retried; they wait for the objects of the real project that
-      # its controllers still write, ten minutes at most.
+      # its controllers still write, five minutes at most for each wait. The limit holds their worst case, each hook
+      # and each case at its own limit: 33 minutes for the session against clusterctl, 31 for S6, and 5 for Vitest to
+      # start and for each to reach the real project through the scripts.
       - name: Run the sessions of the real tier in Freelens dev
-        run: timeout 1800 pnpm --color=always test:integration:real-project --reporter=verbose --reporter=github-actions --includeTaskLocation
+        run: timeout 4200 pnpm --color=always test:integration:real-project --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:
           FREELENS_MAIN_LOG: ${{ runner.temp }}/freelens-dev.log
           TEST_KIND_CLUSTER_NAME: freelens-capi-management

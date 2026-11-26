@@ -133,9 +133,14 @@ and writes nothing; what each part shows is in
 
    ```sh
    state=~/.local/state/freelens-capi-extension
-   "$state"/downloads/cluster-api/v1.14.4/clusterctl-linux-amd64 describe cluster freelens-capi-md \
+   CLUSTERCTL_DISABLE_VERSIONCHECK=true \
+     "$state"/downloads/cluster-api/v1.14.4/clusterctl-linux-amd64 describe cluster freelens-capi-md \
      --kubeconfig "$state"/freelens-capi-management/kubeconfig
    ```
+
+   `CLUSTERCTL_DISABLE_VERSIONCHECK=true` keeps clusterctl from asking GitHub
+   for a newer release and from writing the state of that check in your home,
+   as the scripts do.
 
    It gives the status and the reason of `Available` that the details give,
    and counters that add up to those of the control plane and of the workers.

@@ -15,12 +15,15 @@
 //    the Machines, with the permission, and activities that read Unknown, never Idle (P25);
 // 4. every kind of the page over the whole cluster, and no watch of every resource of the core group: the notice of a
 //    list that the host reads once and does not follow, and none with one namespace, where a label that kubectl sets
-//    reaches the search with no reload (P34);
+//    reaches a search that showed no row, with no reload (P34);
 // 3. S2, with an identity that may not list the definitions: a link to the infrastructure cluster when it may get its
 //    definition by its name, else text with the reason and the permission (P3).
 //
-// Case 3 runs last: the host lists the definitions as the frame of a cluster starts, and keeps what that list gave, so
-// the identity that may not list them is tried in a frame that the session loads again once its access refuses them.
+// A step that refuses a kind in a namespace that the frame read before loads the frame again: the API of the host keeps
+// the version of its last list in each namespace, and a watch would start from it and be refused. Case 3 runs last,
+// in a frame loaded again once its access refuses the list of the definitions, which the host makes as the frame
+// starts and keeps. After a load of the frame the session opens the page itself, since the frame may start on the
+// start page of the host.
 //
 // The identity is a ServiceAccount in a namespace of its own, with a token from a TokenRequest, which the session
 // writes, with the API server and the authority of the kubeconfig of the scripts, into a kubeconfig file in the folder
@@ -29,21 +32,24 @@
 // The session writes only to the cluster of the definitions, through the scripts of the test environment, which check
 // the target before every request. A refusal that a case expects is left out of the errors when it arrives, by its
 // status and its address, the frame that sent it and the page that frame shows; any other refusal, and any other
-// error, fails the session. Its end, also when a case failed, deletes the file, every object of RBAC, the
-// ServiceAccount and its namespace, and checks that they are gone. The token is never logged.
+// error, fails the session; each case checks that the refusals that it waits for arrived. Its end, also when a case
+// failed, deletes the file, every object of RBAC, the ServiceAccount and its namespace, and checks that they are gone.
+// The token is never logged.
 
 import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openDefinitions } from "../../e2e/scripts/commands.mts";
 import { FIXTURES_FOLDER, readFixtureSet } from "../../e2e/scripts/fixtures.mts";
+import { isInside } from "../../e2e/scripts/state.mts";
 import { statesOf } from "../../e2e/scripts/states.mts";
+import { refusalsNotSeen } from "./expected-refusals";
 import {
   appReady,
   catalogLists,
   connectApp,
   disconnectCluster,
-  extensionName,
+  extensionPageAddress,
   installExtension,
   navigateCluster,
   openCluster,
@@ -55,6 +61,7 @@ import {
   accessObjects,
   accessReviews,
   CONTROL_PLANE_DEFINITION,
+  DEFINITIONS_PATH,
   extraObjects,
   IDENTITY,
   IDENTITY_USER,
@@ -144,7 +151,7 @@ const INFRASTRUCTURE_DEFINITION_REFUSED: Access = {
 };
 
 // The page of the Clusters in the frame of a cluster.
-const PAGE = `/extension/${extensionName.replace("@", "").replace("/", "--")}/clusters`;
+const PAGE = extensionPageAddress("clusters");
 
 // What the notices of the page say of a refusal (src/common/views/read-state.ts).
 const LIST_PERMISSION =
@@ -176,9 +183,7 @@ function folderProblem(): string | undefined {
     return `${folder}, which TEST_RESTRICTED_KUBECONFIG_FOLDER names, is not a folder`;
   }
 
-  const relative = path.relative(realpathSync(repository), realpathSync(folder));
-
-  if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+  if (isInside(realpathSync(repository), realpathSync(folder))) {
     return `${folder} is inside the repository, where the token of the identity could end up in a commit`;
   }
   return undefined;
@@ -254,27 +259,29 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
 
   // Grants an access: its objects applied, those of the access before it deleted, and then every permission that it
   // decides asked of the cluster, in one batch of SubjectAccessReviews, until the cluster answers each as the access
-  // does, so that the next read of the identity sees it.
+  // does, so that the next read of the identity sees it. It waits with `vi.waitFor`, which runs in a hook too, where
+  // Vitest refuses `expect.poll`: the hook that grants the first access is one.
   async function grant(next: Access) {
     const objects = accessObjects(next);
     const permissions = permissionsOf(next);
 
     cluster.apply(list(objects));
     for (const extra of extraObjects(existingObjects(), objects)) deleteObject(extra);
-    await expect
-      .poll(
-        () =>
-          wrongAnswers(
-            permissions,
-            JSON.parse(
-              cluster.kubectl(["create", "--output", "json", "--filename", "-"], {
-                input: list(accessReviews(permissions)),
-              }),
-            ),
-          ),
-        { timeout: 120 * 1000, interval: 1000 },
-      )
-      .toEqual([]);
+    await vi.waitFor(
+      () => {
+        const wrong = wrongAnswers(
+          permissions,
+          cluster.kubectl(["create", "--output", "json", "--filename", "-"], {
+            input: list(accessReviews(permissions)),
+          }),
+        );
+
+        if (wrong.length > 0) {
+          throw new Error(`The cluster does not answer yet as the access says:\n${wrong.join("\n")}`);
+        }
+      },
+      { timeout: 120 * 1000, interval: 1000 },
+    );
   }
 
   // The message of the refusal of a request of the identity, as the cluster writes it, which the page shows.
@@ -289,9 +296,18 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
   }
 
   // Leaves out, while a case runs, the refusals of the lists and of the gets that it expects from the frame of the
-  // cluster of the identity, while that frame shows the page of the Clusters.
-  function expectRefusals(paths: readonly string[]): () => void {
-    return opened().session.expectRefusals(paths.map((path) => ({ frameHost, page: PAGE, path })));
+  // cluster of the identity, while that frame shows the page of the Clusters, or on any page for a refusal that comes
+  // as the frame starts.
+  function expectRefusals(paths: readonly string[], { anyPage = false } = {}): () => void {
+    return opened().session.expectRefusals(
+      paths.map((path) => (anyPage ? { frameHost, path } : { frameHost, page: PAGE, path })),
+    );
+  }
+
+  // Checks that every refusal that a case waits for arrived since the case started, so that a refusal that the case
+  // expects is never one that the frame no longer sends.
+  function expectRefusalsSeen(paths: readonly string[], leftOutBefore: number) {
+    expect(refusalsNotSeen(paths, opened().session.refusalsLeftOut().slice(leftOutBefore))).toEqual([]);
   }
 
   // The page of the Clusters, open with its list.
@@ -344,6 +360,21 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     await expect.poll(() => page.locator('[data-testid^="capi-notice-"]').count(), viewTimeout).toBe(0);
   }
 
+  // Starts a step: the page settled in `default`, the access of the step granted, and, when the step refuses a kind in
+  // a namespace that the frame read before, the frame loaded again, so that no API of the host keeps the version of a
+  // list from before the refusal, from which a watch would start and be refused; then the page, which the session
+  // opens itself, since a frame that starts may show the start page of the host.
+  async function startStep(next: Access, { reload }: { reload: boolean }): Promise<Locator> {
+    const { session, frame } = opened();
+
+    await settle(await openPage());
+    await grant(next);
+    if (reload) {
+      await reloadClusterFrame(session, frame);
+    }
+    return openPage();
+  }
+
   // Sets or removes a label of the Cluster of healthy with a merge patch.
   function patchLabel(key: string, value: string | null) {
     cluster.kubectl([
@@ -386,12 +417,17 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
 
     const app = session;
 
-    await expect
-      .poll(() => catalogLists(app, IDENTITY.context), {
-        timeout: 120 * 1000,
-        message: `The catalog does not list ${IDENTITY.context}: add the folder ${folder} in Kubeconfig Syncs of the profile of Freelens dev`,
-      })
-      .toBe(true);
+    // `vi.waitFor`, as in `grant`: Vitest refuses `expect.poll` in a hook.
+    await vi.waitFor(
+      async () => {
+        if (!(await catalogLists(app, IDENTITY.context))) {
+          throw new Error(
+            `The catalog does not list ${IDENTITY.context}: add the folder ${folder} in Kubeconfig Syncs of the profile of Freelens dev`,
+          );
+        }
+      },
+      { timeout: 120 * 1000, interval: 1000 },
+    );
     frame = await openCluster(session, IDENTITY.context);
     frameHost = new URL(frame.url()).host;
   }, stepTimeout);
@@ -466,14 +502,17 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     "case 1: the Clusters refused in the namespace of paused alone give Partial, over the whole cluster and in both namespaces Restricted (P25, P26)",
     async () => {
       const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
         ...refusedLists(CLUSTERS_IN_PAUSED, [HEALTHY, PAUSED]),
         ...refusedLists(CLUSTERS_IN_PAUSED, "every"),
         ...refusedLists(CLUSTERS_IN_BOTH, [HEALTHY, PAUSED]),
       ]);
-      const page = await openPage();
 
       try {
+        // The frame has read no Cluster yet, so the first access needs no load of the frame of its own.
+        const page = await openPage();
+
         // Refused in the namespace of paused alone: the Clusters of healthy, and over them the notice of Partial, with
         // the message of the answer and the permission, and in the header the mark of the host for the failure of its
         // load.
@@ -515,10 +554,9 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
         await expect.poll(() => listedNames(page), viewTimeout).toEqual([HEALTHY_CLUSTER]);
         await expect.poll(() => page.locator('[data-testid^="capi-notice-list-"]').count(), viewTimeout).toBe(0);
 
-        // Refused in both namespaces: Restricted, with the message of each answer, and "not counted" next to the mark of
-        // the host.
-        await settle(page);
-        await grant(CLUSTERS_IN_BOTH);
+        // Refused in both namespaces, the namespace of healthy after the frame read its Clusters: in a frame loaded
+        // again, Restricted, with the message of each answer, and "not counted" next to the mark of the host.
+        await startStep(CLUSTERS_IN_BOTH, { reload: true });
         await selectNamespaces(frame, [HEALTHY, PAUSED]);
         await restricted.waitFor(viewTimeout);
         expect(await restricted.textContent()).toContain(
@@ -532,9 +570,15 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
         await page.locator(".header .load-error").waitFor(viewTimeout);
         expect(await listedNames(page)).toEqual([]);
         expect(await page.locator(".NoItems").count()).toBe(0);
+
+        // The loads of the refused namespaces end before the refusals stop being expected.
+        await settle(page);
+        expectRefusalsSeen(
+          [listPath(CLUSTERS, PAUSED), listPath(CLUSTERS), listPath(CLUSTERS, HEALTHY)],
+          leftOutBefore,
+        );
         expect(await session.errors()).toEqual([]);
       } finally {
-        await settle(page);
         stop();
       }
     },
@@ -545,16 +589,17 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     "case 2: the Machines refused in the namespace of paused, then in both, leave the Clusters listed with activities Unknown, never Idle (P25)",
     async () => {
       const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
         ...refusedLists(MACHINES_IN_PAUSED, [HEALTHY, PAUSED]),
         ...refusedLists(MACHINES_IN_BOTH, [HEALTHY, PAUSED]),
       ]);
-      const page = await openPage();
 
       try {
         for (const step of [MACHINES_IN_PAUSED, MACHINES_IN_BOTH]) {
-          await settle(page);
-          await grant(step);
+          // Each step refuses the Machines in a namespace that the frame read before: a frame loaded again.
+          const page = await startStep(step, { reload: true });
+
           await selectNamespaces(frame, [HEALTHY, PAUSED]);
 
           // The Clusters of both namespaces, and over them a notice that names the Machines, with the message of each
@@ -594,10 +639,12 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
           );
           await frame.page().keyboard.press("Escape");
           await frame.getByTestId("capi-cluster-details").waitFor({ state: "detached", ...viewTimeout });
+          // The loads of the refused namespaces end before the next step, or before the refusals stop being expected.
+          await settle(page);
         }
+        expectRefusalsSeen([listPath(MACHINES, PAUSED), listPath(MACHINES, HEALTHY)], leftOutBefore);
         expect(await session.errors()).toEqual([]);
       } finally {
-        await settle(page);
         stop();
       }
     },
@@ -608,12 +655,10 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     "case 4: a list read over the whole cluster, which the host does not follow, says so, and a list of one namespace follows a label (P34)",
     async () => {
       const { session, frame } = opened();
-      const page = await openPage();
       const key = "freelens-capi-restricted";
       const value = `session-${Date.now()}`;
-
-      await settle(page);
-      await grant(OVER_THE_CLUSTER);
+      // Every kind over the whole cluster refuses nothing, so the frame needs no load of its own.
+      const page = await startStep(OVER_THE_CLUSTER, { reload: false });
 
       // Every namespace selected: the Clusters of the fixtures, and above them the notice that the list was read once,
       // at its time, over the whole cluster, and is not followed: the identity may not watch every resource of the core
@@ -630,21 +675,26 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       );
       for (const line of NOT_FOLLOWED_LINES) expect(await notice.textContent()).toContain(line);
 
-      // The namespace of healthy alone, read and watched in that namespace: no notice, and a label that kubectl sets
-      // reaches the search with no reload.
+      // The namespace of healthy alone, read and watched in that namespace: no notice. The search of a label that no
+      // Cluster has shows no row, and the label that kubectl then sets reaches it with no reload: the row comes back
+      // only through the watch.
       await selectNamespaces(frame, [HEALTHY]);
       await expect.poll(() => notice.count(), viewTimeout).toBe(0);
       await expect.poll(() => listedNames(page), viewTimeout).toEqual([HEALTHY_CLUSTER]);
+
+      const search = page.locator('input[placeholder^="Search"]');
+
+      await search.fill(`${key}=${value}`);
+      await expect.poll(() => listedNames(page), viewTimeout).toEqual([]);
       labelled = key;
       try {
         patchLabel(key, value);
-        await page.locator('input[placeholder^="Search"]').fill(`${key}=${value}`);
         await expect.poll(() => listedNames(page), viewTimeout).toEqual([HEALTHY_CLUSTER]);
-        await page.locator('input[placeholder^="Search"]').fill("");
       } finally {
         patchLabel(key, null);
         labelled = undefined;
       }
+      await search.fill("");
       await settle(page);
       expect(await session.errors()).toEqual([]);
     },
@@ -655,25 +705,21 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
     "case 3: a user who may not list the definitions sees the infrastructure cluster as a link when it may get its definition by its name, else as text with the reason and the permission (S2, P3)",
     async () => {
       const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
       const address = `${HEALTHY}/${HEALTHY_CLUSTER}`;
       const details = frame.getByTestId("capi-cluster-details");
       const reference = details.getByTestId("capi-details-infrastructure-reference");
-      // The list of the definitions that the host makes as the frame starts, and the get of the definition of the
-      // infrastructure cluster once the identity may not read it.
-      const stop = expectRefusals([
-        ...refusedDefinitions(DEFINITIONS_BY_NAME),
-        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED),
+      // The list of the definitions that the host makes as the frame starts, whatever page the frame shows then, and
+      // the get of the definition of the infrastructure cluster once the identity may not read it, from the page.
+      const stopList = expectRefusals([DEFINITIONS_PATH], { anyPage: true });
+      const stopGets = expectRefusals([
+        ...refusedDefinitions(DEFINITIONS_BY_NAME).filter((path) => path !== DEFINITIONS_PATH),
+        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED).filter((path) => path !== DEFINITIONS_PATH),
       ]);
 
       try {
-        await settle(await openPage());
-        await grant(DEFINITIONS_BY_NAME);
         // A frame of its own, whose host lists the definitions as it starts, and may not.
-        await reloadClusterFrame(frame);
-
-        const page = frame.getByTestId("capi-clusters-page");
-
-        await page.locator(".TableHead").waitFor(viewTimeout);
+        await startStep(DEFINITIONS_BY_NAME, { reload: true });
 
         // The details of the Cluster of healthy, whose namespace the page does not read, by their address: they read
         // the definitions of the kinds that the Cluster names by their names, and the infrastructure cluster is a link.
@@ -697,13 +743,15 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
           "Not read. Its definition could not be read: reading it takes get on customresourcedefinitions of apiextensions.k8s.io, for that definition.",
         );
         expect(await unread.textContent()).toContain(
-          refusalMessage(`/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${INFRASTRUCTURE_DEFINITION}`),
+          refusalMessage(`${DEFINITIONS_PATH}/${INFRASTRUCTURE_DEFINITION}`),
         );
         await frame.page().keyboard.press("Escape");
         await details.waitFor({ state: "detached", ...viewTimeout });
+        expectRefusalsSeen([DEFINITIONS_PATH, `${DEFINITIONS_PATH}/${INFRASTRUCTURE_DEFINITION}`], leftOutBefore);
         expect(await session.errors()).toEqual([]);
       } finally {
-        stop();
+        stopList();
+        stopGets();
       }
     },
     stepTimeout,

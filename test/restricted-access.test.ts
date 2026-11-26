@@ -142,19 +142,23 @@ describe("the identity of the restricted session (P23)", () => {
     }
   });
 
-  it("binds in each namespace the role of what it refuses there, and over the whole cluster the role of every kind", () => {
+  it("binds in each namespace the role of what it refuses there, each kind under its group, and over the whole cluster the role of every kind", () => {
     const objects = accessObjects(CLUSTERS_IN_PAUSED);
     const roles = new Map(objectsOfKind(objects, "ClusterRole").map((role) => [role.metadata.name, role]));
-    const resources = (name: string) => roles.get(name)?.rules.flatMap((rule: Manifest) => rule.resources);
+    // Each resource that a role grants, as `plural.group`, so that a kind granted under another group differs.
+    const resources = (name: string): string[] =>
+      roles
+        .get(name)
+        ?.rules.flatMap((rule: Manifest) =>
+          rule.apiGroups.flatMap((group: string) => rule.resources.map((plural: string) => `${plural}.${group}`)),
+        ) ?? [];
     const bindings = objectsOfKind(objects, "RoleBinding").filter((binding) => binding.roleRef.name.includes("-reads"));
 
     expect(bindings.map((binding) => binding.metadata.namespace).sort()).toEqual([...NAMESPACES].sort());
     for (const binding of bindings) {
-      const read = resources(binding.roleRef.name);
-
-      expect([...read].sort(), binding.metadata.namespace).toEqual(
-        READ_KINDS.map((each) => each.plural)
-          .filter((plural) => binding.metadata.namespace !== PAUSED || plural !== "clusters")
+      expect(resources(binding.roleRef.name).sort(), binding.metadata.namespace).toEqual(
+        READ_KINDS.filter((each) => binding.metadata.namespace !== PAUSED || each.plural !== "clusters")
+          .map((each) => `${each.plural}.${each.group}`)
           .sort(),
       );
     }
@@ -229,25 +233,26 @@ describe("the identity of the restricted session (P23)", () => {
       },
     });
 
-    const answered = (allowed: (index: number) => boolean) => ({
-      items: permissions.map((_permission, index) => ({ status: { allowed: allowed(index) } })),
-    });
+    // The answers as kubectl prints the objects of a list that it creates: each review whole, one after the other, in
+    // the order of the list, and never a List of them.
+    const printed = (allowed: (index: number) => boolean) =>
+      reviews
+        .map((review, index) => JSON.stringify({ ...review, status: { allowed: allowed(index) } }, null, 4))
+        .join("\n");
 
     expect(
       wrongAnswers(
         permissions,
-        answered((index) => permissions[index].allowed),
+        printed((index) => permissions[index].allowed),
       ),
     ).toEqual([]);
     expect(
       wrongAnswers(
         permissions,
-        answered((index) => permissions[index].allowed || index === refusedAt),
+        printed((index) => permissions[index].allowed || index === refusedAt),
       ),
     ).toEqual([`allowed: list clusters.cluster.x-k8s.io in ${PAUSED}`]);
-    expect(wrongAnswers(permissions, { items: [] })).toEqual([
-      `The cluster answered 0 reviews of ${permissions.length}`,
-    ]);
+    expect(wrongAnswers(permissions, "")).toEqual([`The cluster answered 0 reviews of ${permissions.length}`]);
   });
 
   it("expects the refusals of the lists that an access refuses where the page reads, and of the definitions", () => {

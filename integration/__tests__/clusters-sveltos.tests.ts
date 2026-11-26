@@ -14,10 +14,15 @@
 //    applies to the cluster of the real project the definitions of the chart of Sveltos of the pins, checked against
 //    its pin, and nothing else of Sveltos.
 // 2. Both pages list `freelens-capi-md` and `freelens-capi-mp` in `default`, and nothing else.
-// 3. A label `tier=dev` that kubectl sets on `freelens-capi-md` reaches the search of both pages, with no reload.
-// 4. The label removed with one page open reaches it at once, and the other when it opens; then the other way round.
+// 3. A label `tier=dev` that kubectl sets on `freelens-capi-md` reaches the search of both pages when they open.
+// 4. The label removed with this page open reaches it at once; set again with the page of the Sveltos extension open,
+//    it reaches that page through its watch, and this page, which closed with the label removed, when it opens; removed
+//    again with the page of the Sveltos extension open, it reaches that page through its watch, and this page, which
+//    closed with the label set, when it opens. The page of the Sveltos extension also reloads its lists every 30
+//    seconds, so an update that it shows counts only when no list of the Clusters without a watch went between the write
+//    and the update; when one did, the step makes its write again, three times at most, and says so.
 // 5. At its end, also when a step failed, it removes the label, uninstalls the Sveltos extension, and deletes the
-//    definitions of Sveltos that it applied.
+//    definitions of Sveltos by the names that it took from their manifests before it applied them.
 //
 // It writes to the cluster of the real project alone, through the scripts of the test environment, which check the
 // target before every request, and fails on any error that either process logs, a failed watch of `cluster.x-k8s.io`
@@ -28,6 +33,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openRealProject } from "../../e2e/scripts/commands.mts";
+import { definitionName } from "../../e2e/scripts/manifests.mts";
 import {
   appReady,
   connectApp,
@@ -38,10 +44,12 @@ import {
   installExtensionFile,
   openExtensionPage,
   openKindCluster,
+  recordRequests,
   recordWatchFailures,
   selectNamespaces,
   uninstallExtensionNamed,
 } from "./extension-helpers";
+import { clusterListsBetween } from "./real-project-checks";
 
 import type { Frame, Locator } from "playwright";
 
@@ -49,8 +57,17 @@ import type { RealProjectSession } from "../../e2e/scripts/commands.mts";
 import type { AppSession } from "./extension-helpers";
 
 const viewTimeout = { timeout: 60 * 1000 };
+// The time within which a page that is open follows a write through its watch, which brings it in a second or two.
+const followTimeout = { timeout: 20 * 1000 };
+
+// The time from which a list of the page of the Sveltos extension can still answer after a write: two seconds before it.
+const LIST_ANSWER_MARGIN = 2 * 1000;
+// The times that a step makes its write again when the page of the Sveltos extension reloaded its lists meanwhile.
+const FOLLOW_ATTEMPTS = 3;
 
 const SVELTOS = "@freelensapp/sveltos-extension";
+// The resource of the definitions, which the session deletes by their names.
+const DEFINITIONS = "customresourcedefinitions.apiextensions.k8s.io";
 const NAMESPACE = "default";
 const MD = "freelens-capi-md";
 const MP = "freelens-capi-mp";
@@ -82,10 +99,14 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
   let session: AppSession | undefined;
   let frame: Frame | undefined;
   let watches: ReturnType<typeof recordWatchFailures> | undefined;
+  let requests: ReturnType<typeof recordRequests> | undefined;
   // The folder of the package of the Sveltos extension and of its `.sha256`, outside every repository.
   let folder: string | undefined;
-  // The names of the definitions of Sveltos that the session applied, as kubectl names them.
+  // The names of the definitions of Sveltos, taken from their manifests before the session applies them, and what
+  // kubectl said that it applied.
+  let definitions: string[] = [];
   let applied: string[] = [];
+  // Set before the write of the label, so that the end removes a label whose write failed half way.
   let labelled = false;
 
   function opened(): { session: AppSession; frame: Frame } {
@@ -96,6 +117,9 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
   }
 
   function setLabel(value: string | null) {
+    if (value !== null) {
+      labelled = true;
+    }
     real.kubectl([
       "label",
       "clusters.v1beta2.cluster.x-k8s.io",
@@ -104,14 +128,17 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
       NAMESPACE,
       ...(value === null ? [`${LABEL.key}-`] : [`${LABEL.key}=${value}`, "--overwrite"]),
     ]);
-    labelled = value !== null;
+    if (value === null) {
+      labelled = false;
+    }
   }
 
-  // The page of the Clusters of the Sveltos extension, switched to the Clusters of Cluster API.
+  // The page of the Clusters of the Sveltos extension, by the name of that extension, switched to the Clusters of
+  // Cluster API.
   async function openSveltosPage(): Promise<Locator> {
     const { frame } = opened();
 
-    await openExtensionPage(frame, "sveltos-clusters");
+    await openExtensionPage(frame, "sveltos-clusters", SVELTOS);
     await frame.getByRole("button", { name: "ClusterAPI", exact: true }).click(viewTimeout);
     return frame.locator('input[placeholder="cloudProvider: aws, tier: dev"]');
   }
@@ -161,6 +188,35 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
       );
   }
 
+  // Writes the label, or removes it, with the page of the Sveltos extension open, and waits until that page shows
+  // `expected`. The update counts only when no list of the Clusters without a watch went from two seconds before the
+  // write, whose answer could come after it, to the update, so that it came through the watch of the page and not
+  // through its reload every 30 seconds; when one did, the write is undone and made again, three times at most.
+  async function sveltosFollows(value: string | null, expected: readonly string[], before: readonly string[]) {
+    for (let attempt = 1; ; attempt++) {
+      const from = Date.now() - LIST_ANSWER_MARGIN;
+
+      setLabel(value);
+      await expect.poll(sveltosRows, followTimeout).toEqual(expected);
+
+      const lists = clusterListsBetween(requests?.requests() ?? [], from, Date.now());
+
+      if (lists.length === 0) {
+        return;
+      }
+      if (attempt === FOLLOW_ATTEMPTS) {
+        throw new Error(
+          `The page of the Sveltos extension listed the Clusters between the write and the update ${FOLLOW_ATTEMPTS} times, so its watch was never seen alone: ${lists.map((list) => list.url).join(", ")}`,
+        );
+      }
+      console.log(
+        `the page of the Sveltos extension listed the Clusters between the write and the update, attempt ${attempt} of ${FOLLOW_ATTEMPTS}: the step makes its write again`,
+      );
+      setLabel(value === null ? LABEL.value : null);
+      await expect.poll(sveltosRows, followTimeout).toEqual(before);
+    }
+  }
+
   beforeAll(async () => {
     const sveltos = await real.sveltos();
 
@@ -175,13 +231,24 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
 
     session = await connectApp();
     watches = recordWatchFailures(session.window, "cluster.x-k8s.io");
+    requests = recordRequests(session.window);
     await installExtension(session);
     await installExtensionFile(session, path.join(folder, sveltos.extension.file), SVELTOS);
 
+    // The names first, so that the end deletes the definitions also when the apply failed half way.
+    definitions = sveltos.definitions.map(definitionName);
     applied = real.apply(sveltos.definitions.join("---\n"));
-    real.kubectl(["wait", ...applied, "--for", "condition=Established", "--timeout", "180s"], {
-      timeout: 4 * 60 * 1000,
-    });
+    real.kubectl(
+      [
+        "wait",
+        ...definitions.map((name) => `${DEFINITIONS}/${name}`),
+        "--for",
+        "condition=Established",
+        "--timeout",
+        "180s",
+      ],
+      { timeout: 4 * 60 * 1000 },
+    );
 
     frame = await openKindCluster(session);
     await selectNamespaces(frame, [NAMESPACE]);
@@ -202,16 +269,17 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
     const errors = await attempt(async () => (await session?.stopCollecting()) ?? [], [] as string[]);
 
     watches?.stop();
+    requests?.stop();
     if (labelled) await attempt(() => setLabel(null), undefined);
     if (session) {
       const app = session;
 
       await attempt(() => uninstallExtensionNamed(app, SVELTOS), undefined);
     }
-    if (applied.length > 0) {
+    if (definitions.length > 0) {
       await attempt(
         () =>
-          real.kubectl(["delete", ...applied, "--ignore-not-found", "--wait", "--timeout", "180s"], {
+          real.kubectl(["delete", DEFINITIONS, ...definitions, "--ignore-not-found", "--wait", "--timeout", "180s"], {
             timeout: 4 * 60 * 1000,
           }),
         "",
@@ -247,11 +315,20 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
 
     expect(await extensionEnabled(session, extensionName)).toBe(true);
     expect(await extensionEnabled(session, SVELTOS)).toBe(true);
-    expect(applied.some((name) => name.endsWith("/sveltosclusters.lib.projectsveltos.io"))).toBe(true);
+    // kubectl applied the definitions of the names that the session took from their manifests, and no other.
+    expect([...applied].sort()).toEqual(
+      definitions.map((name) => `customresourcedefinition.apiextensions.k8s.io/${name}`).sort(),
+    );
+    expect(definitions).toContain("sveltosclusters.lib.projectsveltos.io");
 
-    for (const name of applied) {
+    for (const name of definitions) {
       expect(
-        real.kubectl(["get", name, "--output", 'jsonpath={.status.conditions[?(@.type=="Established")].status}']),
+        real.kubectl([
+          "get",
+          `${DEFINITIONS}/${name}`,
+          "--output",
+          'jsonpath={.status.conditions[?(@.type=="Established")].status}',
+        ]),
         name,
       ).toBe("True");
     }
@@ -271,7 +348,7 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
     expect(await opened().session.errors()).toEqual([]);
   });
 
-  it("finds the label tier=dev that kubectl sets on freelens-capi-md in the search of both pages, with no reload (3)", async () => {
+  it("finds the label tier=dev that kubectl sets on freelens-capi-md in the search of both pages, when each opens (3)", async () => {
     setLabel(LABEL.value);
 
     const sveltosSearch = await openSveltosPage();
@@ -287,37 +364,56 @@ describe.skipIf(project === undefined)("S6: the Clusters with the Sveltos extens
     expect(await opened().session.errors()).toEqual([]);
   });
 
-  it("follows the removal of the label in the page that is open at once, and in the other when it opens, both ways round (4)", async () => {
-    // With this page open, its search on the label: the removal reaches it at once, and the page of the Sveltos
-    // extension shows it when it opens.
-    const ownSearch = await openOwnPage();
+  it(
+    "follows the label in the page that is open, through its watch, and shows it in the other when it opens, both ways round (4)",
+    async () => {
+      const md = [`${NAMESPACE}/${MD}`];
 
-    await ownSearch.fill(OWN_SEARCH);
-    await expect.poll(ownRows, viewTimeout).toEqual([`${NAMESPACE}/${MD}`]);
-    setLabel(null);
-    await expect.poll(ownRows, viewTimeout).toEqual([]);
+      // This page open on the label of 3: its removal reaches the page at once. The list layout of the host reads again
+      // only when the filter changes or the page opens, so the update came through the watch.
+      const ownSearch = await openOwnPage();
 
-    const sveltosSearch = await openSveltosPage();
+      await ownSearch.fill(OWN_SEARCH);
+      await expect.poll(ownRows, viewTimeout).toEqual(md);
+      setLabel(null);
+      await expect.poll(ownRows, followTimeout).toEqual([]);
 
-    await sveltosSearch.fill(SVELTOS_SEARCH);
-    await expect.poll(sveltosRows, viewTimeout).toEqual([]);
+      // The page of the Sveltos extension shows the removal when it opens, although it closed with the label set, and
+      // the label set again with that page open reaches it through its watch.
+      const sveltosSearch = await openSveltosPage();
 
-    // The other way round: the label set again, with the page of the Sveltos extension open, which follows it, then
-    // removed, which it follows at once, and this page shows it when it opens.
-    setLabel(LABEL.value);
-    await expect.poll(sveltosRows, viewTimeout).toEqual([`${NAMESPACE}/${MD}`]);
-    setLabel(null);
-    await expect.poll(sveltosRows, viewTimeout).toEqual([]);
+      await sveltosSearch.fill(SVELTOS_SEARCH);
+      await expect.poll(sveltosRows, viewTimeout).toEqual([]);
+      await sveltosFollows(LABEL.value, md, []);
 
-    const search = await openOwnPage();
+      // This page shows the label when it opens, although it closed with the label removed, and closes with it set.
+      const searchAgain = await openOwnPage();
 
-    await search.fill(OWN_SEARCH);
-    await expect.poll(ownRows, viewTimeout).toEqual([]);
-    await search.fill("");
-    await expect.poll(ownRows, viewTimeout).toEqual([`${NAMESPACE}/${MD}`, `${NAMESPACE}/${MP}`]);
+      await searchAgain.fill(OWN_SEARCH);
+      await expect.poll(ownRows, viewTimeout).toEqual(md);
 
-    // Neither watch disturbed the other: no watch of the group of Cluster API failed, and no process logged an error.
-    expect(watches?.failures()).toEqual([]);
-    expect(await opened().session.errors()).toEqual([]);
-  });
+      // The label removed with the page of the Sveltos extension open reaches it through its watch, and this page, which
+      // closed with the label set, shows the removal when it opens.
+      const sveltosAgain = await openSveltosPage();
+
+      await sveltosAgain.fill(SVELTOS_SEARCH);
+      await expect.poll(sveltosRows, viewTimeout).toEqual(md);
+      await sveltosFollows(null, [], md);
+
+      const lastSearch = await openOwnPage();
+
+      await lastSearch.fill(OWN_SEARCH);
+      await expect.poll(ownRows, viewTimeout).toEqual([]);
+      await lastSearch.fill("");
+      await expect.poll(ownRows, viewTimeout).toEqual([`${NAMESPACE}/${MD}`, `${NAMESPACE}/${MP}`]);
+
+      // Neither watch disturbed the other: no watch of the group of Cluster API failed, and no process logged an error.
+      expect(watches?.failures()).toEqual([]);
+      expect(await opened().session.errors()).toEqual([]);
+    },
+    // Eleven waits of a minute at most, for a page that opens or its rows, and those of the pages that follow a write,
+    // twenty seconds each: one here, and three for each write that the page of the Sveltos extension follows, the
+    // write and the two that it may make again, with their undoing.
+    15 * 60 * 1000,
+  );
 });

@@ -258,8 +258,10 @@ Optional variables:
   skipped.
 
 The sessions that need the cluster of the real project run with
-`pnpm test:integration:real-project`; how the test environment brings each
-cluster up, and what each session needs, is in
+`pnpm test:integration:real-project`; one of them installs the Sveltos
+extension next to this one, and uninstalls any installation of it that the
+profile of Freelens dev has, leaving none. How the test environment brings
+each cluster up, and what each session needs, is in
 [TESTING.md](docs/development/TESTING.md).
 
 ## License

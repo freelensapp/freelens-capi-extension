@@ -14,8 +14,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
+import { API_KUBE_PREFIX, isExpectedRefusal } from "./expected-refusals";
 
-import type { Browser, ConsoleMessage, Frame, Locator, Page } from "playwright";
+import type { Browser, ConsoleMessage, Frame, Locator, Page, Request } from "playwright";
+
+import type { ExpectedRefusal } from "./expected-refusals";
 
 export const extensionName = "@freelensapp/capi-extension";
 
@@ -93,23 +96,8 @@ const urlPath = (url: string) => (URL.canParse(url) ? new URL(url).pathname : ur
 // address of the request as the location of the message.
 const failedResourcePattern = /^Failed to load resource: the server responded with a status of (\d{3})\b/;
 
-// The prefix under which a frame of a cluster sends the requests of the API of the cluster, on its own origin
-// (freelens:packages/core/src/common/vars.ts:16).
-const apiKubePrefix = "/api-kube";
-
-/**
- * A refusal that a session expects, which the error collector leaves out when it arrives: the 403 of a request of the
- * API of a cluster, a list or a get and never a watch, at one path, sent by the frame of one cluster while that frame
- * shows one page, as Playwright last saw its address. Any other 403 counts as an error.
- */
-export interface ExpectedRefusal {
-  /** The host of the frame of the cluster, `<id>.renderer.freelens.app` with its port. */
-  readonly frameHost: string;
-  /** The path of the page that the frame shows, without its query. */
-  readonly page: string;
-  /** The path of the request in the API of the cluster, such as `/apis/cluster.x-k8s.io/v1beta2/clusters`. */
-  readonly path: string;
-}
+/** An address in one form, so that the location of a message and the address of its request compare. */
+const sameAddress = (url: string) => (URL.canParse(url) ? new URL(url).href : url);
 
 /**
  * A connection to Freelens dev, with the errors that either process logs.
@@ -124,7 +112,7 @@ export interface AppSession {
   devFileRouteFailures(): string[];
   /**
    * Leaves out of the errors the refusals that a step of a session expects, from now until the returned function is
-   * called; each refusal left out is kept, which `refusalsLeftOut` gives.
+   * called (`expected-refusals.ts`); each refusal left out is kept, which `refusalsLeftOut` gives.
    */
   expectRefusals(refusals: readonly ExpectedRefusal[]): () => void;
   /** The refusals left out so far, each as its status and its address. */
@@ -241,29 +229,33 @@ function collectErrors(window: Page) {
   // The refusals that a step of the session expects, while it runs, and those left out.
   const expectedRefusals = new Set<readonly ExpectedRefusal[]>();
   const refusalsLeftOut: string[] = [];
+  // The methods of the requests that the renderer sent to each address of the API of a cluster: Playwright reports a
+  // request before the answer to it, and so before the message of a refusal.
+  const methodsByAddress = new Map<string, string[]>();
   let mainLogOffset = mainLogFile && fs.existsSync(mainLogFile) ? fs.statSync(mainLogFile).size : 0;
 
-  // Whether a request that the server refused is one that a step expects: by its status and its address, and by the
-  // frame that sent it, found by the host of the address, and the page that this frame shows, as Playwright last saw
-  // its address. Only the 403 of a list or a get is ever expected, never a watch.
-  const isExpectedRefusal = (status: string, url: string) => {
-    if (status !== "403" || !URL.canParse(url)) {
-      return false;
+  const onRequest = (request: Request) => {
+    const address = sameAddress(request.url());
+
+    if (URL.canParse(address) && new URL(address).pathname.startsWith(`${API_KUBE_PREFIX}/`)) {
+      methodsByAddress.set(address, [...(methodsByAddress.get(address) ?? []), request.method()]);
     }
+  };
 
-    const request = new URL(url);
+  // Whether a request that the server refused is one that a step expects (`isExpectedRefusal`): by its status and its
+  // address, by the methods of the requests sent there, GETs alone, and by the frame that sent it, found by the host of
+  // the address, with the page that this frame shows, as Playwright last saw its address.
+  const isExpected = (status: string, url: string) => {
+    const address = sameAddress(url);
+    const host = URL.canParse(address) ? new URL(address).host : undefined;
+    const frame = window.frames().find((item) => URL.canParse(item.url()) && new URL(item.url()).host === host);
 
-    if (request.searchParams.has("watch") || !request.pathname.startsWith(`${apiKubePrefix}/`)) {
-      return false;
-    }
-
-    const frame = window.frames().find((item) => URL.canParse(item.url()) && new URL(item.url()).host === request.host);
-    const page = frame === undefined ? undefined : new URL(frame.url()).pathname;
-    const path = request.pathname.slice(apiKubePrefix.length);
-
-    return [...expectedRefusals].some((refusals) =>
-      refusals.some((refusal) => refusal.frameHost === request.host && refusal.page === page && refusal.path === path),
-    );
+    return isExpectedRefusal([...expectedRefusals].flat(), {
+      status,
+      url: address,
+      methods: methodsByAddress.get(address) ?? [],
+      page: frame === undefined ? undefined : new URL(frame.url()).pathname,
+    });
   };
 
   // Chromium logs every response that is not a success as "Failed to load
@@ -287,7 +279,7 @@ function collectErrors(window: Page) {
 
       const failedResource = failedResourcePattern.exec(text);
 
-      if (url && failedResource && isExpectedRefusal(failedResource[1], url)) {
+      if (url && failedResource && isExpected(failedResource[1], url)) {
         refusalsLeftOut.push(`${failedResource[1]} ${url}`);
 
         return;
@@ -416,6 +408,7 @@ function collectErrors(window: Page) {
     }
   };
 
+  window.on("request", onRequest);
   window.on("console", onConsole);
   window.on("pageerror", onPageError);
 
@@ -456,6 +449,7 @@ function collectErrors(window: Page) {
       }
     },
     stop: () => {
+      window.off("request", onRequest);
       window.off("console", onConsole);
       window.off("pageerror", onPageError);
     },
@@ -830,16 +824,34 @@ export async function catalogLists({ window }: AppSession, name: string): Promis
 /**
  * Loads the frame of a cluster again, as a reload of its page does, and waits
  * until the new document shows the sidebar: the frame starts again, its stores
- * with it, while the cluster stays connected. The old document is marked, so
- * that the sidebar it still shows is not taken for the new one.
+ * and the APIs of the host with them, while the cluster stays connected. The
+ * old document is marked, so that the sidebar it still shows is not taken for
+ * the new one. A frame that did not render, after the dev file route of
+ * Freelens dev failed a request, is loaded again once, as `openCluster` does.
+ * The frame shows what the host makes of its address as it starts, which may be
+ * its start page: a session opens the page that it reads itself.
  */
-export async function reloadClusterFrame(frame: Frame) {
+export async function reloadClusterFrame(session: AppSession, frame: Frame) {
+  const failuresBefore = session.devFileRouteFailures().length;
+  const reload = async () => {
+    await frame.evaluate(() => {
+      document.documentElement.dataset.capiReloading = "";
+      setTimeout(() => globalThis.location.reload(), 0);
+    });
+    await frame.waitForSelector("html:not([data-capi-reloading]) [data-testid=cluster-sidebar]", clusterTimeout);
+  };
+
   console.log("load the frame of the cluster again");
-  await frame.evaluate(() => {
-    document.documentElement.dataset.capiReloading = "";
-    setTimeout(() => globalThis.location.reload(), 0);
-  });
-  await frame.waitForSelector("html:not([data-capi-reloading]) [data-testid=cluster-sidebar]", clusterTimeout);
+  try {
+    await reload();
+  } catch (error) {
+    if (session.devFileRouteFailures().length === failuresBefore) {
+      throw error;
+    }
+
+    console.log("the frame did not render after a failed request of the dev file route: loading it again");
+    await reload();
+  }
 }
 
 /**
@@ -1072,12 +1084,23 @@ export async function kubectl(args: readonly string[]): Promise<string> {
 }
 
 /**
- * Opens a page of the extension in the cluster frame by its address,
- * `/extension/<name>/<pageId>`, with the `@` of the name dropped and its `/`
- * turned into `--`, as the host makes it.
+ * The address of a page of an extension in the cluster frame,
+ * `/extension/<name>/<pageId>`, with the `@` of the name of the extension
+ * dropped and its `/` turned into `--`, as the host makes it
+ * (freelens:packages/core/src/renderer/routes/for-extension.ts:11-15;
+ * freelens:packages/core/src/extensions/lens-extension.ts:125-127, the same at
+ * `v2.0.0`).
  */
-export async function openExtensionPage(frame: Frame, pageId: string) {
-  await navigateCluster(frame, `/extension/${extensionName.replace("@", "").replace("/", "--")}/${pageId}`);
+export function extensionPageAddress(pageId: string, extension = extensionName): string {
+  return `/extension/${extension.replace("@", "").replace("/", "--")}/${pageId}`;
+}
+
+/**
+ * Opens a page of an extension in the cluster frame by its address: a page of
+ * this extension, unless another is named.
+ */
+export async function openExtensionPage(frame: Frame, pageId: string, extension = extensionName) {
+  await navigateCluster(frame, extensionPageAddress(pageId, extension));
 }
 
 /**
@@ -1105,10 +1128,12 @@ export async function selectNamespaces(frame: Frame, namespaces: readonly string
   );
 }
 
-/** A request that the renderer sent, by its method and its address. */
+/** A request that the renderer sent, by its method and its address, and when the session saw it go. */
 export interface SentRequest {
   method: string;
   url: string;
+  /** The time at which Playwright reported it, in milliseconds since the epoch. */
+  at: number;
 }
 
 /**
@@ -1118,7 +1143,7 @@ export interface SentRequest {
 export function recordRequests(window: Page): { requests(): SentRequest[]; stop(): void } {
   const sent: SentRequest[] = [];
   const onRequest = (request: { method(): string; url(): string }) => {
-    sent.push({ method: request.method(), url: request.url() });
+    sent.push({ method: request.method(), url: request.url(), at: Date.now() });
   };
 
   window.on("request", onRequest);

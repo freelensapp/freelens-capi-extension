@@ -274,7 +274,8 @@ test/host-stores.ts              # Stores and APIs of the host on the stub, for 
 test/status-views.ts             # The model read with the context that a view builds from a set of objects
 test/environment.test.ts         # Unit tests of the scripts of the test environment
 test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
-test/real-project-checks.test.ts # Unit tests of what the session of the real project compares with clusterctl
+test/expected-refusals.test.ts   # Unit tests of the refusals that a session expects and leaves out of its errors
+test/real-project-checks.test.ts # Unit tests of what the sessions of the real tier compare
 test/real-project/               # Tests of the real tier, `*.tests.ts`: S7 on the real project, and its expectations
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
@@ -1237,18 +1238,27 @@ logged by either process:
   every kind of the page over the whole cluster with no watch of every
   resource of the core group, the notice of a list that the host reads once
   and does not follow, and with one namespace none, and a label that it sets
-  with a merge patch found by the search; and S2 last, in a frame that it loads
-  again, since the host lists the definitions as the frame starts: with the
-  definitions refused, the infrastructure cluster a link when the identity may
-  get its definition by its name, and text with its reason and the permission
-  when it may not. Each notice is checked against the message that the cluster
-  gives the identity for the same request, read with an impersonation. A
-  refusal that a case expects is left out of the errors when it arrives, by its
-  status and its address, the frame of that cluster that sent it and the page
-  that this frame shows (`expectRefusals` of the session of the app); any other
-  refusal, and any other error, fails the session. Its end, also when a case
-  failed, disconnects that cluster, deletes the file, every object that it made
-  and the namespace, and checks that they are gone. The token is never logged.
+  with a merge patch found by a search that showed no row before; and S2
+  last, with the definitions refused: the infrastructure cluster a link when
+  the identity may get its definition by its name, and text with its reason
+  and the permission when it may not. A step that refuses a kind in a
+  namespace that the frame read before, and S2, whose definitions the host
+  lists as the frame starts, load the frame again, so that no API of the host
+  keeps a version from which a watch would start and be refused, and then open
+  the page, since a frame that starts may show the start page of the host.
+  Each notice is checked against the message that the cluster gives the
+  identity for the same request, read with an impersonation. A refusal that a
+  case expects is left out of the errors when it arrives, a 403 of an address
+  to which the renderer sent GETs alone, never a watch, by its address, the
+  frame of that cluster that sent it and the page that this frame shows, any
+  page for the list of the definitions that the frame sends as it starts
+  (`expectRefusals` of the session of the app, `isExpectedRefusal` of
+  `expected-refusals.ts`); any other refusal, and any other error, fails the
+  session, and each case checks that the refusals that it expects arrived
+  (`refusalsLeftOut`). It waits in its hooks with `vi.waitFor`, since Vitest
+  refuses `expect.poll` outside a test. Its end, also when a case failed,
+  disconnects that cluster, deletes the file, every object that it made and
+  the namespace, and checks that they are gone. The token is never logged.
 
 The sessions of the real tier, `clusters-real.tests.ts` and
 `clusters-sveltos.tests.ts`, open the cluster of the real project instead, and
@@ -1260,27 +1270,37 @@ the cluster in the catalog by `TEST_KIND_CLUSTER_NAME`,
 `freelens-capi-management` in that job, whose profile syncs a copy of the
 kubeconfig of the scripts for that cluster alone:
 
-- `clusters-real.tests.ts` compares the details of `freelens-capi-md` and of
-  `freelens-capi-mp` with what `clusterctl describe cluster` prints of them,
-  run by the scripts with the pinned clusterctl: the status and the reason of
-  `Available`, the counters that add up to the row of the Cluster, the health
-  Degraded of `freelens-capi-mp` with `ControlPlaneMachinesReady` among its
-  issues while the tool gives its `Available` as `True`, and the topology of
-  both, reading both sides again until they agree, ten minutes at most. It
-  writes nothing.
+- `clusters-real.tests.ts` compares the details with what
+  `clusterctl describe cluster` prints, run by the scripts with the pinned
+  clusterctl, which its hook sets up once: the status and the reason of
+  `Available` of `freelens-capi-md`, and the counters of its control plane and
+  of its workers, read from the value of their items, which add up to its row;
+  the health Degraded of `freelens-capi-mp`, with `ControlPlaneMachinesReady`
+  among its issues, once the tool gives its `Available` as `True`; each side
+  read again until they agree, five minutes at most; and, read once, the
+  topology of both. It writes nothing.
 - `clusters-sveltos.tests.ts` is S6 (SPEC-0004, P29): it installs the Sveltos
   extension from the file of its package, which the scripts download and check
   against its pin, with the `.sha256` beside it, applies the definitions of the
-  chart of Sveltos of the pins, then checks that both pages list the same
-  Clusters, that a label that kubectl sets and removes reaches each, at once in
-  the page that is open and when the other opens, and that no watch of
-  `cluster.x-k8s.io` fails, which the client of the host logs as a warning
-  (`recordWatchFailures`). Its end removes the label, uninstalls the Sveltos
-  extension and deletes the definitions, also when a step failed.
+  chart of Sveltos of the pins, by the names that it takes from their manifests
+  first, then checks that both pages, each at the address of its own extension
+  (`openExtensionPage` with the name of the extension), list the same Clusters,
+  that a label that kubectl sets reaches each when it opens, that a label set
+  and removed with one page open reaches it through its watch and the other
+  when it opens, and that no watch of `cluster.x-k8s.io` fails, which the
+  client of the host logs as a warning (`recordWatchFailures`). The page of the
+  Sveltos extension also reloads its lists every 30 seconds, so the session
+  records the requests, and an update counts only when no list of the Clusters
+  without a watch went between the write and the update; when one did, the step
+  makes its write again, three times at most. Its end removes the label,
+  uninstalls the Sveltos extension and deletes the definitions by their names,
+  also when a step failed.
 
 The tests are deterministic, so nothing retries them: the config sets no
-`retry`, and the workflow runs the step once, under `timeout 1500`, and the job
-of the real project its sessions under `timeout 1800`. A retry
+`retry`, and the workflow runs the step once, under `timeout 7200`, and the job
+of the real project its sessions under `timeout 4200`, limits that hold the
+worst case of their sessions, each hook and each case at its own limit
+(docs/development/TESTING.md, "Continuous integration"). A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
 loads a second time when it did not render and the dev file route of Freelens
@@ -1441,10 +1461,14 @@ start, saying so, when the Clusters of the fixtures were created longer ago, and
 a local run applies them again first, `pnpm e2e:fixtures:up all`. The
 restricted session needs a folder outside every repository, readable by you
 alone, added once in "Kubeconfig Syncs" and named in
-`TEST_RESTRICTED_KUBECONFIG_FOLDER`, and skips with a warning without it. The
-sessions of the real tier need the real project, `pnpm e2e:cluster:up`, and its
-kubeconfig in "Kubeconfig Syncs", with `TEST_KIND_CLUSTER_NAME` set to
-`freelens-capi-management`.
+`TEST_RESTRICTED_KUBECONFIG_FOLDER`, and skips with a warning without it; the
+profile keeps the namespaces of the filter of the cluster of the identity,
+which a run that was killed can leave on refused ones
+(docs/development/TESTING.md, "Safety"). The sessions of the real tier need
+the real project, `pnpm e2e:cluster:up`, and its kubeconfig in "Kubeconfig
+Syncs", with `TEST_KIND_CLUSTER_NAME` set to `freelens-capi-management`; S6
+uninstalls any installation of the Sveltos extension that the profile has, and
+leaves none.
 
 ## Checking the Extension in Freelens Dev
 

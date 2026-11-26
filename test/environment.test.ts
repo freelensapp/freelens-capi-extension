@@ -34,6 +34,7 @@ import {
 import {
   COMMAND_NAMES,
   DOWN_WORKLOADS,
+  onceItSucceeds,
   parseCommand,
   providersAgainstPins,
   takeDown,
@@ -62,6 +63,7 @@ import { childEnvironment, clusterctlAsset, INOTIFY_LIMITS, inotifySettings } fr
 import {
   chartDefinitions,
   customResourceDefinitions,
+  definitionName,
   KINDNET_LABEL,
   kindnetLabelArgument,
   kindnetManifest,
@@ -1183,6 +1185,22 @@ describe("the command line", () => {
   });
 });
 
+describe("what a session of the real tier makes once", () => {
+  it("is made at the first call and kept once it succeeded, and made again at the next call after a failure", async () => {
+    let calls = 0;
+    const made = onceItSucceeds(async () => {
+      calls++;
+      if (calls === 1) throw new Error("the first setup failed");
+      return `clusterctl ${calls}`;
+    });
+
+    await expect(made()).rejects.toThrow(/the first setup failed/);
+    expect(await made()).toBe("clusterctl 2");
+    expect(await made()).toBe("clusterctl 2");
+    expect(calls).toBe(2);
+  });
+});
+
 describe("the providers of the real project", () => {
   const provider = (type: string, providerName: string, version: string): InventoryProvider => ({
     metadata: { namespace: "capi-system" },
@@ -1285,6 +1303,31 @@ describe("the files of a release", () => {
     expect(() =>
       chartDefinitions(new Map([...files].filter(([path]) => !path.startsWith("chart/crds/"))), "chart"),
     ).toThrow(/The chart chart has no definition in its folder crds/);
+  });
+
+  it("names a definition by the name of its metadata, which kubectl applies and deletes it by, and not by a label of that name (SPEC-0004, P29)", () => {
+    const named = [
+      "apiVersion: apiextensions.k8s.io/v1",
+      "kind: CustomResourceDefinition",
+      "metadata:",
+      "  annotations:",
+      "    controller-gen.kubebuilder.io/version: v0.16.3",
+      "  labels:",
+      "    name: not-this-one",
+      "",
+      "  name: sveltosclusters.lib.projectsveltos.io",
+      "spec:",
+      "  group: lib.projectsveltos.io",
+      "",
+    ].join("\n");
+
+    expect(definitionName(named)).toBe("sveltosclusters.lib.projectsveltos.io");
+    expect(definitionName(definition("as.example.com"))).toBe("as.example.com");
+    // Four spaces, as the chart of Sveltos indents its definitions.
+    expect(definitionName(named.replaceAll(/^( +)/gm, "$1$1"))).toBe("sveltosclusters.lib.projectsveltos.io");
+    expect(() =>
+      definitionName("apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\nspec:\n  name: x\n"),
+    ).toThrow(/A definition has no name in its metadata/);
   });
 
   it("puts the CIDRs of the workload clusters in the kindnet manifest, and refuses one it cannot complete", () => {

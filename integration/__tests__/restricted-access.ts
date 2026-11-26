@@ -15,6 +15,7 @@
 // as the frame of a cluster lists them, and what the start page of the host reads in `default`, so that no other read
 // of the session is refused. Every role grants `get`, `list` and `watch` alone.
 
+import { printedObjects } from "../../e2e/scripts/fixtures.mts";
 import { statesOf } from "../../e2e/scripts/states.mts";
 
 // The objects of the identity on the cluster of the definitions, the name of its kubeconfig file, and the label of
@@ -93,7 +94,8 @@ export const CONTROL_PLANE_DEFINITION = "kubeadmcontrolplanes.controlplane.clust
 export const INFRASTRUCTURE_DEFINITION = "devclusters.infrastructure.cluster.x-k8s.io";
 export const NAMED_DEFINITIONS = [CONTROL_PLANE_DEFINITION, INFRASTRUCTURE_DEFINITION] as const;
 
-const DEFINITIONS_PATH = "/apis/apiextensions.k8s.io/v1/customresourcedefinitions";
+// The path of the list of the definitions, which the host makes as the frame of a cluster starts.
+export const DEFINITIONS_PATH = "/apis/apiextensions.k8s.io/v1/customresourcedefinitions";
 
 // `default`, which the page reads first, and the namespaces of the fixtures of every state.
 export const NAMESPACES: readonly string[] = ["default", ...statesOf(["all"]).map((state) => state.namespace)];
@@ -316,10 +318,11 @@ export function accessReviews(permissions: readonly Permission[]): Manifest[] {
   }));
 }
 
-// The permissions that the cluster answered otherwise than the access, from the reviews that it gave back, in the
-// order of the permissions, each said as `verb resource.group in namespace`.
-export function wrongAnswers(permissions: readonly Permission[], answered: unknown): string[] {
-  const items = (answered as { items?: { status?: { allowed?: boolean } }[] } | undefined)?.items ?? [];
+// The permissions that the cluster answered otherwise than the access, from the reviews that it gave back as kubectl
+// prints the objects of a list that it creates, one after the other (`printedObjects` of the scripts), in the order of
+// the permissions, each said as `verb resource.group in namespace`.
+export function wrongAnswers(permissions: readonly Permission[], printed: string): string[] {
+  const items = printedObjects(printed);
 
   if (items.length !== permissions.length) {
     return [`The cluster answered ${items.length} reviews of ${permissions.length}`];
