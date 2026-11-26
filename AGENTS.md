@@ -267,13 +267,15 @@ src/
   common/status/                 # The status model (SPEC-0003): statusOf and conditionsOf in index.ts, the rules
                                  #   of each family of kinds, freshness, activity and tone, each with its unit test
   common/views/                  # The pure functions of the views: the context of the model, the state of the reads,
-                                 #   the references, the availability of a kind, the cells of a list, and the address,
-                                 #   the state and the sections of the details, each tested
+                                 #   the references, the availability of a kind, the cells of a list, the address, the
+                                 #   state and the sections of the details, and the tree of a Cluster, its rows, the
+                                 #   selector of a ClusterResourceSet and the names of the variables, each tested
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
 test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their files for the unit tests of the views
 test/host-stores.ts              # Stores and APIs of the host on the stub, for the unit tests of the pages
 test/status-views.ts             # The model read with the context that a view builds from a set of objects
+test/tree-sources.ts             # The reads of the tree of a Cluster over a set of objects, for the tests of the tree
 test/environment.test.ts         # Unit tests of the scripts of the test environment
 test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
 test/expected-refusals.test.ts   # Unit tests of the refusals that a session expects and leaves out of its errors
@@ -1079,8 +1081,12 @@ status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. The entry of `src/common/status/index.ts` went with the
-list of the Clusters of SPEC-0004, whose page imports the model, and that of
+`environment-tests/`. Until the page of the tree of a Cluster imports them, it
+also lists the three modules of the tree in `src/common/views/` as production
+entries, since only their tests reach them; the page removes the entries
+(SPEC-0005, "Notes and deviations"). The entry of
+`src/common/status/index.ts` went with the list of the Clusters of SPEC-0004,
+whose page imports the model, and that of
 `src/common/parsers/list-annotation.ts`, the one parser that the model does not
 import, with their details, which import it (SPEC-0003, "Notes and
 deviations").

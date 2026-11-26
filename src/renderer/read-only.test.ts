@@ -56,6 +56,28 @@ const SECRET_FIELD = new RegExp(
   ].join("|"),
 );
 
+// The variables of a Cluster and of the parts of its topology, the overrides of a part and the patches of a
+// ClusterClass can carry the fields of R3.36, and whatever a user writes, in what they set and write (SPEC-0005, P20,
+// "Safety"): one module of the view reads them, `variable-names.ts`, for their names, and no other reads them by a
+// member, an index or a destructuring. The models declare them, which is no read.
+const VARIABLE_NAMES = "variables|overrides|patches";
+const VARIABLE_READ = new RegExp(
+  [
+    `(?:\\?\\.|\\.)\\s*(?:${VARIABLE_NAMES})\\b`,
+    `\\[\\s*["'\`](?:${VARIABLE_NAMES})["'\`]\\s*\\]`,
+    `[{,]\\s*(?:${VARIABLE_NAMES})\\s*(?:[,}=]|:\\s*[a-z_$][\\w$]*\\s*[,}])`,
+  ].join("|"),
+);
+const NAMES_MODULE = join("common", "views", "variable-names.ts");
+
+// In that module, what a variable is set to, its `value`, and every member of a patch but its name are never named, in
+// its code; its comments are left out.
+const VALUE_OR_PATCH = /\b(?:value|description|enabledIf|definitions|external)\b/;
+
+function codeOf(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
 describe("the view only reads (SPEC-0004, Safety)", () => {
   const modules = FOLDERS.flatMap(modulesOf);
 
@@ -79,6 +101,25 @@ describe("the view only reads (SPEC-0004, Safety)", () => {
 
   it("finds no field of R3.36", () => {
     expect(modules.filter((module) => SECRET_FIELD.test(module.source)).map((module) => module.name)).toEqual([]);
+  });
+});
+
+describe("the variables and the patches, read for their names alone (SPEC-0005, P20, Safety)", () => {
+  const modules = FOLDERS.flatMap(modulesOf);
+
+  it("are read by variable-names.ts alone", () => {
+    expect(modules.map((module) => module.name)).toContain(NAMES_MODULE);
+    expect(
+      modules
+        .filter((module) => module.name !== NAMES_MODULE && VARIABLE_READ.test(module.source))
+        .map((module) => module.name),
+    ).toEqual([]);
+  });
+
+  it("are read there with no value and no member of a patch but its name", () => {
+    const module = modules.find((each) => each.name === NAMES_MODULE);
+
+    expect(codeOf(module?.source ?? "value")).not.toMatch(VALUE_OR_PATCH);
   });
 });
 
@@ -112,5 +153,35 @@ describe("the patterns of the check, each on a line written for it", () => {
     ["const { initConfiguration } = spec;"],
   ])("finds a field of R3.36 in %s", (line) => {
     expect(SECRET_FIELD.test(line)).toBe(true);
+  });
+
+  it.each([
+    ["const names = cluster.spec.topology.variables;"],
+    ["const list = spec?.patches ?? [];"],
+    ['const list = topology["overrides"];'],
+    ["const { variables } = topology;"],
+    ["const { patches: list } = spec;"],
+    ["for (const { overrides } of parts) {"],
+  ])("finds a read of the variables or the patches in %s", (line) => {
+    expect(VARIABLE_READ.test(line)).toBe(true);
+  });
+
+  it.each([
+    ["interface Topology { variables?: ClusterVariable[] }"],
+    ["readonly variableNames: readonly string[];"],
+    ["const patchNames = namesOf(list);"],
+  ])("finds no read of the variables or the patches in the declaration %s", (line) => {
+    expect(VARIABLE_READ.test(line)).toBe(false);
+  });
+
+  it.each([["const raw = entry.value;"], ["const steps = patch.definitions;"], ["if (patch.enabledIf) return;"]])(
+    "finds a value or a member of a patch in %s",
+    (line) => {
+      expect(codeOf(line)).toMatch(VALUE_OR_PATCH);
+    },
+  );
+
+  it("finds neither in a name, nor in a comment", () => {
+    expect(codeOf("const name = textOf(entry.name); // never its value")).not.toMatch(VALUE_OR_PATCH);
   });
 });
