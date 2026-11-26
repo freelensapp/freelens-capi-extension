@@ -11,8 +11,8 @@
 //
 // The page builds one `ClusterStore` for it, once in the frame of a cluster, also when it mounts twice, with the API
 // of Clusters at v1beta2 that the host registered, and never loads, registers or subscribes it: the store that the
-// page reads stays the host's. Of it the page reads `context` alone. Built so in Freelens dev at v2.0.0 and v2.1.0,
-// such a store sent no request and logged nothing (SPEC-0004, P34).
+// page reads stays the host's. Of it the page reads `context` alone. Built so in Freelens dev at v2.1.0, such a store
+// sent no request and logged nothing (SPEC-0004, P34).
 
 import { ClusterStore } from "../api/cluster/cluster-v1beta2";
 

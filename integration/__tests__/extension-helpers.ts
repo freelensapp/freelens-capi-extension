@@ -723,10 +723,8 @@ export async function uninstallExtensionNamed({ window }: AppSession, name: stri
  * Records the watches of a group of the API that the renderer says have
  * failed: the client of the host logs a watch that the server answered with
  * an error, or whose stream broke, as a warning, and one that threw as an
- * error, each with the path of the watch in the API of the cluster, the same
- * on both releases
- * (freelens:packages/utility-features/kube-api/src/kube-api.ts:854, 981, 990;
- * freelens@v2.0.0:packages/utility-features/kube-api/src/kube-api.ts:846, 971, 980).
+ * error, each with the path of the watch in the API of the cluster
+ * (freelens:packages/utility-features/kube-api/src/kube-api.ts:854, 981, 990).
  */
 export function recordWatchFailures(window: Page, group: string): { failures(): string[]; stop(): void } {
   const failures: string[] = [];
@@ -1109,8 +1107,7 @@ export async function kubectl(args: readonly string[]): Promise<string> {
  * `/extension/<name>/<pageId>`, with the `@` of the name of the extension
  * dropped and its `/` turned into `--`, as the host makes it
  * (freelens:packages/core/src/renderer/routes/for-extension.ts:11-15;
- * freelens:packages/core/src/extensions/lens-extension.ts:125-127, the same at
- * `v2.0.0`).
+ * freelens:packages/core/src/extensions/lens-extension.ts:125-127).
  */
 export function extensionPageAddress(pageId: string, extension = extensionName): string {
   return `/extension/${extension.replace("@", "").replace("/", "--")}/${pageId}`;

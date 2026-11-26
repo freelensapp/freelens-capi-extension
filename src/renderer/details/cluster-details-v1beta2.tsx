@@ -89,8 +89,8 @@ const {
   Navigation,
 } = Renderer;
 
-// The fields of the metadata that the host renders, in its order (kube-object-meta.tsx, at v2.0.0 and v2.1.0). The
-// details of the extension render them in three parts, each with `hideFields` that leaves out every other field, so
+// The fields of the metadata that the host renders, in its order (kube-object-meta.tsx, at v2.1.0). The details of
+// the extension render them in three parts, each with `hideFields` that leaves out every other field, so
 // that the namespace, as the namespace badge, and the owners, as text, take the places that the host gives them,
 // after the name and after the finalizers, in rows of their own (P32). The three that the host hides by default, which
 // the prop replaces, stay hidden.

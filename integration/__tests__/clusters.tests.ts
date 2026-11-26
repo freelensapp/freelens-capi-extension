@@ -1192,7 +1192,7 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       expect(definition.versions).toContain(target?.[1]);
 
       // The close icon of the details of the host shows those of the Cluster again. The address then has no parameter
-      // of the details of the host, on both releases, as the first run in CI showed; an empty one would say the same.
+      // of the details of the host at v2.1.0, as the first run in CI showed; an empty one would say the same.
       await hostDetails.locator('.drawer-title [data-icon-name="close"]').click();
       await hostDetails.waitFor({ state: "detached", ...viewTimeout });
       await expect.poll(drawerOnTop, viewTimeout).toBe("extension");
