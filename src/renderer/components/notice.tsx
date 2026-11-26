@@ -8,6 +8,7 @@
 // an event of the past through the date component of the host.
 
 import { Renderer } from "@freelensapp/extensions";
+import { TIME } from "../../common/views/read-state";
 import styles from "./notice.module.scss";
 
 import type { Notice } from "../../common/views/read-state";
@@ -19,6 +20,20 @@ const {
 export interface NoticeViewProps {
   notice: Notice;
   inPlaceOfRows?: boolean;
+}
+
+// The title of a notice, with the time of its event where the title places it.
+function NoticeTitle({ notice }: { notice: Notice }) {
+  const [before, after] = notice.title.split(TIME);
+
+  if (after === undefined) return <>{notice.title}</>;
+  return (
+    <>
+      {before}
+      {notice.at === undefined ? null : <LocaleDate date={new Date(notice.at)} />}
+      {after}
+    </>
+  );
 }
 
 export function NoticeView({ notice, inPlaceOfRows = false }: NoticeViewProps) {
@@ -33,13 +48,7 @@ export function NoticeView({ notice, inPlaceOfRows = false }: NoticeViewProps) {
       <Icon material={notice.tone === "info" ? "info_outline" : "warning"} small />
       <div>
         <div className={styles.title}>
-          {notice.title}
-          {notice.at === undefined ? null : (
-            <>
-              {", at "}
-              <LocaleDate date={new Date(notice.at)} />
-            </>
-          )}
+          <NoticeTitle notice={notice} />
         </div>
         {notice.messages.map((message, index) => (
           <p key={`message-${index}`} className={styles.message}>

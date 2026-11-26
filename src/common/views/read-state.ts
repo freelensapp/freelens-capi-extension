@@ -68,8 +68,6 @@ export interface Hold {
   readonly namespaces: readonly string[];
   readonly failures: readonly ReadFailure[];
   readonly at: number;
-  // A refresh that failed, said as an event of the past.
-  readonly refresh: boolean;
 }
 
 export interface KindReads {
@@ -80,7 +78,13 @@ export interface KindReads {
   // The last load ended over the whole cluster, with no failure, and the host follows it.
   readonly followsWholeCluster: boolean;
   readonly last: EndedLoad | undefined;
-  readonly hold: Hold | undefined;
+  // A load of the kind that failed holds it back in every namespace of the load, since the store names no namespace
+  // in a failure, until a load of the kind ends with no failure (P25).
+  readonly loadHold: Hold | undefined;
+  // A refresh that failed, the reload of a watch after a 410, holds the kind back in the namespaces of its last load,
+  // until a load of the kind ends, or a reload that the store starts itself reports no failure (P25, P26). A refresh
+  // never turns the hold of a load into its own: a reload never covers a namespace whose list failed.
+  readonly refreshHold: Hold | undefined;
   // A reload that the store started on its own, while no load of the page ran, with the failures it reported.
   readonly reload: { readonly failures: readonly ReadFailure[] } | undefined;
 }
@@ -113,6 +117,8 @@ export type ReadEvent =
   | { readonly type: "refresh-failed"; readonly kind: string; readonly failure: ReadFailure; readonly at: number }
   | { readonly type: "reload-started"; readonly kind: string }
   | { readonly type: "reload-ended"; readonly kind: string }
+  // The stores of the page, by their keys, when the set changes.
+  | { readonly type: "stores-changed"; readonly kinds: readonly string[] }
   | { readonly type: "filter-changed"; readonly namespaces: readonly string[]; readonly selectedAll: boolean };
 
 export const NO_READS: ReadsState = { kinds: {}, filter: undefined };
@@ -122,7 +128,8 @@ const NO_KIND_READS: KindReads = {
   loaded: [],
   followsWholeCluster: false,
   last: undefined,
-  hold: undefined,
+  loadHold: undefined,
+  refreshHold: undefined,
   reload: undefined,
 };
 
@@ -203,26 +210,25 @@ function endLoad(state: ReadsState, event: Extract<ReadEvent, { type: "load-ende
     followsWholeCluster: overWholeCluster && last.followed,
     last,
     // A load that ends with no failure releases what an earlier one held back; one that fails holds the kind back in
-    // every namespace of the load, since the store names none in a failure (P25).
-    hold: failed ? { namespaces: load.namespaces, failures: load.failures, at, refresh: false } : undefined,
+    // every namespace of the load, since the store names none in a failure (P25). Either reads every namespace of the
+    // load again, and ends the hold of a refresh that failed (P26).
+    loadHold: failed ? { namespaces: load.namespaces, failures: load.failures, at } : undefined,
+    refreshHold: undefined,
   }));
 }
 
+// A refresh that failed holds the kind back in the namespaces of its last load, next to the hold of a load that
+// failed, which it leaves as it is.
 function refreshFailed(state: ReadsState, kind: string, failure: ReadFailure, at: number): ReadsState {
-  return withKind(state, kind, (reads) => {
-    const earlier = reads.hold?.refresh === true ? reads.hold : undefined;
-
-    return {
-      ...reads,
-      reload: reads.reload && { failures: [...reads.reload.failures, failure] },
-      hold: {
-        namespaces: unique([...(earlier?.namespaces ?? []), ...(reads.last?.namespaces ?? [])]),
-        failures: [...(earlier?.failures ?? []), failure],
-        at,
-        refresh: true,
-      },
-    };
-  });
+  return withKind(state, kind, (reads) => ({
+    ...reads,
+    reload: reads.reload && { failures: [...reads.reload.failures, failure] },
+    refreshHold: {
+      namespaces: unique([...(reads.refreshHold?.namespaces ?? []), ...(reads.last?.namespaces ?? [])]),
+      failures: [...(reads.refreshHold?.failures ?? []), failure],
+      at,
+    },
+  }));
 }
 
 // The state after an event that an adapter or the filter tells the page.
@@ -257,10 +263,22 @@ export function reduceReads(state: ReadsState, event: ReadEvent): ReadsState {
     case "reload-ended":
       return withKind(state, event.kind, (reads) => {
         if (reads.reload === undefined) return reads;
-        // A reload that the store started on its own and that reported no failure is a later read of the kind that
-        // ended with no failure: it releases the kind and ends the notice of its refresh (P25).
-        return { ...reads, reload: undefined, hold: reads.reload.failures.length === 0 ? undefined : reads.hold };
+        // A reload that the store started on its own and that reported no failure read again what a refresh could not:
+        // it releases the hold of that refresh and ends its notice (P25). It never releases the hold of a load: the
+        // store watches no namespace whose list failed, so a reload never reads it again.
+        return {
+          ...reads,
+          reload: undefined,
+          refreshHold: reads.reload.failures.length === 0 ? undefined : reads.refreshHold,
+        };
       });
+    case "stores-changed":
+      // A store that leaves the set of the page loses what it loaded: when it comes back, the objects of its
+      // namespaces, which nothing has watched meanwhile, wait for its next load (P19).
+      return {
+        ...state,
+        kinds: Object.fromEntries(Object.entries(state.kinds).filter(([kind]) => event.kinds.includes(kind))),
+      };
     case "filter-changed": {
       const next: ReadsState = { ...state, filter: { namespaces: event.namespaces, selectedAll: event.selectedAll } };
 
@@ -293,15 +311,15 @@ export function isLoaded(state: ReadsState, kind: string, namespace: string): bo
 // does not select, which the page does not read (P2); or what the store holds.
 export type NamespaceRead =
   | { readonly state: "pending" }
-  | { readonly state: "held"; readonly hold: Hold }
+  | { readonly state: "held" }
   | { readonly state: "outside" }
   | { readonly state: "read" };
 
 export function namespaceRead(state: ReadsState, kind: string, namespace: string): NamespaceRead {
-  const hold = kindOf(state, kind).hold;
+  const { loadHold, refreshHold } = kindOf(state, kind);
   const filter = state.filter;
 
-  if (hold?.namespaces.includes(namespace)) return { state: "held", hold };
+  if (loadHold?.namespaces.includes(namespace) || refreshHold?.namespaces.includes(namespace)) return { state: "held" };
   if (isLoaded(state, kind, namespace)) return { state: "read" };
   if (filter !== undefined && !filter.namespaces.includes(namespace)) return { state: "outside" };
   return { state: "pending" };
@@ -342,10 +360,14 @@ export function listOutcome(state: ReadsState, clusters: string): ListOutcome {
   return { state: "failed", failures };
 }
 
+// The place of the time of a notice in its title, where the page puts the date component of the host.
+export const TIME = "{time}";
+
 // What a page says of its reads, in words, with the time of an event of the past.
 export interface Notice {
   readonly id: string;
   readonly tone: "warning" | "info";
+  // The title, with `TIME` where the time of the event goes, once, when the notice has one.
   readonly title: string;
   // The message of each answer, as the cluster wrote it.
   readonly messages: readonly string[];
@@ -374,22 +396,32 @@ const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows">, string> = {
   controllers: "the availability of the controllers of their providers is not known",
 };
 
-// The notice of a kind of the context that the page holds back (P25).
-function contextNotice(descriptor: KindDescriptor, hold: Hold): Notice {
+// The notice of a kind of the context that the page holds back (P25): after a load that failed, after a refresh that
+// failed, or after both, with the failures of each.
+function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | undefined {
+  const { loadHold, refreshHold } = reads;
+
+  if (loadHold === undefined && refreshHold === undefined) return undefined;
+
+  const failures = [...(loadHold?.failures ?? []), ...(refreshHold?.failures ?? [])];
   const what =
     descriptor.feeds === "rows"
       ? ""
       : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
+  const title =
+    loadHold === undefined
+      ? `The ${descriptor.noun} could not be read again, at ${TIME}`
+      : refreshHold === undefined
+        ? `The ${descriptor.noun} could not all be read`
+        : `The ${descriptor.noun} could not all be read, and could not be read again at ${TIME}`;
 
   return {
     id: `kind:${descriptor.kind}`,
     tone: "warning",
-    title: hold.refresh
-      ? `The ${descriptor.noun} could not be read again`
-      : `The ${descriptor.noun} could not all be read`,
-    messages: hold.failures.map((failure) => failure.message),
-    lines: [...refusalLine(descriptor, hold.failures), ...(what === "" ? [] : [what])],
-    at: hold.refresh ? hold.at : undefined,
+    title,
+    messages: failures.map((failure) => failure.message),
+    lines: [...refusalLine(descriptor, failures), ...(what === "" ? [] : [what])],
+    at: refreshHold?.at,
   };
 }
 
@@ -450,15 +482,15 @@ export function listNotices(
     else overList.push(notice);
   }
 
-  // A refresh of the Clusters that failed, after a load that ended with no failure: an event of the past.
-  if (reads.hold?.refresh === true) {
+  // A refresh of the Clusters that failed: an event of the past.
+  if (reads.refreshHold !== undefined) {
     const notice: Notice = {
       id: "list:refresh",
       tone: "warning",
-      title: "The Clusters could not be read again",
-      messages: reads.hold.failures.map((failure) => failure.message),
-      lines: reads.hold.failures.some((failure) => failure.refused) ? [permission] : [],
-      at: reads.hold.at,
+      title: `The Clusters could not be read again, at ${TIME}`,
+      messages: reads.refreshHold.failures.map((failure) => failure.message),
+      lines: reads.refreshHold.failures.some((failure) => failure.refused) ? [permission] : [],
+      at: reads.refreshHold.at,
     };
 
     if (rows === 0 && inPlaceOfRows === undefined) inPlaceOfRows = notice;
@@ -466,9 +498,9 @@ export function listNotices(
   }
 
   for (const descriptor of context) {
-    const hold = kindOf(state, descriptor.key).hold;
+    const notice = contextNotice(descriptor, kindOf(state, descriptor.key));
 
-    if (hold !== undefined) overList.push(contextNotice(descriptor, hold));
+    if (notice !== undefined) overList.push(notice);
   }
 
   // A list that the host read once over the whole cluster and does not follow (P34).
@@ -478,7 +510,7 @@ export function listNotices(
     overList.push({
       id: "list:not-followed",
       tone: "info",
-      title: "This list was read once over the whole cluster, and is not followed",
+      title: `This list was read once, at ${TIME}, over the whole cluster, and is not followed`,
       messages: [],
       lines: [
         "A change reaches it when the namespace filter changes or the page opens again.",
@@ -491,5 +523,7 @@ export function listNotices(
 
   const failedRead = outcome.state !== "read" && outcome.state !== "loading";
 
-  return { inPlaceOfRows, overList, notCounted: rows === 0 && (failedRead || reads.hold !== undefined) };
+  const held = reads.loadHold !== undefined || reads.refreshHold !== undefined;
+
+  return { inPlaceOfRows, overList, notCounted: rows === 0 && (failedRead || held) };
 }

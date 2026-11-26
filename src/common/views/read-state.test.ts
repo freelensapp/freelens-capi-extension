@@ -8,6 +8,7 @@ import {
   NO_READS,
   namespaceRead,
   reduceReads,
+  TIME,
 } from "./read-state";
 
 import type { KindDescriptor, ReadEvent, ReadFailure, ReadsState } from "./read-state";
@@ -205,6 +206,46 @@ describe("a kind of the context that could not all be read (P25)", () => {
   });
 });
 
+describe("a kind of the context refused in one namespace of its load (P25)", () => {
+  const reload: ReadEvent[] = [
+    { type: "reload-started", kind: MACHINES },
+    { type: "reload-ended", kind: MACHINES },
+  ];
+
+  it("stays held after a reload that the store starts itself and that reports no failure", () => {
+    const refused = run([FILTER_AB, ...load(MACHINES, 1, ["a", "b"], [REFUSED_A])]);
+    const reloaded = run(reload, refused);
+
+    expect(namespaceRead(reloaded, MACHINES, "a").state).toBe("held");
+    expect(namespaceRead(reloaded, MACHINES, "b").state).toBe("held");
+    expect(listNotices(reloaded, clusters, [machines], 2).overList.map((notice) => notice.title)).toEqual([
+      "The Machines could not all be read",
+    ]);
+  });
+
+  it("stays held after a refresh that fails and then a reload that reports no failure, the refresh said next to it", () => {
+    const refused = run([FILTER_AB, ...load(MACHINES, 1, ["a", "b"], [REFUSED_A])]);
+    const failed = run(
+      [
+        { type: "reload-started", kind: MACHINES },
+        { type: "refresh-failed", kind: MACHINES, failure: FAILED, at: 5000 },
+        { type: "reload-ended", kind: MACHINES },
+      ],
+      refused,
+    );
+    const notice = listNotices(failed, clusters, [machines], 2).overList[0];
+
+    expect(namespaceRead(failed, MACHINES, "a").state).toBe("held");
+    expect(notice).toMatchObject({
+      title: "The Machines could not all be read, and could not be read again at {time}",
+    });
+    expect(notice.messages).toEqual([REFUSED_A.message, FAILED.message]);
+    expect(notice.at).toBe(5000);
+    expect(namespaceRead(run(reload, failed), MACHINES, "a").state).toBe("held");
+    expect(namespaceRead(run(load(MACHINES, 2, ["a", "b"]), failed), MACHINES, "a").state).toBe("read");
+  });
+});
+
 describe("a refresh that failed (P25, P26)", () => {
   const read = run([FILTER_AB, ...load(MACHINES, 1, ["a", "b"]), ...load(CLUSTERS, 2, ["a", "b"])]);
 
@@ -213,7 +254,7 @@ describe("a refresh that failed (P25, P26)", () => {
     const notices = listNotices(state, clusters, [], 0);
 
     expect(notices.inPlaceOfRows).toMatchObject({
-      title: "The Clusters could not be read again",
+      title: "The Clusters could not be read again, at {time}",
       messages: [FAILED.message],
       at: 5000,
     });
@@ -226,7 +267,7 @@ describe("a refresh that failed (P25, P26)", () => {
 
     expect(namespaceRead(failed, MACHINES, "a").state).toBe("held");
     expect(listNotices(failed, clusters, [machines], 1).overList[0]).toMatchObject({
-      title: "The Machines could not be read again",
+      title: "The Machines could not be read again, at {time}",
       at: 5000,
     });
 
@@ -288,7 +329,7 @@ describe("a list read once over the whole cluster (P34)", () => {
     expect(notices.overList).toHaveLength(1);
     expect(notices.overList[0]).toMatchObject({
       id: "list:not-followed",
-      title: "This list was read once over the whole cluster, and is not followed",
+      title: "This list was read once, at {time}, over the whole cluster, and is not followed",
       at: 7000,
     });
     expect(listNotices(state, clusters, [], 0).overList.map((notice) => notice.id)).toEqual(["list:not-followed"]);
@@ -303,6 +344,41 @@ describe("a list read once over the whole cluster (P34)", () => {
       expect(listNotices(state, clusters, [], 2).overList.map((notice) => notice.id)).not.toContain(
         "list:not-followed",
       );
+    }
+  });
+});
+
+describe("the time of a notice", () => {
+  it("is in the title of every notice of an event of the past, at the place that the title gives it, and in no other", () => {
+    const states = [
+      run([FILTER_AB, ...load(CLUSTERS, 1, ["a", "b"], [REFUSED_A, REFUSED_B])]),
+      run([FILTER_AB, ...load(CLUSTERS, 1, ["a", "b"], [REFUSED_A])]),
+      run([FILTER_AB, ...load(CLUSTERS, 1, ["a", "b"], [REFUSED_A, FAILED])]),
+      run([
+        FILTER_AB,
+        ...load(CLUSTERS, 1, ["a", "b"]),
+        ...load(MACHINES, 2, ["a", "b"], [REFUSED_A]),
+        { type: "refresh-failed", kind: CLUSTERS, failure: FAILED, at: 5000 },
+        { type: "refresh-failed", kind: MACHINES, failure: FAILED, at: 6000 },
+      ]),
+      run([
+        { type: "filter-changed", namespaces: ["a", "b"], selectedAll: true },
+        ...load(CLUSTERS, 1, ["a", "b"], [], { overWholeCluster: true, followed: false, at: 7000 }),
+      ]),
+    ];
+    const notices = states.flatMap((state) =>
+      [0, 2].flatMap((rows) => {
+        const { inPlaceOfRows, overList } = listNotices(state, clusters, [machines], rows);
+
+        return [...(inPlaceOfRows === undefined ? [] : [inPlaceOfRows]), ...overList];
+      }),
+    );
+
+    expect(new Set(notices.map((notice) => notice.id))).toEqual(
+      new Set(["list:restricted", "list:partial", "list:failed", "list:refresh", "kind:Machine", "list:not-followed"]),
+    );
+    for (const notice of notices) {
+      expect(notice.title.split(TIME).length - 1, notice.title).toBe(notice.at === undefined ? 0 : 1);
     }
   });
 });

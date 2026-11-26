@@ -28,12 +28,14 @@ export default class CapiRenderer extends Renderer.LensExtension {
     withDetailsErrorBoundary(this, registration),
   );
 
-  // The page of the Clusters (SPEC-0004, "The page and its sidebar entry"), its component made once, here.
+  // The page of the Clusters (SPEC-0004, "The page and its sidebar entry"), its component made once, here, and given
+  // the extension from the registration, since the host passes a page its parameters alone (AGENTS.md, "Renderer
+  // Components").
   clusterPages: Renderer.LensExtension["clusterPages"] = [
     {
       id: CLUSTERS_PAGE,
       components: {
-        Page: () => <ClustersPage />,
+        Page: () => <ClustersPage extension={this} />,
       },
     },
   ].map((registration) => withPageErrorBoundary(this, registration));

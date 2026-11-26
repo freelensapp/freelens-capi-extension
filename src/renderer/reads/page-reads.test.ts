@@ -1,7 +1,7 @@
 import { observable, runInAction } from "mobx";
 import { describe, expect, it, vi } from "vitest";
 import { listNotices, namespaceRead } from "../../common/views/read-state";
-import { PageReads } from "./page-reads";
+import { PageReads, storeKey, storesKey } from "./page-reads";
 
 import type { Renderer } from "@freelensapp/extensions";
 
@@ -14,8 +14,8 @@ import type { HostStore } from "./store-adapter";
 
 type HostObject = Renderer.K8sApi.KubeObject;
 
-const CLUSTERS: KindDescriptor & { key: string } = {
-  key: "/apis/cluster.x-k8s.io/v1beta2/clusters",
+const CLUSTERS: KindDescriptor & { apiBase: string } = {
+  apiBase: "/apis/cluster.x-k8s.io/v1beta2/clusters",
   kind: "Cluster",
   noun: "Clusters",
   resource: "clusters",
@@ -23,8 +23,8 @@ const CLUSTERS: KindDescriptor & { key: string } = {
   feeds: "rows",
 };
 
-const MACHINES: KindDescriptor & { key: string } = {
-  key: "/apis/cluster.x-k8s.io/v1beta2/machines",
+const MACHINES: KindDescriptor & { apiBase: string } = {
+  apiBase: "/apis/cluster.x-k8s.io/v1beta2/machines",
   kind: "Machine",
   noun: "Machines",
   resource: "machines",
@@ -96,6 +96,14 @@ function adapterOf(reads: PageReads, store: ReturnType<typeof hostStore>) {
   return reads.adapterOf(store as unknown as HostStore<HostObject>);
 }
 
+// A kind as the notices name it, under the key of its store.
+function keyed(descriptor: KindDescriptor, store: ReturnType<typeof hostStore>): KindDescriptor & { key: string } {
+  return { ...descriptor, key: storeKey(store) };
+}
+
+// The Clusters, for the notices of a test that reads the stores of the context alone.
+const NO_CLUSTERS = { ...CLUSTERS, key: "no clusters" };
+
 describe("a list that the host reads once over the whole cluster (P34)", () => {
   it("is said when isLoadingAll is true as the load starts and the host follows no watch as it ends", async () => {
     const frame = context();
@@ -104,7 +112,7 @@ describe("a list that the host reads once over the whole cluster (P34)", () => {
       () => 0,
       () => 7000,
     );
-    const store = hostStore(CLUSTERS.key);
+    const store = hostStore(CLUSTERS.apiBase);
     const load = adapterOf(reads, store).loadAll({ namespaces: ["a", "b"], reqInit: {}, onLoadFailure: vi.fn() });
 
     // The namespaces of the cluster change while the load runs: the start decides.
@@ -114,7 +122,9 @@ describe("a list that the host reads once over the whole cluster (P34)", () => {
     store.finishLoad();
     await load;
 
-    expect(listNotices(reads.state, CLUSTERS, [], 2).overList).toMatchObject([{ id: "list:not-followed", at: 7000 }]);
+    expect(listNotices(reads.state, keyed(CLUSTERS, store), [], 2).overList).toMatchObject([
+      { id: "list:not-followed", at: 7000 },
+    ]);
   });
 
   it("is not said when isLoadingAll is false as the load starts, whatever it is as the load ends", async () => {
@@ -124,7 +134,7 @@ describe("a list that the host reads once over the whole cluster (P34)", () => {
       () => 0,
       () => 7000,
     );
-    const store = hostStore(CLUSTERS.key);
+    const store = hostStore(CLUSTERS.apiBase);
 
     runInAction(() => {
       frame.loadingAll = false;
@@ -138,13 +148,13 @@ describe("a list that the host reads once over the whole cluster (P34)", () => {
     store.finishLoad();
     await load;
 
-    expect(listNotices(reads.state, CLUSTERS, [], 2).overList).toEqual([]);
+    expect(listNotices(reads.state, keyed(CLUSTERS, store), [], 2).overList).toEqual([]);
   });
 
   it("is not said when the host follows the list, as it does for a user who may watch every resource", async () => {
     const frame = context();
     const reads = new PageReads(frame, () => 0);
-    const store = hostStore(CLUSTERS.key);
+    const store = hostStore(CLUSTERS.apiBase);
 
     runInAction(() => {
       frame.globalWatch = true;
@@ -155,7 +165,94 @@ describe("a list that the host reads once over the whole cluster (P34)", () => {
     store.finishLoad();
     await load;
 
-    expect(listNotices(reads.state, CLUSTERS, [], 2).overList).toEqual([]);
+    expect(listNotices(reads.state, keyed(CLUSTERS, store), [], 2).overList).toEqual([]);
+  });
+});
+
+describe("whether the host follows the list (P34)", () => {
+  it("is read as the load ends, as the store reads it at the subscribe that follows, and not as the load starts", async () => {
+    for (const [atStart, atEnd, said] of [
+      [true, false, true],
+      [false, true, false],
+    ] as const) {
+      const frame = context();
+      const reads = new PageReads(
+        frame,
+        () => 0,
+        () => 7000,
+      );
+      const store = hostStore(CLUSTERS.apiBase);
+
+      runInAction(() => {
+        frame.globalWatch = atStart;
+      });
+
+      const load = adapterOf(reads, store).loadAll({ namespaces: ["a", "b"], reqInit: {}, onLoadFailure: vi.fn() });
+
+      runInAction(() => {
+        frame.globalWatch = atEnd;
+      });
+      store.finishLoad();
+      await load;
+
+      expect(
+        listNotices(reads.state, keyed(CLUSTERS, store), [], 2).overList.map((notice) => notice.id),
+        `followed ${atStart} as the load started and ${atEnd} as it ended`,
+      ).toEqual(said ? ["list:not-followed"] : []);
+    }
+  });
+});
+
+describe("the stores of the page (P19)", () => {
+  async function loaded(reads: PageReads, store: ReturnType<typeof hostStore>) {
+    const load = adapterOf(reads, store).loadAll({ namespaces: ["a", "b"], reqInit: {}, onLoadFailure: vi.fn() });
+
+    store.finishLoad();
+    await load;
+  }
+
+  it("are each keyed by the identity of the store: one that the host replaces under the same base loads anew", async () => {
+    const reads = new PageReads(context(), () => 0);
+    const replaced = hostStore(MACHINES.apiBase);
+    const replacing = hostStore(MACHINES.apiBase);
+
+    await loaded(reads, replaced);
+
+    expect(storeKey(replaced)).toBe(storeKey(replaced));
+    expect(storeKey(replacing)).not.toBe(storeKey(replaced));
+    expect(adapterOf(reads, replacing)).not.toBe(adapterOf(reads, replaced));
+    expect(namespaceRead(reads.state, storeKey(replaced), "a").state).toBe("read");
+    expect(namespaceRead(reads.state, storeKey(replacing), "a").state).toBe("pending");
+  });
+
+  it("make one key of a set whatever their order, the key of the layout, which mounts again only when the set changes", () => {
+    const clusters = hostStore(CLUSTERS.apiBase);
+    const machines = hostStore(MACHINES.apiBase);
+    const other = hostStore(MACHINES.apiBase);
+
+    expect(storesKey([clusters, machines])).toBe(storesKey([machines, clusters]));
+    expect(storesKey([clusters, other])).not.toBe(storesKey([clusters, machines]));
+  });
+
+  it("lose what they loaded when they leave the set of the page, and wait for their next load when they come back", async () => {
+    const reads = new PageReads(context(), () => 0);
+    const clusters = hostStore(CLUSTERS.apiBase);
+    const machines = hostStore(MACHINES.apiBase);
+
+    await loaded(reads, clusters);
+    await loaded(reads, machines);
+    reads.retain([storeKey(clusters)]);
+
+    expect(namespaceRead(reads.state, storeKey(machines), "a").state).toBe("pending");
+    expect(namespaceRead(reads.state, storeKey(clusters), "a").state).toBe("read");
+
+    reads.retain([storeKey(clusters), storeKey(machines)]);
+
+    expect(namespaceRead(reads.state, storeKey(machines), "a").state).toBe("pending");
+
+    await loaded(reads, machines);
+
+    expect(namespaceRead(reads.state, storeKey(machines), "a").state).toBe("read");
   });
 });
 
@@ -167,7 +264,7 @@ describe("a reload that the store starts on its own (P25)", () => {
       () => 1,
       () => 5000,
     );
-    const store = hostStore(MACHINES.key);
+    const store = hostStore(MACHINES.apiBase);
     const adapter = adapterOf(reads, store);
     const load = adapter.loadAll({ namespaces: ["a", "b"], reqInit: {}, onLoadFailure: vi.fn() });
 
@@ -186,11 +283,11 @@ describe("a reload that the store starts on its own (P25)", () => {
   }
 
   it("that fails holds the kind back, with the notice of its refresh", async () => {
-    const { reads } = await refreshFailed();
+    const { reads, store } = await refreshFailed();
 
-    expect(namespaceRead(reads.state, MACHINES.key, "a").state).toBe("held");
-    expect(listNotices(reads.state, CLUSTERS, [MACHINES], 1).overList[0]).toMatchObject({
-      title: "The Machines could not be read again",
+    expect(namespaceRead(reads.state, storeKey(store), "a").state).toBe("held");
+    expect(listNotices(reads.state, NO_CLUSTERS, [keyed(MACHINES, store)], 1).overList[0]).toMatchObject({
+      title: "The Machines could not be read again, at {time}",
       at: 5000,
     });
   });
@@ -201,8 +298,8 @@ describe("a reload that the store starts on its own (P25)", () => {
     store.setLoading(true);
     store.setLoading(false);
 
-    expect(namespaceRead(reads.state, MACHINES.key, "a").state).toBe("read");
-    expect(listNotices(reads.state, CLUSTERS, [MACHINES], 1).overList).toEqual([]);
+    expect(namespaceRead(reads.state, storeKey(store), "a").state).toBe("read");
+    expect(listNotices(reads.state, NO_CLUSTERS, [keyed(MACHINES, store)], 1).overList).toEqual([]);
   });
 
   it("that fails again keeps the kind back and the notice", async () => {
@@ -212,7 +309,7 @@ describe("a reload that the store starts on its own (P25)", () => {
     subscribed?.onLoadFailure?.(new Error("Failed to load", { cause: new Error("socket hang up") }));
     store.setLoading(false);
 
-    expect(namespaceRead(reads.state, MACHINES.key, "a").state).toBe("held");
+    expect(namespaceRead(reads.state, storeKey(store), "a").state).toBe("held");
   });
 });
 
@@ -235,7 +332,7 @@ describe("the filter of the page", () => {
 
   it("gives one adapter for a store, however many times the page asks", () => {
     const reads = new PageReads(context(), () => 0);
-    const store = hostStore(MACHINES.key);
+    const store = hostStore(MACHINES.apiBase);
 
     expect(adapterOf(reads, store)).toBe(adapterOf(reads, store));
   });

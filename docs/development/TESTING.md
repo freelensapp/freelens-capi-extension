@@ -277,10 +277,13 @@ included, so a fixture that does not pass it fails there; no schema is changed.
 
 - `integration-tests.yaml`, on every pull request and push to `main`: the kind
   cluster of its sessions is the cluster of the definitions, which the workflow
-  creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
-  fixtures of every state, `pnpm e2e:fixtures:up all`, each in the namespace of
-  its state, before it starts Freelens dev with a profile that syncs the
-  kubeconfig of the scripts alone (SPEC-0004, P33). The session of the
+  creates with `pnpm e2e:cluster:up:definitions` before it starts Freelens dev
+  with a profile that syncs the kubeconfig of the scripts alone, and to which
+  it applies the fixtures of every state, `pnpm e2e:fixtures:up all`, each in
+  the namespace of its state, once Freelens dev answers, as its last step
+  before the tests: the session of the list of Clusters checks the marks that
+  the fixtures give within 25 minutes of their apply (SPEC-0004, P33, "Notes
+  and deviations"). The session of the
   fixtures, `integration/__tests__/fixtures.tests.ts`, opens that cluster and
   checks that the host imports the extension in the frame of the cluster with
   no error in either process, and that it lists every object of the set of

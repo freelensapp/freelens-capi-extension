@@ -89,6 +89,8 @@ export const host = {
   registerStore: vi.fn(),
   // The APIs that the extension built itself, which it never does.
   builtApis: [] as unknown[],
+  // The mounts of the list layout of the host, each of which subscribes its stores.
+  layoutMounts: 0,
   reset() {
     runInAction(() => {
       host.apis.clear();
@@ -101,6 +103,7 @@ export const host = {
     host.context = newContext();
     host.registerStore.mockReset();
     host.builtApis.length = 0;
+    host.layoutMounts = 0;
   },
   registerApi(api: StubApi, store?: unknown) {
     runInAction(() => host.apis.set(api.apiBase, api));
@@ -234,6 +237,7 @@ interface StubListLayoutProps {
   customizeHeader?: ((placeholders: HeaderPlaceholders) => HeaderPlaceholders) | undefined;
   tableProps?: { noItems?: React.ReactNode };
   renderTableContents: (item: StubItem) => React.ReactNode[];
+  renderItemMenu?: (item: StubItem) => React.ReactNode;
   addRemoveButtons?: { onRemove?: () => void };
 }
 
@@ -246,11 +250,21 @@ interface StubListLayoutProps {
 // not ready and its empty list once it is; and the remove button, from the
 // selection of the store among the rows, the props of the page spread over its
 // own (freelens:packages/core/src/renderer/components/item-object-list/content.tsx:457-480,
-// 566-595). Its calls are recorded, so that a test reads the props a page gave.
-// It subscribes nothing: the subscription is the host's.
+// 566-595); the cell of the menu, which the header always has and each row has
+// when the page gives a `renderItemMenu` (content.tsx:382-386, 531-533). Its
+// calls are recorded, so that a test reads the props a page gave, and its mounts
+// are counted, since the host subscribes the stores of a layout when it mounts
+// (kube-object-list-layout.tsx:131-161). It subscribes nothing: the
+// subscription is the host's.
 const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
   const { store, items, isReady, renderHeaderTitle, customizeHeader, tableProps, renderTableContents } = props;
+  const { renderItemMenu } = props;
   const rows = items ?? store.contextItems;
+
+  React.useEffect(() => {
+    host.layoutMounts++;
+  }, []);
+
   const count = store.getTotalCount();
   const initial: HeaderPlaceholders = {
     title: React.createElement("h5", null, renderHeaderTitle),
@@ -280,7 +294,13 @@ const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
   return React.createElement(
     "div",
     { "data-testid": "host-layout" },
-    React.createElement("div", { "data-testid": "host-header" }, header.title, header.info),
+    React.createElement(
+      "div",
+      { "data-testid": "host-header" },
+      header.title,
+      header.info,
+      React.createElement("div", { "data-testid": "host-head-menu" }),
+    ),
     rows.length === 0
       ? empty
       : rows.map((item) =>
@@ -288,29 +308,72 @@ const KubeObjectListLayout = vi.fn((props: StubListLayoutProps) => {
             "div",
             { key: item.getId(), "data-testid": "host-row" },
             ...renderTableContents(item).map((cell, index) => React.createElement("div", { key: index }, cell)),
+            renderItemMenu === undefined
+              ? null
+              : React.createElement("div", { key: "menu", "data-testid": "host-row-menu" }, renderItemMenu(item)),
           ),
         ),
     removal.onRemove === undefined ? null : React.createElement("button", { "data-testid": "host-remove" }, "Remove"),
   );
 });
 
+// The tooltip of a component of the host, hidden next to it, which a test
+// finds by the test id of the component and `-tooltip`.
+function tooltipOf(tooltip: React.ReactNode, testId: string | undefined) {
+  return tooltip === undefined || tooltip === null
+    ? null
+    : React.createElement("span", { hidden: true, "data-testid": testId && `${testId}-tooltip` }, tooltip);
+}
+
 // A component of the host that renders its label, or its children, and what a
-// test looks for in it.
-function Labelled(props: { label?: React.ReactNode; children?: React.ReactNode; "data-testid"?: string }) {
-  return React.createElement("span", { "data-testid": props["data-testid"] }, props.label, props.children);
+// test looks for in it: whether a click expands it, which the host does when
+// its content does not fit, and its tooltip.
+function Labelled(props: {
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+  tooltip?: React.ReactNode;
+  expandable?: boolean;
+  "data-testid"?: string;
+}) {
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(
+      "span",
+      { "data-testid": props["data-testid"], "data-expandable": String(props.expandable ?? true) },
+      props.label,
+      props.children,
+    ),
+    tooltipOf(props.tooltip, props["data-testid"]),
+  );
 }
 
 function Badge(props: {
   label?: React.ReactNode;
   className?: string;
   tooltip?: React.ReactNode;
+  expandable?: boolean;
   "data-tone"?: string;
+  "data-word"?: string;
+  "data-state"?: string;
   "data-testid"?: string;
 }) {
   return React.createElement(
-    "span",
-    { className: props.className, "data-tone": props["data-tone"], "data-testid": props["data-testid"] },
-    props.label,
+    React.Fragment,
+    null,
+    React.createElement(
+      "span",
+      {
+        className: props.className,
+        "data-tone": props["data-tone"],
+        "data-word": props["data-word"],
+        "data-state": props["data-state"],
+        "data-testid": props["data-testid"],
+        "data-expandable": String(props.expandable ?? true),
+      },
+      props.label,
+    ),
+    tooltipOf(props.tooltip, props["data-testid"]),
   );
 }
 
@@ -322,7 +385,8 @@ export const Renderer = {
     KubeObjectAge: (props: { object: { metadata?: { creationTimestamp?: string } } }) =>
       React.createElement("span", { "data-testid": "host-age" }, props.object.metadata?.creationTimestamp),
     KubeObjectListLayout,
-    LocaleDate: (props: { date: string | Date }) => React.createElement("time", null, String(props.date)),
+    LocaleDate: (props: { date: string | Date }) =>
+      React.createElement("time", null, props.date instanceof Date ? props.date.toISOString() : props.date),
     NamespaceSelectBadge: (props: { namespace: string }) =>
       React.createElement("span", { "data-testid": "host-namespace" }, props.namespace),
     ReactiveDuration: (props: { timestamp?: string }) =>

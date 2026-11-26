@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { CAPTURE, fixtureSet, ofKind } from "../../../test/fixture-sets";
+import { parseConditionMessage } from "../parsers/condition-message";
 import { ACTIVITY_NAMES } from "../status/activity";
 import {
   activityCell,
   classCell,
   compareVersions,
   countersCell,
+  headlineOf,
   healthCell,
   rowCells,
   searchWords,
@@ -26,8 +28,13 @@ import type { ReadEvent } from "./read-state";
 
 const KINDS = ["Machine", "MachineSet", "MachineDeployment", "MachinePool", "MachineHealthCheck", "ClusterClass"];
 
-// The row of the Cluster of a state of the fixtures, with every kind of its context read.
-function rowOf(state: string, now = CAPTURE): ClusterRow {
+// The row of the Cluster of a state of the fixtures, with every kind of its context read, and the Cluster as a case
+// changes it.
+function rowOf(
+  state: string,
+  now = CAPTURE,
+  change: (cluster: ClusterObject) => ClusterObject = (cluster) => cluster,
+): ClusterRow {
   const objects = fixtureSet(state);
   const namespaces = [...new Set(objects.map((object) => object.metadata.namespace ?? ""))];
   const keys = [...KINDS, "KubeadmControlPlane"];
@@ -68,7 +75,7 @@ function rowOf(state: string, now = CAPTURE): ClusterRow {
     ]),
   });
 
-  return clusterRowOf(index, ofKind<ClusterObject>(objects, "Cluster")[0], now, new StatusMemo());
+  return clusterRowOf(index, change(ofKind<ClusterObject>(objects, "Cluster")[0]), now, new StatusMemo());
 }
 
 function clusterOf(state: string): ClusterObject {
@@ -108,6 +115,36 @@ describe("the counters (P8)", () => {
     expect(row.poolsWithoutMachines).toBe(1);
     expect(rowCells(row).workers.tooltip.join(" ")).toMatch(/count the instances of its provider/);
     expect(rowCells(rowOf("machine-pools")).workers.tooltip.join(" ")).not.toMatch(/instances of its provider/);
+  });
+});
+
+describe("the sort of the counters and of the class (P28)", () => {
+  it("is by the available Machines, then the desired, a counter not written last", () => {
+    expect(countersCell(clusterOf("scaling-up"), "controlPlane").sort).toEqual([1, 3]);
+    expect(countersCell(clusterOf("scaling-up"), "workers").sort).toEqual([1, 2]);
+    expect(countersCell(clusterOf("no-status"), "workers").sort).toEqual([
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+    ]);
+  });
+
+  it("is by the name of the class, then its namespace, N/A last", () => {
+    const cluster = clusterOf("healthy");
+    const elsewhere: ClusterObject = {
+      ...cluster,
+      spec: {
+        ...cluster.spec,
+        topology: { classRef: { name: "quick-start", namespace: "classes" }, version: "v1.37.0" },
+      },
+    };
+    const sorts = [classCell(elsewhere).sort, classCell(clusterOf("without-topology")).sort, classCell(cluster).sort];
+
+    // The class of the namespace classes comes before the same class in the namespace of the Cluster.
+    expect([...sorts].sort((one, other) => one.join("\u0000").localeCompare(other.join("\u0000")))).toEqual([
+      ["quick-start", "classes"],
+      ["quick-start", "freelens-capi-healthy"],
+      classCell(clusterOf("without-topology")).sort,
+    ]);
   });
 });
 
@@ -250,6 +287,26 @@ describe("the health (P12)", () => {
     expect(healthCell(rowOf("provisioning", changesAt).status).mark).toEqual({ word: "Unhealthy", tone: "warning" });
   });
 
+  it("is in its own tone when no activity sets one: Degraded in that of a warning, Unhealthy in that of an error", () => {
+    // Past the 28 minutes in which the MachinePool of machine-pools provisions, the Cluster is Idle and Degraded.
+    const degraded = rowOf("machine-pools", CAPTURE + 29 * 60 * 1000);
+    // The Cluster of healthy, with its Available False, written at this layer alone: Idle and Unhealthy.
+    const unhealthy = rowOf("healthy", CAPTURE, (cluster) =>
+      withStatus(cluster, {
+        conditions: ((cluster.status?.conditions as Record<string, unknown>[] | undefined) ?? []).map((condition) =>
+          condition.type === "Available"
+            ? { ...condition, status: "False", reason: "NotAvailable", message: "* WorkersAvailable: not available" }
+            : condition,
+        ),
+      }),
+    );
+
+    expect(activityCell(degraded.status).marks).toEqual([{ word: "Idle", tone: "info" }]);
+    expect(healthCell(degraded.status).mark).toEqual({ word: "Degraded", tone: "warning" });
+    expect(activityCell(unhealthy.status).marks).toEqual([{ word: "Idle", tone: "info" }]);
+    expect(healthCell(unhealthy.status).mark).toEqual({ word: "Unhealthy", tone: "error" });
+  });
+
   it("is N/A for a Cluster that is deleting, with the reason", () => {
     expect(healthCell(rowOf("deleting").status)).toMatchObject({ mark: undefined, none: "deleting" });
   });
@@ -265,6 +322,32 @@ describe("the health (P12)", () => {
     expect(healthCell(rowOf("machine-pools").status).poolsUnknown).toBe(0);
   });
 
+  it("names each cause of stale, with its detail and when it began", () => {
+    const since = { state: "accepted", text: "2025-12-31T23:40:00Z", instant: CAPTURE - 20 * 60 * 1000 } as const;
+    const cell = healthCell({
+      ...rowOf("healthy").status,
+      freshness: [
+        { cause: "Older generation", generation: 3, observedGeneration: 2, topologiesHeld: false },
+        { cause: "Controller not available", provider: "infrastructure-docker", since },
+        { cause: "Workload cluster unreachable", since },
+      ],
+    });
+
+    expect(cell.stale).toEqual([
+      { cause: "Older generation", detail: "generation 3, observed 2", since: undefined },
+      {
+        cause: "Controller not available",
+        detail: "infrastructure-docker",
+        since: { state: "written", text: "2025-12-31T23:40:00Z" },
+      },
+      {
+        cause: "Workload cluster unreachable",
+        detail: undefined,
+        since: { state: "written", text: "2025-12-31T23:40:00Z" },
+      },
+    ]);
+  });
+
   it("sorts worst first: Unhealthy, Degraded, Unknown, Healthy, then no health (P28)", () => {
     const sorts = ["provisioning", "upgrading", "no-status", "healthy", "deleting"].map(
       (state) => healthCell(rowOf(state).status).sort,
@@ -275,13 +358,37 @@ describe("the health (P12)", () => {
 });
 
 describe("the status (P11)", () => {
-  it("is the headline of the message of Available, with every line in its tooltip", () => {
+  it("is the first line of the message of Available when it has words of its own, with every line in its tooltip", () => {
+    const cell = statusCell(rowOf("provisioning").conditions);
+
+    expect(cell.text).toBe("* RemoteConnectionProbe: Remote connection not established yet");
+  });
+
+  it("is the subject of a first line with no words of its own and the first line under it that has some", () => {
     const cell = statusCell(rowOf("scaling-up").conditions);
 
-    expect(cell.text).toBe("* WorkersAvailable:");
+    expect(cell.text).toBe(
+      "WorkersAvailable: MachineDeployment freelens-capi-scaling-up-md-0-474jl: 1 available replicas, at least 2 required (spec.strategy.rollout.maxUnavailable is 0, spec.replicas is 2)",
+    );
     expect(cell.lines).toHaveLength(2);
+    expect(cell.lines[0]).toEqual({ indentation: 0, text: "* WorkersAvailable:" });
     expect(cell.lines[1].indentation).toBe(2);
     expect(cell.lines[1].text).toMatch(/^\* MachineDeployment freelens-capi-scaling-up-md-0-/);
+    expect(statusCell(rowOf("upgrading").conditions).text).toBe(
+      "ControlPlaneAvailable: 1 of 2 Machines has healthy control plane components, at least 1 required",
+    );
+  });
+
+  it("skips the subjects with no words of their own under the first line, and keeps a first line with none under it", () => {
+    const message = (text: string) =>
+      parseConditionMessage(text) as Extract<ReturnType<typeof parseConditionMessage>, { state: "read" }>;
+
+    expect(headlineOf(message("* Deleting:\n  * MachineDeployment md-0:\n    * Machine m-1: draining"))).toBe(
+      "Deleting: Machine m-1: draining",
+    );
+    expect(headlineOf(message("* Deleting:\n  * MachineDeployment md-0:"))).toBe("* Deleting:");
+    expect(headlineOf(message("* Deleting:"))).toBe("* Deleting:");
+    expect(headlineOf(message(""))).toBeUndefined();
   });
 
   it("is the reason of Available when its message is empty, and N/A when the Cluster reports none", () => {

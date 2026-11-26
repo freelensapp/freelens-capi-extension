@@ -2061,6 +2061,14 @@ list has the limits of the lists of the host, and no others:
 - A reload after a 410 that fails empties the kind, or the namespace of its
   watch: the page says that the read failed again, when and why (P25), and
   keeps no copy of what it had (P26).
+- The page cannot tell which namespace a reload covered: the store names none
+  in its failure and none in its run of `isLoading`. A reload never reads a
+  namespace whose list failed, which has no resource version to watch from
+  (freelens:packages/utility-features/kube-api/src/kube-api.ts:584-585;
+  kube-object.store.ts:571-572, 586-589), so it never releases the hold of a
+  load that failed; but a reload that reports no failure releases the hold of
+  a refresh that failed, even when it read another namespace than the one
+  that failed, until that namespace fails again.
 - The mark of a cluster that cannot be reached carries no time and says its
   words in a tooltip, on 2.1.0; 2.0.0 has none (P26).
 - In the details of the host, the object that its metadata and its custom
@@ -2109,54 +2117,82 @@ second is P34.
 
 No question is open.
 
-The spec is implemented in three pull requests: the first has the models of
-the kinds that the view reads, the reads, the page with its sidebar entry and
-its list, and their states, with the session of the list in Freelens on the
-fixtures of every state and the part of P33 that applies them; the second the
-details, the links between the objects, the panel in the details of the host
-and the reads of one Cluster outside the namespaces of the page (P6, P13, P15,
-P16, P18, P31, P32); the third the sessions with restricted identities and
-with the real project, the rest of the changes to the jobs of CI (P23, P29,
-P33), and the documents that only the whole view completes, the README,
-TRY-IT.md and ARCHITECTURE.md.
-
+- Decided while implementing: the spec is implemented in three pull requests.
+  The first has the models of the kinds that the view reads, the reads, the
+  page with its sidebar entry and its list, and their states, with the session
+  of the list in Freelens on the fixtures of every state and the part of P33
+  that applies them; the second the details, the links between the objects,
+  the panel in the details of the host and the reads of one Cluster outside
+  the namespaces of the page (P6, P13, P15, P16, P17, P18, P31, P32); the
+  third the sessions with restricted identities and with the real project, the
+  rest of the changes to the jobs of CI (P23, P29, P33), and the documents that
+  only the whole view completes, the README, TRY-IT.md and ARCHITECTURE.md.
 - Decided while implementing the first part: until the second, a row opens
   nothing. The layout gets `hasDetailsView={false}` and an `onDetails` that
   does nothing, so that a click opens no details of the host (A7); the name is
   text, whole in its tooltip, and becomes the button of P13 with the details;
   the page has no parameter yet, and `kubeObjectDetailItems` and
-  `kubeObjectMenuItems` are empty.
+  `kubeObjectMenuItems` are empty. With `hasDetailsView={false}` the rows of
+  the host have no hover and the table no side padding until then. The
+  reference to an object that does not exist, which reads as not read in the
+  context of the model, says so with P18, in the second part, with its case of
+  `references.test.ts`; so does the case of `context.test.ts` on the
+  MachineSets and the worker Machines that a Cluster owns (P17).
 - Decided while implementing: the reads of the page are events. The adapter of
   each store (P19) tells the page the start of each load with its namespaces,
   each failure of it, its end or its abort by the host, each failure of a
   subscription, and each run of `isLoading` while the store is subscribed; the
-  page folds them, with each change of the filter, into one state, kept by a
-  pure function of `src/common/views/read-state.ts`, from which it takes the
-  namespaces loaded, the readiness of the list, its outcome and its notices.
-  The cases of `read-state.test.ts` that concern when the page reads the
-  context of the frame, and the runs of `isLoading`, are in
+  page folds them, with each change of the filter and of the set of its
+  stores, into one state, kept by a pure function of
+  `src/common/views/read-state.ts`, from which it takes the namespaces loaded,
+  the readiness of the list, its outcome and its notices. The cases of
+  `read-state.test.ts` that concern when the page reads the context of the
+  frame, and the runs of `isLoading`, are in
   `src/renderer/reads/page-reads.test.ts`, which drives the adapters, since
   the state receives both as events; the case of P26 that no row is kept is in
   `clusters-page-v1beta2.test.tsx`, since the rows are the items of the store
   of the host, of which the state keeps none.
+- Decided while implementing: the state of the reads follows each store of the
+  host by the base of its API and the identity of the store object, and so do
+  the list, keyed by the store of Clusters, and the layout, keyed by the set of
+  its stores, their keys sorted, so that rows that change their order mount
+  nothing again. When the store of definitions of the host fails, the host
+  registers the APIs of the definitions again, each with a new store under the
+  same base (setup-auto-crd-api-creations.injectable.ts:45-54;
+  api-manager.ts:67-75): the new store mounts the layout again, which
+  subscribes and loads it, and none of the namespaces of the old one count as
+  loaded. A store that leaves the set of the page loses the namespaces that it
+  loaded, so that when it comes back, the objects that nothing watched
+  meanwhile wait for its next load (P19). The GETs of the definitions run again
+  when the store of definitions fails after the page mounted.
 - Decided while implementing: the answer of `isLoadingAll` that the page reads
   as a load starts travels with that load, which the adapter hands back at its
   end, and the page reads `isGlobalWatchEnabled()` as the load ends (P34); a
   load that the host aborts gives neither. Its module keeps the `ClusterStore`
   of P34, built at the first mount of the page in the frame, with the API of
-  Clusters that the host registered.
-- Decided while implementing: a run of `isLoading` while no load of the layout
-  runs is a reload that the store started itself, and one during a load of the
-  layout is that load (P25). A load that fails holds its kind back in every
-  namespace of the load, since the store names no namespace in a failure, and
-  a refresh that fails holds back those of the last load; both end with the
-  next load of that kind that ends with no failure, or with a reload that
-  reports none.
-- Decided while implementing: "not counted" takes the place of the first child
-  of the `info` that the layout hands `customizeHeader`, the count, and keeps
-  the others, the marks of the host, as `kube-object-list-layout.tsx` builds
-  it at `v2.0.0` and at `v2.1.0`; an `info` of another shape is replaced whole
-  (P25).
+  Clusters that the host registered. The notice says the time of the read
+  where P34 places it: "This list was read once, at that time, over the whole
+  cluster, and is not followed".
+- Decided while implementing, corrected after the first review of the pull
+  request: a run of `isLoading` while no load of the layout runs is a reload
+  that the store started itself, and one during a load of the layout is that
+  load (P25). A load that fails holds its kind back in every namespace of the
+  load, since the store names no namespace in a failure, until a load of that
+  kind ends with no failure. A refresh that fails holds back the namespaces of
+  the last load, apart from the hold of a load, which it never turns into its
+  own: it ends with the next load of that kind, or with a reload that reports
+  no failure, which never ends the hold of a load, since a reload never reads a
+  namespace whose list failed. The notice of a kind held back by both says
+  both, each failure with its message, and the time of the refresh.
+- Decided while implementing: the header counts no row until the list is
+  ready: in the place of the count it shows nothing while the first load of the
+  Clusters runs, and while a load runs with no row listed, never "0 items",
+  since no read that it would count has ended (kit, `docs/design.md`,
+  "Status"); "not counted" when a read failed and no row is listed (P25). Each
+  takes the place of the first child of the `info` that the layout hands
+  `customizeHeader`, the count, and keeps the others, the marks of the host, as
+  `kube-object-list-layout.tsx` builds it at `v2.0.0` and at `v2.1.0`; an
+  `info` of another shape is replaced whole.
 - Decided while implementing, where P3 is silent: the GET of a definition by
   its name needs its plural, which a reference does not carry. When the store
   of definitions failed, the page takes it from the API that the host
@@ -2175,14 +2211,59 @@ TRY-IT.md and ARCHITECTURE.md.
   with one of its two counters written shows N/A for the other, `N/A/2`, and
   N/A alone when neither is; N/A sorts after every value in the columns of the
   domain, and a row whose marks of state still show the spinner sorts after
-  every other in Activity and Condition.
+  every other in Activity and Condition. Age sorts as the lists of the host
+  sort it, by the negative of the creation, so that its arrow means the same.
+- Decided while implementing: every cell of the list is one line (kit,
+  `docs/design.md`, "Lists"; P12), since the rows of the host have one height
+  and a second line runs into the next row. The marks of a cell sit side by
+  side in a flat badge of the host that keeps its line, cuts what does not fit
+  with an ellipsis and never expands on a click; the tooltip of the cell
+  carries its whole content: every activity with its state, its duration and
+  its start, and the health with the word stale, each cause with when it
+  began, and the note of the MachinePools of unknown health. No mark in a cell
+  has a tooltip of its own. The badges of the other cells never expand on a
+  click either.
+- Decided while implementing: the widths of the columns keep P7, with the
+  minimums of the columns of state as small as cells of one line allow, and
+  the name the last column of the domain to give room, its shrink a quarter of
+  the next one; the stylesheet of the page says why each number is what it is.
+- Decided while implementing: the menu of the host is replaced by
+  `renderItemMenu={() => null}` in the place of the `renderItemMenu={undefined}`
+  that "The list" gives: the host renders the cell of the menu in the header
+  always, 55 px wide (content.tsx:531-533; table.mixins.scss:9-12), and in a
+  row only when the page gives a menu (content.tsx:382-386), so with no menu
+  in the rows the head of each column stands left of its column. An empty
+  menu in each row lines them up, and a right click still opens nothing, since
+  no menu of the host registers its controls
+  (kube-object-list-layout.tsx:224-256). Step 2 and the unit case of the props
+  check an empty cell of the menu in each row, where the spec says none.
+- Decided while implementing, under the delegation for M1, and listed for the
+  review of M1: the headline of P11 is the first line of the message of
+  `Available` as the parser gives it; when that line is a subject with no words
+  of its own, whose words are in the lines nested under it, such as
+  `* WorkersAvailable:`, the headline is the subject followed by the first line
+  under it that has words, both as the parser gives their text, without their
+  bullets, such as `WorkersAvailable: MachineDeployment x-md-0: 0 available
+  replicas, at least 2 required`. The tooltip keeps the whole message, nested.
+  In 5 of the 15 states of the fixtures the first line is such a subject,
+  which alone says nothing in the list.
 - Decided while implementing: the background of a mark mixes 20% of the token
   of its tone with `transparent` (P21).
 - Decided while implementing: the page evaluates the model with the time of
   each render, and again, through a timer, at the earliest time that a result
   of its rows names. It keeps each result under the key of SPEC-0003 ("How a
   view uses it") until that time, and drops at each render those of the
-  Clusters that it no longer lists.
+  Clusters that it no longer lists. It builds the indexes of the context once
+  for each change of what they read, the state of the reads and the key, the
+  identity and the version of every object of every store of the page, and
+  how each reference of a control plane resolves, never at a render or a tick
+  that changes none of them, and never keyed on the arrays of the stores; it
+  reads the stores of the kinds in the render, since the host makes the store
+  of a kind of a definition when it is first asked for it, which a derivation
+  of mobx may not do (api-manager.ts:171-174).
+- Decided while implementing: the page takes the extension from its
+  registration, as "The page and its sidebar entry" says; the error
+  boundaries of the details of the second part take it.
 - Decided while implementing: `engines.freelens` stays `^2.0.0`. The renderer
   and the integration tests check with no error against the declarations of
   `@freelensapp/extensions` `2.0.0`: the props of the list layout, the store
@@ -2190,10 +2271,11 @@ TRY-IT.md and ARCHITECTURE.md.
   there.
 - Decided while implementing: the unit tests of the page render it against the
   stub of the extension API, `test/freelens-extensions.ts`, whose list layout
-  records its props and renders the parts where the host calls back into the
-  page, among them the remove button, decided as `content.tsx` decides it. The
-  subscription is the host's, which the stub does not run, so the tests drive
-  the loads through the adapters, as the host would.
+  records its props, counts its mounts and renders the parts where the host
+  calls back into the page, among them the remove button, decided as
+  `content.tsx` decides it, and the cell of the menu. The subscription is the
+  host's, which the stub does not run, so the tests drive the loads through the
+  adapters, as the host would.
 - Decided while implementing: the session of the list in Freelens,
   `integration/__tests__/clusters.tests.ts`, runs, of the steps of "In
   Freelens": step 1; step 2 but the details of the extension, with a click that
@@ -2202,18 +2284,32 @@ TRY-IT.md and ARCHITECTURE.md.
   `upgrading`; step 7; and step 8, whose check reads every request of the frame
   to the groups that the view reads, each a GET, and the version of every
   object of the fixtures before and after the session, but the versions that
-  its own labels gave. A write that the session plants from the frame when
-  `TEST_PLANT_WRITE` is set makes both fail. The rest of steps 2, 3 and 6, and
-  steps 4 and 5, come with the second part.
-- Decided while implementing: in step 1, the session allows a row in flight the
-  tone of progress or that of a warning. It runs minutes after the workflow
-  applied the fixtures, whose times move to the moment of the apply
-  (TESTING.md, "On the first tier"), so a threshold of SPEC-0003 may have
-  passed by then.
-- Seen while implementing: in 5 of the 15 states of the fixtures, the first line
-  of the message of `Available` is a subject with no words of its own, such as
-  `* WorkersAvailable:`, whose words are on the lines below it. The cell of the
-  status shows that line, as P11 says, and its tooltip the whole message.
+  the answers to its own writes of a label gave. A write that the session
+  plants from the frame when `TEST_PLANT_WRITE` is set makes both fail. The
+  rest of steps 2, 3 and 6, and steps 4 and 5, come with the second part. Its
+  end removes its labels, disconnects the cluster and closes the connection
+  whatever failed before.
+- Decided while implementing: step 1 checks the word, the state and the tone of
+  each activity, and allows a row or an activity in flight the tone of progress
+  or that of a warning, and Deleting that of a deletion or of a warning: the
+  session runs minutes after the workflow applied the fixtures, whose times
+  move to the moment of the apply (TESTING.md, "On the first tier"), so a
+  threshold of SPEC-0003 may have passed by then. Its words hold for a window
+  of 25 minutes after the apply: the first change of the words of a row of the
+  fixtures, read at every 15 seconds from their times, comes 28 minutes and 30
+  seconds after them, when `rolling-out` and `remediation` end their
+  Provisioning, and `machine-pools` and `machine-pool-without-machines` 15
+  seconds later. So the workflow applies the fixtures of every state as its last
+  step before the tests, once Freelens dev answers, and the session fails at its
+  start, saying so, when the Clusters of the fixtures were created more than 25
+  minutes before it, as a local run on fixtures applied earlier would.
+- Seen while implementing, in the first run in CI: `kubectl label --overwrite
+  --output jsonpath={.metadata.resourceVersion}` prints the version of the
+  object as it was before the label, not the one that the write gave, so the
+  check of step 8 took the two writes of the session for writes of the frame.
+  The session writes a label with a merge patch, whose answer is the object
+  that the write made, and fails at once when the version that it records is
+  the one that it read before the write, which a write always changes.
 - Seen while implementing: the table of SPEC-0003, "The fixtures of SPEC-0002
   give these results", gives the Cluster of `machine-without-node` Unhealthy,
   with its `Available` `False` through `WorkersAvailable`. In the fixture its

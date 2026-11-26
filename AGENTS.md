@@ -551,10 +551,9 @@ list of Clusters of SPEC-0004.
   passes. A menu item does not extend `Renderer.Component.KubeObjectMenuProps`, the props of the host's whole
   `KubeObjectMenu` (`id`, `editable`, `removable`, `onMenuReady` and more). That compiles, because both require only
   `object`, and the item then promises props the host never passes.
-- The host renders a cluster page with `params` only. A page that needs the extension gets it from the registration
-  (`Page: () => <MyPage extension={this} />`), with the page component created once, outside the registration, as
-  `ClustersPage` is; the page of the Clusters needs nothing of the extension, and is registered as
-  `Page: () => <ClustersPage />`.
+- The host renders a cluster page with `params` only. A page gets the extension from the registration
+  (`Page: () => <ClustersPage extension={this} />`), with the page component created once, outside the registration,
+  as `ClustersPage` is; the error boundaries inside a page take it.
   `PageComponents.Page` is typed with the props the host passes, `Common.Types.PageComponentProps`, so the type check
   rejects a page that requires another prop. It does not reject one that declares another prop as optional next to
   `params`; that prop is `undefined`.
@@ -1108,7 +1107,8 @@ matrix, whose names change with the matrix. The kind cluster of the sessions is
 the cluster of the definitions of the test environment, which the workflow
 creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
 fixtures of every state with `pnpm e2e:fixtures:up all`, each state in a
-namespace of its own (docs/development/TESTING.md; SPEC-0004, P33). A profile of
+namespace of its own, as its last step before the tests, once Freelens dev
+answers (docs/development/TESTING.md; SPEC-0004, P33). A profile of
 Freelens dev syncs no kubeconfig by default, so the workflow seeds the fresh
 one with a single sync entry, a copy of the kubeconfig of the scripts, which
 holds that cluster alone, and the catalog lists that cluster and nothing else.
@@ -1138,20 +1138,26 @@ logged by either process:
   same cluster, with the namespaces of every state selected, and checks the
   row of the Cluster of each state against what the status model gives its
   fixtures (SPEC-0003, "The fixtures of SPEC-0002 give these results";
-  SPEC-0004, "Notes and deviations"): the word and the tone of its health, its
-  activities, the word stale, its counters, its version, its class and its
-  status. It
-  checks that the list has no checkbox, no menu and no details of the host,
-  also with a Cluster selected in the list of the host (SPEC-0001, A7; the
-  half of S5 that concerns the page); that a label which it sets with kubectl
-  reaches the search of the list with no reload, also in a namespace that the
-  filter adds; and that the Custom Resources tree of the host has no entry for
-  the Clusters. It records the requests of the renderer, and fails when one
-  to the groups that the view reads is not a GET, or when an object of the
-  fixtures has another version after the session than before, or than the one
-  that its own write of a label gave it; with `TEST_PLANT_WRITE` set it
-  patches a label from the frame of the cluster, and both checks fail. It
-  removes its labels at its end, also when a check failed.
+  SPEC-0004, "Notes and deviations"): the word and the tone of its health, the
+  word, the state and the tone of each activity, the word stale, its counters,
+  its version, its class and its status. It checks that the list has no
+  checkbox, no menu of the host and no details of the host, its rows an empty
+  cell of the menu that lines them up with the header (SPEC-0001, A7); that no
+  remove button shows on its page while a Cluster is selected in the list of
+  the host, before and after a click on its row (the half of S5 that concerns
+  the page); that a label which it sets with kubectl reaches the search of the
+  list with no reload, also in a namespace that the filter adds; and that the
+  Custom Resources tree of the host has no entry for the Clusters. It records
+  the requests of the renderer, and fails when one to the groups that the view
+  reads is not a GET, or when an object of the fixtures has another version
+  after the session than before, or than the one that the answer to its own
+  write of a label gave it. It writes a label with a merge patch, whose answer
+  is the object that the write made, since `kubectl label` prints the object
+  as it was before the write, and fails at once when the version that it
+  records is the one before the write. With `TEST_PLANT_WRITE` set it patches a
+  label from the frame of the cluster, and both checks fail. Its end removes
+  its labels, disconnects the cluster and closes the connection whatever
+  failed before, and then throws what failed.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 600`. A retry
@@ -1295,7 +1301,11 @@ session of the fixtures needs the cluster of the definitions with the fixtures
 of its state, and the session of the Clusters those of every state,
 `pnpm e2e:cluster:up:definitions` and `pnpm e2e:fixtures:up all`, and the
 kubeconfig of the scripts in "Kubeconfig Syncs" and in `KUBECONFIG`; each skips
-with a warning when the namespace of the fixtures is not there.
+with a warning when the namespace of the fixtures is not there. The times of
+the fixtures move to the moment of their apply, and the marks of step 1 of the
+session of the Clusters hold for 25 minutes after it: the session fails at its
+start, saying so, when the Clusters of the fixtures were created longer ago, and
+a local run applies them again first, `pnpm e2e:fixtures:up all`.
 
 ## Checking the Extension in Freelens Dev
 

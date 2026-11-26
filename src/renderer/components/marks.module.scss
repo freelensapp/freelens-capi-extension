@@ -38,14 +38,29 @@
   background: var(--colorVague);
 }
 
-.marks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-  align-items: center;
-  min-width: 0;
+// A cell of marks is one line (kit, `docs/design.md`, "Lists"; SPEC-0004, P12): the rows of the list of the host
+// have one height, and a second line runs into the next row. The marks are boxes of that line, never wrapped, and
+// the ellipsis hides from the first one that does not fit; the tooltip of the cell carries the whole content.
+.cell {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.mark + .mark,
+.mark + .note {
+  margin-left: 0.25em;
 }
 
 .note {
   white-space: nowrap;
+}
+
+// The whole content of a cell, one line for each mark and each cause.
+.tooltip {
+  white-space: normal;
+  text-align: left;
 }

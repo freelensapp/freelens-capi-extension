@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CAPTURE, fixtureSet, ofKind, STATES } from "../../../test/fixture-sets";
-import { clusterContextOf, clusterRowOf, indexContext, StatusMemo } from "./context";
+import { clusterContextOf, clusterRowOf, contextVersions, indexContext, StatusMemo } from "./context";
 import { NO_READS, reduceReads } from "./read-state";
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
@@ -439,5 +439,37 @@ describe("the indexes of the context", () => {
 
     expect(afterIndex).toBe(1);
     expect(reads).toBe(afterIndex);
+  });
+
+  it("are keyed on the version of every object they read and on how each reference resolves, never on an array", () => {
+    const objects = fixtureSet("healthy");
+    const contextObjects = objectsOf(objects, readsOf(namespacesOf(objects)));
+    const versions = contextVersions(contextObjects);
+    const [machine, ...others] = contextObjects.machines.items;
+    const withMachines = (items: readonly KubeObjectData[]): ContextObjects => ({
+      ...contextObjects,
+      machines: { ...contextObjects.machines, items: items as never[] },
+    });
+    const kcp = contextObjects.controlPlanes.get(KCP) as NonNullable<
+      ReturnType<typeof contextObjects.controlPlanes.get>
+    >;
+
+    // The same objects in a new array are the same key; a new version, an object more or less, are another.
+    expect(contextVersions(withMachines([machine, ...others]))).toBe(versions);
+    expect(
+      contextVersions(
+        withMachines([
+          { ...machine, metadata: { ...machine.metadata, resourceVersion: "changed" } } as never,
+          ...others,
+        ]),
+      ),
+    ).not.toBe(versions);
+    expect(contextVersions(withMachines(others))).not.toBe(versions);
+    expect(
+      contextVersions({
+        ...contextObjects,
+        controlPlanes: new Map([[KCP, { ...kcp, resolution: { state: "unresolved", reason: "refused" } as never }]]),
+      }),
+    ).not.toBe(versions);
   });
 });

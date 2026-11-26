@@ -13,7 +13,7 @@ import { countOf, fieldsOf, listOf, textOf } from "./objects";
 import { classReferenceOf } from "./references";
 import { ACTIVITY_ORDER } from "./words";
 
-import type { MessageLine } from "../parsers/condition-message";
+import type { ConditionMessage, MessageLine } from "../parsers/condition-message";
 import type { ParsedTime } from "../parsers/time";
 import type { Activity, ClusterObject, ConditionsResult, FreshnessMark, ObjectStatus } from "../status/index";
 
@@ -303,9 +303,8 @@ export function healthCell(status: ObjectStatus): HealthCell {
   };
 }
 
-// The status of a Cluster (P11): the headline of the message of `Available`, its first line as the parser gives it,
-// else its reason; N/A when the Cluster has no `Available` yet. The tooltip holds the whole message, each line with
-// its indentation, as the parser nests it.
+// The status of a Cluster (P11): the headline of the message of `Available`, else its reason; N/A when the Cluster has
+// no `Available` yet. The tooltip holds the whole message, each line with its indentation, as the parser nests it.
 export interface StatusCell {
   readonly text: string;
   readonly lines: readonly { readonly indentation: number; readonly text: string }[];
@@ -319,6 +318,40 @@ function flatten(lines: readonly MessageLine[], into: { indentation: number; tex
   }
 }
 
+// A line that has words of its own: not empty, and more than the subject that starts it.
+function hasWords(line: MessageLine): boolean {
+  const text = line.text.trim();
+
+  return text !== "" && (line.subject === undefined || text !== line.subject.text);
+}
+
+// The first line with words of its own among these lines and the lines nested under them, in their order.
+function firstWorded(lines: readonly MessageLine[]): MessageLine | undefined {
+  for (const line of lines) {
+    if (hasWords(line)) return line;
+
+    const nested = firstWorded(line.children);
+
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+}
+
+// The headline of a message (P11): its first line as the parser gives it. A first line that is a subject with no words
+// of its own, such as `* WorkersAvailable:`, whose words are in the lines nested under it, says nothing in a list: the
+// headline is then that subject followed by the first line under it that has words, both as the parser gives their
+// text, without their bullets, such as `WorkersAvailable: MachineDeployment md-0: 0 available replicas` (decided while
+// implementing, under the delegation for M1).
+export function headlineOf(message: Extract<ConditionMessage, { state: "read" }>): string | undefined {
+  const [first] = message.lines;
+
+  if (first === undefined || hasWords(first)) return message.headline;
+
+  const worded = firstWorded(first.children);
+
+  return worded === undefined ? message.headline : `${first.text.trim()} ${worded.text.trim()}`;
+}
+
 export function statusCell(conditions: ConditionsResult): StatusCell {
   const available =
     conditions.state === "read" ? conditions.conditions.find((condition) => condition.type === "Available") : undefined;
@@ -330,7 +363,7 @@ export function statusCell(conditions: ConditionsResult): StatusCell {
 
   if (message.state === "read") flatten(message.lines, lines);
 
-  const headline = message.state === "read" ? message.headline : available.message;
+  const headline = message.state === "read" ? headlineOf(message) : available.message;
   const text = headline !== undefined && headline !== "" ? headline : (available.reason ?? "");
 
   return { text: text === "" ? "N/A" : text, lines, reported: true };

@@ -851,8 +851,10 @@ export async function hostLists(frame: Frame, resource: HostList, namespace: str
  * its output. A run never acts on the current context.
  */
 export async function kubectl(args: readonly string[]): Promise<string> {
+  // The objects of every state of the fixtures are more than the default buffer of a child process, 1 MiB, holds.
   const { stdout } = await execFileAsync("kubectl", ["--context", `kind-${kindClusterName}`, ...args], {
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
     timeout: viewTimeout.timeout,
   });
 

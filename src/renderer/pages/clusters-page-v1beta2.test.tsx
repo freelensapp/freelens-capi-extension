@@ -7,10 +7,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPTURE, fixtureSet, ofKind } from "../../../test/fixture-sets";
 import { host, Renderer } from "../../../test/freelens-extensions";
 import { APIS, DEFINITIONS, definition, FakeStore, hostObject, serve } from "../../../test/host-stores";
+import { indexContext } from "../../common/views/context";
+import markStyles from "../components/marks.module.scss";
 import { ClustersPage, COLUMNS, TABLE_ID } from "./clusters-page-v1beta2";
+
+import type { Renderer as Extensions } from "@freelensapp/extensions";
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
 import type { ApiName, HostObject } from "../../../test/host-stores";
+import type * as Context from "../../common/views/context";
+
+// The indexes of the context, counted where the page builds them.
+vi.mock("../../common/views/context", async (importOriginal) => {
+  const actual = await importOriginal<typeof Context>();
+
+  return { ...actual, indexContext: vi.fn(actual.indexContext) };
+});
 
 // The cases of SPEC-0004, "Tests", "Unit", `clusters-page-v1beta2.test.tsx`, for the list of the first pull request:
 // the props that the layout of the host gets, the reads through the adapters of the page, the states and their words.
@@ -44,6 +56,11 @@ interface Adapter {
 }
 
 const layout = Renderer.Component.KubeObjectListLayout;
+
+// The extension, which the registration gives the page.
+const EXTENSION = new Renderer.LensExtension({
+  name: "@freelensapp/capi-extension",
+}) as unknown as Extensions.LensExtension;
 
 function lastLayout(): LayoutProps {
   const calls = layout.mock.calls;
@@ -120,25 +137,33 @@ afterEach(() => {
 });
 
 describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
-  it("gets no selection, no menu, no remove button of the host and no details of the host", () => {
-    serve();
-    render(<ClustersPage />);
+  it("gets no selection, no menu of the host but an empty cell of the menu in each row, and no details of the host", async () => {
+    const stores = serve();
+
+    hold(stores, ["healthy"]);
+    select(["freelens-capi-healthy"]);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(["freelens-capi-healthy"]);
 
     const props = lastLayout();
+    const [row] = screen.getAllByTestId("host-row");
 
     expect(props.tableId).toBe(TABLE_ID);
     expect(props.tableId).toBe("clusterApiClustersTable");
     expect(props.renderHeaderTitle).toBe("Workload Clusters");
     expect(props.isSelectable).toBe(false);
-    expect(Object.hasOwn(props, "renderItemMenu")).toBe(true);
-    expect(props.renderItemMenu).toBeUndefined();
+    // The rows keep the cell of the menu that the header always has, empty, so that the columns line up.
+    expect(props.renderItemMenu).toBeTypeOf("function");
+    expect((props.renderItemMenu as (item: HostObject) => unknown)(props.items[0])).toBeNull();
+    expect(within(row).getByTestId("host-row-menu").childNodes).toHaveLength(0);
+    expect(within(screen.getByTestId("host-header")).getByTestId("host-head-menu")).toBeDefined();
     expect(props.hasDetailsView).toBe(false);
     expect(props.renderTableHeader).toBe(COLUMNS);
   });
 
   it("gets addRemoveButtons with an own key onRemove that holds undefined, which the layout spreads over its own", () => {
     serve();
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
 
     const props = lastLayout();
 
@@ -148,7 +173,7 @@ describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
 
   it("gets as its stores the adapters of the Clusters and of the context, the operator among them, subscribed", () => {
     serve();
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
 
     const props = lastLayout();
 
@@ -171,7 +196,7 @@ describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
   it("loads and subscribes nothing itself", () => {
     const stores = serve();
 
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
 
     for (const store of Object.values(stores)) {
       expect(store?.loadAll).not.toHaveBeenCalled();
@@ -184,7 +209,7 @@ describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
 
     hold(stores, ["healthy", "paused"]);
     select(["freelens-capi-healthy", "freelens-capi-paused"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-paused"]);
 
     const props = lastLayout();
@@ -198,7 +223,7 @@ describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
 
     hold(stores, ["paused"]);
     select(["freelens-capi-paused"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-paused"]);
 
     const props = lastLayout();
@@ -219,7 +244,7 @@ describe("the rows of the list (P7 to P12)", () => {
 
     hold(stores, ["healthy", "machine-pools", "deleting"]);
     select(["freelens-capi-healthy", "freelens-capi-machine-pools", "freelens-capi-deleting"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-machine-pools", "freelens-capi-deleting"]);
 
     const rows = screen.getAllByTestId("host-row");
@@ -243,7 +268,7 @@ describe("the rows of the list (P7 to P12)", () => {
 
     hold(stores, ["healthy"]);
     select(["freelens-capi-healthy"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy"], ["Cluster"]);
 
     const [row] = screen.getAllByTestId("host-row");
@@ -252,13 +277,71 @@ describe("the rows of the list (P7 to P12)", () => {
     expect(within(row).queryByTestId("capi-cluster-health")).toBeNull();
   });
 
+  it("keep each cell on one line, cut with an ellipsis, with every mark of the cell in its tooltip (P12)", async () => {
+    const stores = serve();
+    const states = ["rolling-out", "paused", "machine-pool-without-machines"];
+    const namespaces = ["freelens-capi-rolling-out", "freelens-capi-paused", "freelens-capi-pool-without-machines"];
+
+    hold(stores, states);
+    select(namespaces);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(namespaces);
+
+    const rows = screen.getAllByTestId("host-row");
+    const rowOf = (name: string) =>
+      rows.find((row) => within(row).getByTestId("capi-cluster-name").textContent === name) as HTMLElement;
+    const tooltip = (row: HTMLElement, testId: string) => within(row).getByTestId(`${testId}-tooltip`).textContent;
+
+    // No content of a cell expands on a click, which would wrap it, and the marks are in a cell of one line.
+    for (const row of rows) {
+      expect(row.querySelectorAll('[data-expandable="true"]')).toHaveLength(0);
+      expect(within(row).getByTestId("capi-cluster-activities").className).toBe(markStyles.cell);
+      expect(within(row).getByTestId("capi-cluster-condition").className).toBe(markStyles.cell);
+    }
+    expect(tooltip(rowOf("freelens-capi-rolling-out"), "capi-cluster-activities")).toBe(
+      [
+        "Provisioning, for 2025-12-31T23:59:40Z, since 2025-12-31T23:59:40Z",
+        "Rolling out, for 2025-12-31T23:59:40Z, since 2025-12-31T23:59:40Z",
+        "Scaling down, for 2025-12-31T23:59:43Z, since 2025-12-31T23:59:43Z",
+      ].join(""),
+    );
+    expect(tooltip(rowOf("freelens-capi-paused"), "capi-cluster-condition")).toBe(
+      "HealthyStale: Paused, since 2025-12-31T23:59:45Z",
+    );
+    expect(tooltip(rowOf("freelens-capi-pool-without-machines"), "capi-cluster-condition")).toBe(
+      "Degraded1 MachinePool of unknown health",
+    );
+  });
+
+  it("sort the counters by the available then the desired, the class by name then namespace, and the age as the host", async () => {
+    const stores = serve();
+    const namespaces = ["freelens-capi-healthy", "freelens-capi-scaling-up"];
+
+    hold(stores, ["healthy", "scaling-up"]);
+    select(namespaces);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(namespaces, ["Cluster"]);
+
+    const props = lastLayout();
+    const [healthy, scalingUp] = props.items;
+
+    expect(props.sortingCallbacks.controlPlane(scalingUp)).toEqual([1, 3]);
+    expect(props.sortingCallbacks.workers(scalingUp)).toEqual([1, 2]);
+    expect(props.sortingCallbacks.clusterClass(healthy)).toEqual(["quick-start", "freelens-capi-healthy"]);
+    // The rows whose marks still show the spinner sort after every other (P28).
+    expect(props.sortingCallbacks.activity(healthy)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(props.sortingCallbacks.condition(healthy)).toBe(Number.MAX_SAFE_INTEGER);
+    // The lists of the host sort the age by the negative of the creation, so the arrow means the same.
+    expect(props.sortingCallbacks.age(healthy)).toBe(-healthy.getCreationTimestamp());
+  });
+
   it("sort the activities and the health worst first (P28)", async () => {
     const stores = serve();
     const namespaces = ["freelens-capi-healthy", "freelens-capi-provisioning", "freelens-capi-upgrading"];
 
     hold(stores, ["healthy", "provisioning", "upgrading"]);
     select(namespaces);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(namespaces);
 
     const props = lastLayout();
@@ -288,7 +371,7 @@ describe("the reads of the page (P19)", () => {
     hold(stores, ["healthy"]);
     stores.clusters?.markLoaded();
     select(["freelens-capi-healthy"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
 
     expect(lastLayout().isReady).toBe(false);
     expect(screen.getByTestId("host-spinner")).toBeDefined();
@@ -299,12 +382,87 @@ describe("the reads of the page (P19)", () => {
     expect(screen.getAllByTestId("host-row")).toHaveLength(1);
   });
 
+  it("show no count in the header until the list is ready, never 0 items, the marks of the host kept", async () => {
+    const stores = serve();
+
+    hold(stores, ["healthy"]);
+    stores.clusters?.markLoaded();
+    select(["freelens-capi-healthy"]);
+    render(<ClustersPage extension={EXTENSION} />);
+
+    const header = () => screen.getByTestId("host-header");
+
+    expect(header().textContent).not.toMatch(/\d+ items?/);
+    expect(within(header()).queryByTestId("capi-clusters-not-counted")).toBeNull();
+    expect(within(header()).getByTestId("host-mark")).toBeDefined();
+
+    await loadEvery(["freelens-capi-healthy"]);
+
+    expect(header().textContent).toMatch(/^Workload Clusters1 item/);
+  });
+
+  it("build the indexes of the context once for each change of what they read, not at a render or a tick that changes none", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(CAPTURE);
+
+    const stores = serve();
+
+    hold(stores, ["provisioning"]);
+    select(["freelens-capi-provisioning"]);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(["freelens-capi-provisioning"]);
+
+    const built = vi.mocked(indexContext).mock.calls.length;
+    const tone = () =>
+      within(screen.getByTestId("host-row")).getByTestId("capi-cluster-health").getAttribute("data-tone");
+
+    // The time that the result of the Cluster names comes: the page renders again, with nothing that the indexes read
+    // changed.
+    act(() => {
+      vi.advanceTimersByTime(30 * 60 * 1000);
+    });
+    expect(tone()).toBe("warning");
+    expect(vi.mocked(indexContext).mock.calls.length).toBe(built);
+
+    // A Machine of the store changes its version: the indexes are built again, once.
+    act(() => {
+      const [machine, ...others] = stores.machines?.items ?? [];
+
+      stores.machines?.set([
+        hostObject({ ...machine, metadata: { ...machine.metadata, resourceVersion: "2" } } as Record<string, unknown>),
+        ...others,
+      ]);
+    });
+    expect(vi.mocked(indexContext).mock.calls.length).toBe(built + 1);
+  });
+
+  it("send the GET of a definition when the store of definitions fails after the page mounted (P3)", async () => {
+    const stores = serve();
+
+    host.crdGet.mockResolvedValue(DEFINITIONS[1]);
+    hold(stores, ["healthy"]);
+    select(["freelens-capi-healthy"]);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(["freelens-capi-healthy"]);
+
+    expect(host.crdGet).not.toHaveBeenCalled();
+
+    await act(async () => {
+      runInAction(() => {
+        host.crdStore.items = [];
+        host.crdStore.failedLoading = true;
+      });
+    });
+
+    expect(host.crdGet.mock.calls).toEqual([["kubeadmcontrolplanes.controlplane.cluster.x-k8s.io"]]);
+  });
+
   it("list no row of a namespace that the filter adds until the load that reads it ends, with the spinner and no row", async () => {
     const stores = serve();
 
     hold(stores, ["healthy", "paused"]);
     select(["freelens-capi-healthy"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy"]);
 
     expect(lastLayout().items.map((cluster) => cluster.getNs())).toEqual(["freelens-capi-healthy"]);
@@ -345,7 +503,7 @@ describe("the reads of the page (P19)", () => {
       host.context.isLoadingAll = () => true;
       host.context.isGlobalWatchEnabled = () => true;
     });
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-paused-before"]);
 
     // A namespace is created, every namespace stays selected, and the watch over the whole cluster brings its Cluster.
@@ -380,24 +538,77 @@ describe("the reads of the page (P19)", () => {
 
     hold(stores, ["healthy"]);
     select(["freelens-capi-healthy"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy"]);
 
     expect(lastLayout().dependentStores.map((adapter) => adapter.api.kind)).not.toContain("CoreProvider");
+
+    const mounts = host.layoutMounts;
 
     act(() => host.registerApi(APIS.coreProviders, new FakeStore(APIS.coreProviders)));
 
     const props = lastLayout();
 
+    // One new mount, in which the host subscribes the new store (kube-object-list-layout.tsx:131-161).
+    expect(host.layoutMounts).toBe(mounts + 1);
     expect(props.dependentStores.map((adapter) => adapter.api.kind)).toContain("CoreProvider");
     expect(props.items.map((cluster) => cluster.getName())).toEqual(["freelens-capi-healthy"]);
     expect(props.isReady).toBe(true);
+  });
+
+  it("mount the layout again with a store that the host replaces under the same base, which it reads anew", async () => {
+    const stores = serve();
+
+    hold(stores, ["healthy"]);
+    select(["freelens-capi-healthy"]);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(["freelens-capi-healthy"]);
+
+    const spinners = () => within(screen.getByTestId("host-row")).queryAllByTestId("host-cell-spinner");
+    const mounts = host.layoutMounts;
+    const replacing = new FakeStore(APIS.machines);
+
+    expect(spinners()).toHaveLength(0);
+
+    // The host registers the APIs of the definitions again, each with a new store, as when its store of definitions
+    // fails (setup-auto-crd-api-creations.injectable.ts:45-54; api-manager.ts:67-75).
+    replacing.set([...(stores.machines?.items ?? [])]);
+    act(() => host.registerApi({ ...APIS.machines }, replacing));
+
+    expect(host.layoutMounts).toBe(mounts + 1);
+    expect(spinners()).toHaveLength(2);
+
+    await loadEvery(["freelens-capi-healthy"], ["Machine"]);
+
+    expect(replacing.loadAll).toHaveBeenCalledTimes(1);
+    expect(spinners()).toHaveLength(0);
+  });
+
+  it("forget what a store loaded when it leaves the set of the page, and read it anew when it comes back", async () => {
+    const stores = serve();
+
+    hold(stores, ["healthy"]);
+    select(["freelens-capi-healthy"]);
+    render(<ClustersPage extension={EXTENSION} />);
+    await loadEvery(["freelens-capi-healthy"]);
+
+    const spinners = () => within(screen.getByTestId("host-row")).queryAllByTestId("host-cell-spinner");
+
+    expect(spinners()).toHaveLength(0);
+
+    // The host drops the API of the CoreProviders, then registers it again with the store it had.
+    act(() => runInAction(() => host.apis.delete(APIS.coreProviders.apiBase)));
+    expect(spinners()).toHaveLength(0);
+    act(() => host.registerApi(APIS.coreProviders, stores.coreProviders));
+
+    // The objects that nothing watched meanwhile wait for the next load of the store (P19).
+    expect(spinners()).toHaveLength(2);
   });
 });
 
 describe("the states of the page (P20, P25, P26, P34)", () => {
   it("say, under the title alone, that the host is checking, that Cluster API is not installed, or is older", () => {
-    const { unmount } = render(<ClustersPage />);
+    const { unmount } = render(<ClustersPage extension={EXTENSION} />);
 
     expect(screen.getByTestId("capi-clusters-checking").textContent).toBe(
       "Checking whether this cluster serves Cluster API",
@@ -409,7 +620,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
     runInAction(() => {
       host.crdStore.isLoaded = true;
     });
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     expect(screen.getByTestId("capi-clusters-not-installed").textContent).toBe(
       "Cluster API is not installed in this cluster: it serves no Cluster at cluster.x-k8s.io/v1beta2",
     );
@@ -423,7 +634,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
       apiVersionWithGroup: "cluster.x-k8s.io/v1beta1",
       apiBase: "/apis/cluster.x-k8s.io/v1beta1/clusters",
     });
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     expect(screen.getByTestId("capi-clusters-older").textContent).toMatch(/serves Clusters at v1beta1 alone/);
     expect(screen.getByTestId("capi-clusters-older").textContent).toMatch(/came with Cluster API v1.11/);
   });
@@ -433,7 +644,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
       host.crdStore.items = DEFINITIONS;
       host.crdStore.isLoaded = true;
     });
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     expect(screen.getByTestId("capi-clusters-checking")).toBeDefined();
 
     act(() => {
@@ -447,7 +658,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
     const stores = serve();
 
     select(["freelens-capi-healthy", "freelens-capi-paused"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     stores.clusters && (stores.clusters.failures = [refused("freelens-capi-healthy"), refused("freelens-capi-paused")]);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-paused"], ["Cluster"]);
 
@@ -463,7 +674,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
     expect(within(header).getByRole("heading").textContent).toBe("Workload Clusters");
     expect(within(header).getByTestId("capi-clusters-not-counted").textContent).toBe("not counted");
     expect(within(header).getByTestId("host-mark")).toBeDefined();
-    expect(header.textContent).not.toMatch(/items?\b/);
+    expect(header.textContent).not.toMatch(/\d+ items?/);
   });
 
   it("say Partial over the list, above the layout, when rows remain", async () => {
@@ -471,7 +682,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
 
     hold(stores, ["healthy"]);
     select(["freelens-capi-healthy", "freelens-capi-paused"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     stores.clusters && (stores.clusters.failures = [refused("freelens-capi-paused")]);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-paused"]);
 
@@ -491,7 +702,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
     const stores = serve();
 
     select(["freelens-capi-healthy", "freelens-capi-paused"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     stores.clusters &&
       (stores.clusters.failures = [refused("freelens-capi-healthy"), new Error("Failed to load: timeout")]);
     await loadEvery(["freelens-capi-healthy", "freelens-capi-paused"], ["Cluster"]);
@@ -505,7 +716,7 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
 
     hold(stores, ["healthy"]);
     select(["freelens-capi-healthy"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy"]);
     lastLayout().store.subscribe({ abortController: new AbortController(), onLoadFailure: vi.fn() });
 
@@ -531,11 +742,11 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
       host.context.isLoadingAll = () => true;
       host.context.isGlobalWatchEnabled = () => false;
     });
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-healthy", "default"]);
 
     expect(screen.getByTestId("capi-notice-list-not-followed").textContent).toMatch(
-      /This list was read once over the whole cluster, and is not followed/,
+      /This list was read once, at 2026-01-01T00:00:00.000Z, over the whole cluster, and is not followed/,
     );
     expect(screen.getAllByTestId("host-row")).toHaveLength(1);
 
@@ -549,11 +760,11 @@ describe("the states of the page (P20, P25, P26, P34)", () => {
     serve();
     render(
       <React.StrictMode>
-        <ClustersPage />
+        <ClustersPage extension={EXTENSION} />
       </React.StrictMode>,
     );
     cleanup();
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
 
     const [store] = host.builtStores as {
       api: unknown;
@@ -578,7 +789,7 @@ describe("the clock of the page (SPEC-0003, What it takes and returns)", () => {
 
     hold(stores, ["provisioning"]);
     select(["freelens-capi-provisioning"]);
-    render(<ClustersPage />);
+    render(<ClustersPage extension={EXTENSION} />);
     await loadEvery(["freelens-capi-provisioning"]);
 
     const tone = () =>
