@@ -99,6 +99,16 @@ function under(rows: readonly OutlineRow[], text: string): string[] {
 
 const machineId = (name: string) => `cluster.x-k8s.io/Machine/${name}`;
 
+// A map that counts its reads by key, for the passes of the placement over the objects of a Cluster in the index.
+class CountedReads<K, V> extends Map<K, V> {
+  reads = 0;
+
+  get(key: K): V | undefined {
+    this.reads++;
+    return super.get(key);
+  }
+}
+
 describe("the tree of the Cluster of each state (P7, P8)", () => {
   it("covers every state of the fixtures", () => {
     expect(Object.keys(EXPECTED_TREES).sort()).toEqual([...STATES].sort());
@@ -496,6 +506,114 @@ ${TAIL}
       by: "owner",
       owner: "infrastructure.cluster.x-k8s.io/DevMachinePool/freelens-capi-machine-pools-mp-0-old",
     });
+  });
+
+  it("holds what an object that it holds owns, also an object of a kind that the index lists before the kind of its owner", () => {
+    // healthy with the worker Machine 2xxxg under Other objects; the claim of no-status, of the Cluster, owned by that
+    // Machine with no flag of controller; and a KubeadmConfig owned by the claim alone, which no Machine names. The
+    // claim goes under the Machine by the row of the owners, and the KubeadmConfig under the claim, though the
+    // KubeadmConfigs come before the claims in the order of the objects of the Cluster.
+    const objects = setOf("healthy");
+    const claim = structuredClone(named(setOf("no-status"), "IPAddressClaim"));
+    const config = structuredClone(named(objects, "KubeadmConfig", WORKER));
+
+    withoutOwners(objects, "Machine");
+    claim.metadata.namespace = HEALTHY;
+    claim.spec.clusterName = HEALTHY;
+    claim.metadata.ownerReferences = [{ apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Machine", name: WORKER }];
+    config.metadata.name = "freelens-capi-healthy-held-by-claim";
+    config.metadata.ownerReferences = [
+      { apiVersion: "ipam.cluster.x-k8s.io/v1beta2", kind: "IPAddressClaim", name: claim.metadata.name },
+    ];
+
+    const tree = treeOf([...objects, claim, config], HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      `Machine ${WORKER}`,
+      `  DevMachine ${WORKER} (infrastructure machine)`,
+      `  KubeadmConfig ${WORKER}`,
+      "  IPAddressClaim freelens-capi-no-status",
+      "    KubeadmConfig freelens-capi-healthy-held-by-claim",
+    ]);
+    expect(
+      nodeOf<ObjectNode>(tree, "bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-healthy-held-by-claim")
+        .placement,
+    ).toEqual({ by: "owner", owner: "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-no-status" });
+  });
+
+  it("holds under a template what that template controls, once the templates are placed, when it waited for its other owner", () => {
+    // healthy with the MachinePools still loading: a KubeadmConfig that the DevMachineTemplate of the control plane
+    // controls, and that a MachinePool owns too, waits while the templates are not placed; a template that the Cluster
+    // owns, and that no object names, then goes under Other objects, and the rows place what the templates hold.
+    const objects = setOf("healthy");
+    const config = structuredClone(named(objects, "KubeadmConfig", WORKER));
+    const template = structuredClone(named(objects, "KubeadmConfigTemplate"));
+
+    config.metadata.name = "freelens-capi-healthy-held-by-template";
+    config.metadata.ownerReferences = [
+      {
+        apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+        kind: "DevMachineTemplate",
+        name: "freelens-capi-healthy-rclml",
+        controller: true,
+      },
+      { apiVersion: "cluster.x-k8s.io/v1beta2", kind: "MachinePool", name: "freelens-capi-healthy-gone" },
+    ];
+    template.metadata.name = "freelens-capi-healthy-orphan";
+    template.metadata.ownerReferences = [{ apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: HEALTHY }];
+
+    const rows = treeOutline(
+      treeOf([...objects, config, template], HEALTHY, { pending: ["cluster.x-k8s.io/MachinePool"] }),
+    );
+
+    expect(under(rows, "Templates").slice(0, 2)).toEqual([
+      "DevMachineTemplate freelens-capi-healthy-rclml (template)",
+      "  KubeadmConfig freelens-capi-healthy-held-by-template",
+    ]);
+    expect(under(rows, "Other objects")).toEqual(["KubeadmConfigTemplate freelens-capi-healthy-orphan"]);
+  });
+
+  it("places what each object under Other objects holds in passes over the objects of the Cluster that do not grow with them (P16)", () => {
+    // healthy with more worker Machines like 2xxxg, each with its DevMachine and its KubeadmConfig, all three with no
+    // owner references, as after a restore: each Machine goes under Other objects and holds the two objects that it
+    // names. Each pass of a row of P7 over the objects of the Cluster reads them from the index once; with every row
+    // run again over every object after each object under Other objects, the passes would grow with the Machines.
+    const passes = (count: number): number => {
+      const objects = setOf("healthy");
+      const restored = Array.from({ length: count }, (_, at) => {
+        const name = `${WORKER}-${at}`;
+        const [machine, infrastructure, config] = ["Machine", "DevMachine", "KubeadmConfig"].map((kind) => {
+          const copy = structuredClone(named(objects, kind, WORKER));
+
+          copy.metadata.name = name;
+          delete copy.metadata.ownerReferences;
+          return copy;
+        });
+
+        machine.spec.infrastructureRef.name = name;
+        machine.spec.bootstrap.configRef.name = name;
+        return [machine, infrastructure, config];
+      });
+      const source = treeSourceOf([...objects, ...restored.flat()]);
+      const index = indexTree(source.clusters, source.objects);
+      const byCluster = new CountedReads(index.byCluster);
+      const outcome = buildTree({ ...index, byCluster }, HEALTHY, HEALTHY);
+
+      if (outcome.state !== "found") throw new Error(`No tree: ${outcome.state}`);
+      expect(under(treeOutline(outcome.tree), "Other objects")).toEqual(
+        restored
+          .map(([machine]) => machine.metadata.name)
+          .sort()
+          .flatMap((name) => [
+            `Machine ${name}`,
+            `  DevMachine ${name} (infrastructure machine)`,
+            `  KubeadmConfig ${name}`,
+          ]),
+      );
+      return byCluster.reads;
+    };
+
+    expect(passes(300)).toBe(passes(150));
   });
 
   it("leaves out, while the MachineSets load, their Machines and what those Machines own or name, never under Other objects", () => {

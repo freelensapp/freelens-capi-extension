@@ -2971,9 +2971,15 @@ the contract label of the definition for a control plane of a provider; and
   objects one at a time, in the order of the rows of P7 of their kinds and then
   of their addresses, whatever the order of a store, an object that another of
   them owns, or that a Machine or a MachinePool among them names, after that
-  one; and the rows of P7 place again after each, so that the objects that it
-  controls, owns or names go under it, never beside it with a reason that says
-  that their owners are not nodes of the tree. A worker Machine with no owner
+  one; and after each the rows of P7 place what it holds, and what that holds
+  in turn, so that the objects that it controls, owns or names go under it,
+  never beside it with a reason that says that their owners are not nodes of
+  the tree. The rows then read only the objects that the nodes made since they
+  last read control, own or name, in the order in which a pass over every
+  object reads them, so that the tree is the one that every row run again over
+  every object gives, and the work grows with the objects of the Cluster, never
+  with their square, which hundreds of Machines restored with no owner
+  references would otherwise make it (P16). A worker Machine with no owner
   holds its infrastructure machine and its bootstrap config, also once they
   lost their owner references, as after a restore, and a MachineSet whose
   MachineDeployment is gone holds its Machines, their objects and its

@@ -642,6 +642,49 @@ interface Draft {
   readonly namedBy: { id: string; field: string }[];
 }
 
+// The objects of a Cluster in the order of the index, their places in that order, and the objects of each owner by the
+// identity that the node of that owner takes, `group/kind/name`.
+interface HeldIndex {
+  readonly list: readonly TreeObject[];
+  readonly order: ReadonlyMap<TreeObject, number>;
+  readonly byOwner: ReadonlyMap<string, readonly TreeObject[]>;
+}
+
+// Where each row of P7 last read the nodes made, by their number (`Placer.#placeHeld`).
+type RowReads = Record<"workers" | "references" | "claims" | "owners", number>;
+
+// A heap of places in an order, the first at its head.
+function pushHeap(heap: number[], at: number): void {
+  heap.push(at);
+  for (let child = heap.length - 1; child > 0; ) {
+    const parent = (child - 1) >> 1;
+
+    if (heap[parent] <= heap[child]) return;
+    [heap[parent], heap[child]] = [heap[child], heap[parent]];
+    child = parent;
+  }
+}
+
+function popHeap(heap: number[]): number | undefined {
+  const first = heap[0];
+  const last = heap.pop();
+
+  if (heap.length > 0 && last !== undefined) {
+    heap[0] = last;
+    for (let parent = 0; ; ) {
+      const [left, right] = [2 * parent + 1, 2 * parent + 2];
+      let least = parent;
+
+      if (left < heap.length && heap[left] < heap[least]) least = left;
+      if (right < heap.length && heap[right] < heap[least]) least = right;
+      if (least === parent) break;
+      [heap[parent], heap[least]] = [heap[least], heap[parent]];
+      parent = least;
+    }
+  }
+  return first;
+}
+
 const KUBEADM_CONTROL_PLANES = kindId("controlplane.cluster.x-k8s.io", "KubeadmControlPlane");
 
 // The kinds whose objects name an object of a kind of Cluster API that is no template, by the rules of P7.
@@ -686,6 +729,15 @@ class Placer {
   // The control plane of the tree: the node that the reference of the Cluster makes, or the virtual Control plane.
   #controlPlane: Draft | undefined;
   #controlPlaneNamed = false;
+  // Every node, in the order of its making, and how many had been made when the rows of P7 had last placed all that
+  // they could place, from which the rows read the nodes made since (`#placeHeld`).
+  readonly #made: Draft[] = [];
+  #settled = 0;
+  // The objects of the Cluster by their owners, built once, for the rows that read what a node holds (`#heldIndex`).
+  #held: HeldIndex | undefined;
+  // The IPAddresses of the namespace of the Cluster by the name of the claim that their `spec.claimRef` names, in the
+  // order of their store, built once (`#addressesClaiming`).
+  #claimed: ReadonlyMap<string, readonly TreeObject[]> | undefined;
 
   constructor(index: TreeIndex, cluster: ClusterObject) {
     this.#index = index;
@@ -714,6 +766,7 @@ class Placer {
     const draft: Draft = { node, children: [], parent, order, namedBy: [] };
 
     this.#drafts.set(node.id, draft);
+    this.#made.push(draft);
     parent?.children.push(draft);
     return draft;
   }
@@ -840,7 +893,8 @@ class Placer {
     }
   }
 
-  // The objects of the Cluster of a kind, by its label or by `spec.clusterName`.
+  // The objects of the Cluster, by its label or by `spec.clusterName`, read from the index once for each pass of a row
+  // over them, which the tests count.
   #candidates(): TreeObject[] {
     return [...(this.#index.byCluster.get(`${this.#namespace}/${this.#name}`) ?? [])];
   }
@@ -902,13 +956,27 @@ class Placer {
           placed = true;
       }
     }
+    // The MachineSets before the Machines, which go under them.
     for (const entry of candidates) {
-      const { kind, object } = entry;
+      if (entry.kind.kind === "MachineSet" && this.#placeWorker(entry) !== undefined) placed = true;
+    }
+    for (const entry of candidates) {
+      if (entry.kind.kind === "Machine" && this.#placeWorker(entry) !== undefined) placed = true;
+    }
+    return placed;
+  }
 
-      if (kind.kind !== "MachineSet" || labelOf(object, CLUSTER_NAME_LABEL) !== this.#name || this.#isPlaced(entry)) {
-        continue;
-      }
+  // A MachineSet or a Machine of the Cluster, labelled with its name, by the row of the workers (P7): a MachineSet under
+  // the MachineDeployment that controls it, else under Workers when the Cluster owns it; a Machine of the control plane
+  // under the control plane of the tree; any other Machine under the MachineSet or the MachinePool that controls it,
+  // else under Workers when the Cluster owns it. The node made, if any.
+  #placeWorker(entry: TreeObject): Draft | undefined {
+    const { kind, object } = entry;
 
+    if (kind.group !== CORE || labelOf(object, CLUSTER_NAME_LABEL) !== this.#name || this.#isPlaced(entry)) {
+      return undefined;
+    }
+    if (kind.kind === "MachineSet") {
       const controller = ownersOf(object).find((owner) => owner.controller);
       const deployment =
         controller?.group === CORE && controller.kind === "MachineDeployment"
@@ -916,67 +984,45 @@ class Placer {
           : undefined;
 
       if (deployment !== undefined) {
-        if (
-          this.#placeObject(
-            entry,
-            deployment,
-            ROW.machineSet,
-            { by: "controller", owner: deployment.node.id },
-            undefined,
-          ) !== undefined
-        )
-          placed = true;
-      } else if (this.#ownsCluster(object)) {
-        if (this.#placeObject(entry, this.#workers(), ROW.machineSet, { by: "cluster-owner" }, undefined) !== undefined)
-          placed = true;
+        return this.#placeObject(
+          entry,
+          deployment,
+          ROW.machineSet,
+          { by: "controller", owner: deployment.node.id },
+          undefined,
+        );
       }
+      return this.#ownsCluster(object)
+        ? this.#placeObject(entry, this.#workers(), ROW.machineSet, { by: "cluster-owner" }, undefined)
+        : undefined;
     }
-    for (const entry of candidates) {
-      const { kind, object } = entry;
+    if (kind.kind !== "Machine") return undefined;
+    if (Object.hasOwn(fieldsOf(fieldsOf(object.metadata)?.labels) ?? {}, CONTROL_PLANE_LABEL)) {
+      // The Machines of the control plane go under the control plane of the tree, whatever their owner, or under the
+      // virtual node Control plane when the Cluster names none (P7).
+      const controlPlane =
+        this.#controlPlane ??
+        (this.#controlPlaneNamed
+          ? undefined
+          : this.#virtual(this.#root, "control-plane", [ROOT_ORDER.controlPlane, 0, "", ""]));
 
-      if (kind.kind !== "Machine" || labelOf(object, CLUSTER_NAME_LABEL) !== this.#name || this.#isPlaced(entry))
-        continue;
-      if (Object.hasOwn(fieldsOf(fieldsOf(object.metadata)?.labels) ?? {}, CONTROL_PLANE_LABEL)) {
-        // The Machines of the control plane go under the control plane of the tree, whatever their owner, or under the
-        // virtual node Control plane when the Cluster names none (P7).
-        const controlPlane =
-          this.#controlPlane ??
-          (this.#controlPlaneNamed
-            ? undefined
-            : this.#virtual(this.#root, "control-plane", [ROOT_ORDER.controlPlane, 0, "", ""]));
-
-        if (controlPlane === undefined) continue;
-        if (
-          this.#placeObject(
-            entry,
-            controlPlane,
-            ROW.machine,
-            { by: "label", label: CONTROL_PLANE_LABEL },
-            undefined,
-          ) !== undefined
-        )
-          placed = true;
-        continue;
-      }
-
-      const controller = ownersOf(object).find((owner) => owner.controller);
-      const owner =
-        controller?.group === CORE && (controller.kind === "MachineSet" || controller.kind === "MachinePool")
-          ? this.#draftOfOwner(controller)
-          : undefined;
-
-      if (owner !== undefined) {
-        if (
-          this.#placeObject(entry, owner, ROW.machine, { by: "controller", owner: owner.node.id }, undefined) !==
-          undefined
-        )
-          placed = true;
-      } else if (this.#ownsCluster(object)) {
-        if (this.#placeObject(entry, this.#workers(), ROW.machine, { by: "cluster-owner" }, undefined) !== undefined)
-          placed = true;
-      }
+      return controlPlane === undefined
+        ? undefined
+        : this.#placeObject(entry, controlPlane, ROW.machine, { by: "label", label: CONTROL_PLANE_LABEL }, undefined);
     }
-    return placed;
+
+    const controller = ownersOf(object).find((owner) => owner.controller);
+    const owner =
+      controller?.group === CORE && (controller.kind === "MachineSet" || controller.kind === "MachinePool")
+        ? this.#draftOfOwner(controller)
+        : undefined;
+
+    if (owner !== undefined) {
+      return this.#placeObject(entry, owner, ROW.machine, { by: "controller", owner: owner.node.id }, undefined);
+    }
+    return this.#ownsCluster(object)
+      ? this.#placeObject(entry, this.#workers(), ROW.machine, { by: "cluster-owner" }, undefined)
+      : undefined;
   }
 
   // The objects that the references of the Machines and of the MachinePools of the tree name (P7).
@@ -984,16 +1030,24 @@ class Placer {
     let placed = false;
 
     for (const draft of [...this.#drafts.values()]) {
-      const { node } = draft;
+      if (this.#placeReferencesOf(draft)) placed = true;
+    }
+    return placed;
+  }
 
-      if (node.form !== "object" || node.group !== CORE) continue;
-      if (node.kind !== "Machine" && node.kind !== "MachinePool") continue;
+  // The objects that the references of a Machine or of a MachinePool of the tree name, under it (P7); nothing for any
+  // other node. Whether it made a node.
+  #placeReferencesOf(draft: Draft): boolean {
+    const { node } = draft;
 
-      const row = node.kind === "Machine" ? ROW.machineReference : ROW.poolReference;
+    if (node.form !== "object" || node.group !== CORE) return false;
+    if (node.kind !== "Machine" && node.kind !== "MachinePool") return false;
 
-      for (const { reference, role, field } of followedReferencesOf(node.object)) {
-        if (role !== "template" && this.#placeOnce(reference, role, draft, row, field)) placed = true;
-      }
+    const row = node.kind === "Machine" ? ROW.machineReference : ROW.poolReference;
+    let placed = false;
+
+    for (const { reference, role, field } of followedReferencesOf(node.object)) {
+      if (role !== "template" && this.#placeOnce(reference, role, draft, row, field)) placed = true;
     }
     return placed;
   }
@@ -1022,52 +1076,76 @@ class Placer {
     let placed = false;
 
     for (const entry of this.#candidates()) {
-      if (entry.kind.kind !== "IPAddressClaim" || this.#isPlaced(entry)) continue;
-
-      const controller = ownersOf(entry.object).find((owner) => owner.controller);
-      const owner = controller === undefined ? undefined : this.#draftOfOwner(controller);
-
-      if (owner !== undefined) {
-        if (
-          this.#placeObject(entry, owner, ROW.claim, { by: "controller", owner: owner.node.id }, undefined) !==
-          undefined
-        )
-          placed = true;
-      }
+      if (this.#placeClaim(entry) !== undefined) placed = true;
     }
     for (const draft of [...this.#drafts.values()]) {
-      const { node } = draft;
+      if (this.#placeAddressesOf(draft)) placed = true;
+    }
+    return placed;
+  }
 
-      if (node.form !== "object" || node.kind !== "IPAddressClaim") continue;
+  // An IPAddressClaim of the Cluster under the object that controls it, when the tree holds it (P7, P21). The node
+  // made, if any.
+  #placeClaim(entry: TreeObject): Draft | undefined {
+    if (entry.kind.kind !== "IPAddressClaim" || this.#isPlaced(entry)) return undefined;
 
-      const addressRef = textOf(fieldsOf(fieldsOf(node.object.status)?.addressRef)?.name);
+    const controller = ownersOf(entry.object).find((owner) => owner.controller);
+    const owner = controller === undefined ? undefined : this.#draftOfOwner(controller);
 
-      if (addressRef !== undefined && addressRef !== "") {
-        if (
-          this.#placeOnce(
-            { apiGroup: "ipam.cluster.x-k8s.io", kind: "IPAddress", name: addressRef },
-            undefined,
-            draft,
-            ROW.address,
-            "status.addressRef",
-          )
+    return owner === undefined
+      ? undefined
+      : this.#placeObject(entry, owner, ROW.claim, { by: "controller", owner: owner.node.id }, undefined);
+  }
+
+  // The IPAddresses of a claim of the tree, under it: the one that its `status.addressRef` names, and those that name
+  // it in their `spec.claimRef` (P7, P21); nothing for any other node. Whether it made a node.
+  #placeAddressesOf(draft: Draft): boolean {
+    const { node } = draft;
+
+    if (node.form !== "object" || node.kind !== "IPAddressClaim") return false;
+
+    const addressRef = textOf(fieldsOf(fieldsOf(node.object.status)?.addressRef)?.name);
+    let placed = false;
+
+    if (addressRef !== undefined && addressRef !== "") {
+      if (
+        this.#placeOnce(
+          { apiGroup: "ipam.cluster.x-k8s.io", kind: "IPAddress", name: addressRef },
+          undefined,
+          draft,
+          ROW.address,
+          "status.addressRef",
         )
-          placed = true;
-      }
+      )
+        placed = true;
+    }
+    for (const entry of this.#addressesClaiming(node.name)) {
+      if (
+        this.#placeObject(entry, draft, ROW.address, { by: "claim", field: "spec.claimRef" }, undefined) !== undefined
+      )
+        placed = true;
+    }
+    return placed;
+  }
+
+  // The IPAddresses of the namespace of the Cluster whose `spec.claimRef` names a claim, in the order of their store.
+  #addressesClaiming(claim: string): readonly TreeObject[] {
+    if (this.#claimed === undefined) {
+      const claimed = new Map<string, TreeObject[]>();
+
       for (const address of this.#kind("ipam.cluster.x-k8s.io", "IPAddress")?.items ?? []) {
-        const claim = textOf(fieldsOf(fieldsOf(address.spec)?.claimRef)?.name);
+        const name = textOf(fieldsOf(fieldsOf(address.spec)?.claimRef)?.name);
         const entry = this.#index.byAddress.get(
           scopedAddress("ipam.cluster.x-k8s.io", "IPAddress", namespaceOf(address) ?? "", nameOf(address) ?? ""),
         );
 
-        if (claim !== node.name || namespaceOf(address) !== this.#namespace || entry === undefined) continue;
-        if (
-          this.#placeObject(entry, draft, ROW.address, { by: "claim", field: "spec.claimRef" }, undefined) !== undefined
-        )
-          placed = true;
+        if (name !== undefined && namespaceOf(address) === this.#namespace && entry !== undefined) {
+          push(claimed, name, entry);
+        }
       }
+      this.#claimed = claimed;
     }
-    return placed;
+    return this.#claimed.get(claim) ?? [];
   }
 
   // The row of an owner of a kind that cannot be read (P7, P12): the row that a reference of an object read makes of
@@ -1139,41 +1217,193 @@ class Placer {
     let placed = false;
 
     for (const entry of this.#candidates()) {
-      if (this.#isPlaced(entry) || isTemplateKind(entry.kind.kind) !== templates) continue;
-
-      const found = this.#ownerOf(entry.object);
-
-      if (found === undefined || found === "wait") continue;
-
-      const owner: OwnerName = { group: found.owner.group, kind: found.owner.kind, name: found.owner.name };
-      const unread: Unread | undefined =
-        "read" in found
-          ? {
-              state: "not-read",
-              reason: found.read.reason,
-              failures: found.read.failures,
-              namespace: this.#namespace,
-              classNamespace: false,
-            }
-          : undefined;
-      const draft = "read" in found ? this.#ownerRow(owner, found.read) : found.draft;
-      const placement: Placement =
-        unread === undefined
-          ? { by: "owner", owner: draft.node.id }
-          : { by: "reason", reason: { code: "owner-not-read", owner, unread } };
-
-      if (this.#placeObject(entry, draft, ROW.owner, placement, undefined) !== undefined) placed = true;
+      if (isTemplateKind(entry.kind.kind) === templates && this.#placeByOwner(entry) !== undefined) placed = true;
     }
     return placed;
   }
 
-  // What the rows of the workers, the references and the owners place, until they place nothing more.
+  // An object of the Cluster by the row of the owners (P7): under the owner that the tree holds, or the row of an owner
+  // of a kind that cannot be read, as `#ownerOf` finds it. The node made, if any.
+  #placeByOwner(entry: TreeObject): Draft | undefined {
+    if (this.#isPlaced(entry)) return undefined;
+
+    const found = this.#ownerOf(entry.object);
+
+    if (found === undefined || found === "wait") return undefined;
+
+    const owner: OwnerName = { group: found.owner.group, kind: found.owner.kind, name: found.owner.name };
+    const unread: Unread | undefined =
+      "read" in found
+        ? {
+            state: "not-read",
+            reason: found.read.reason,
+            failures: found.read.failures,
+            namespace: this.#namespace,
+            classNamespace: false,
+          }
+        : undefined;
+    const draft = "read" in found ? this.#ownerRow(owner, found.read) : found.draft;
+    const placement: Placement =
+      unread === undefined
+        ? { by: "owner", owner: draft.node.id }
+        : { by: "reason", reason: { code: "owner-not-read", owner, unread } };
+
+    return this.#placeObject(entry, draft, ROW.owner, placement, undefined);
+  }
+
+  // What the rows of the workers, the references, the claims and the owners place, until they place nothing more, each
+  // pass reading every object of the Cluster or every node; the nodes made by then are those that the rows have read
+  // (`#placeHeld`).
   #settle(): void {
     for (;;) {
       if (this.#placeWorkers() || this.#placeMachineReferences() || this.#placeClaims()) continue;
       if (this.#placeByOwners(false)) continue;
-      return;
+      break;
     }
+    this.#settled = this.#made.length;
+  }
+
+  // What `#settle` would place now, and only that, in its order: the rows of the workers, of the references and of the
+  // claims until they place nothing more, then the row of the owners, and again, each reading only what the nodes made
+  // since it last read hold, the objects of the Cluster that one of them owns or controls (`#ownedBy`) and what a
+  // Machine, a MachinePool or a claim among them names. The rows had placed all that they could before those nodes were
+  // made, and a new node lets a row place only what it owns, controls or names, so the tree is the one that `#settle`
+  // gives, with work that grows with what the new nodes hold, never with every object of the Cluster (P16). A pass of a
+  // row reads, in the order of the objects of the Cluster, what a node that it places owns after that node, as a pass
+  // over every object would.
+  #placeHeld(): void {
+    const read = { workers: this.#settled, references: this.#settled, claims: this.#settled, owners: this.#settled };
+
+    for (;;) {
+      if (this.#workersHeld(read) || this.#referencesHeld(read) || this.#claimsHeld(read)) continue;
+      if (this.#ownedHeld(read)) continue;
+      break;
+    }
+    this.#settled = this.#made.length;
+  }
+
+  // The nodes made since a row last read them, the row reading from now on those that its pass makes.
+  #madeSince(read: RowReads, row: keyof RowReads): Draft[] {
+    const made = this.#made.slice(read[row]);
+
+    read[row] = this.#made.length;
+    return made;
+  }
+
+  // The row of the workers (`#placeWorkers`), for what the nodes made since it last read control: the MachineSets of
+  // a new MachineDeployment, then the Machines of a new MachineSet or MachinePool, the MachineSets that it places now
+  // among them, as a pass over every object places the MachineSets before the Machines.
+  #workersHeld(read: RowReads): boolean {
+    const from = read.workers;
+    let placed = false;
+
+    read.workers = this.#made.length;
+    for (const entry of this.#ownedBy(this.#made.slice(from))) {
+      if (entry.kind.kind === "MachineSet" && this.#placeWorker(entry) !== undefined) placed = true;
+    }
+    for (const entry of this.#ownedBy(this.#made.slice(from))) {
+      if (entry.kind.kind === "Machine" && this.#placeWorker(entry) !== undefined) placed = true;
+    }
+    return placed;
+  }
+
+  // The row of the references (`#placeMachineReferences`), for the Machines and the MachinePools made since it last read.
+  #referencesHeld(read: RowReads): boolean {
+    let placed = false;
+
+    for (const draft of this.#madeSince(read, "references")) {
+      if (this.#placeReferencesOf(draft)) placed = true;
+    }
+    return placed;
+  }
+
+  // The row of the claims (`#placeClaims`), for the claims that the nodes made since it last read control, then for
+  // the claims made since, the ones that it places now among them.
+  #claimsHeld(read: RowReads): boolean {
+    const from = read.claims;
+
+    read.claims = this.#made.length;
+
+    let placed = this.#passOver(
+      this.#made.slice(from),
+      (entry) => entry.kind.kind === "IPAddressClaim",
+      (entry) => this.#placeClaim(entry),
+    );
+
+    for (const draft of this.#made.slice(from)) {
+      if (this.#placeAddressesOf(draft)) placed = true;
+    }
+    return placed;
+  }
+
+  // The row of the owners (`#placeByOwners`), for what the nodes made since it last read own, templates apart.
+  #ownedHeld(read: RowReads): boolean {
+    return this.#passOver(
+      this.#madeSince(read, "owners"),
+      (entry) => !isTemplateKind(entry.kind.kind),
+      (entry) => this.#placeByOwner(entry),
+    );
+  }
+
+  // A pass of a row over the objects of the Cluster that these nodes own or control and that it may place, in the order
+  // of the objects of the Cluster: as it places one, what that one owns and comes after it in that order joins the
+  // pass, as a pass over every object visits it after that one. Whether it placed one.
+  #passOver(
+    drafts: readonly Draft[],
+    places: (entry: TreeObject) => boolean,
+    place: (entry: TreeObject) => Draft | undefined,
+  ): boolean {
+    const { list, order } = this.#heldIndex();
+    const queue: number[] = [];
+    const queued = new Set<number>();
+    const join = (entries: readonly TreeObject[], after: number) => {
+      for (const entry of entries) {
+        const at = order.get(entry);
+
+        if (at === undefined || at <= after || queued.has(at) || !places(entry)) continue;
+        queued.add(at);
+        pushHeap(queue, at);
+      }
+    };
+    let placed = false;
+
+    join(this.#ownedBy(drafts), -1);
+    for (let at = popHeap(queue); at !== undefined; at = popHeap(queue)) {
+      const draft = place(list[at]);
+
+      if (draft === undefined) continue;
+      placed = true;
+      join(this.#ownedBy([draft]), at);
+    }
+    return placed;
+  }
+
+  // The objects of the Cluster that one of these nodes owns or controls and that no row has placed, each once, in the
+  // order of the objects of the Cluster, in which a pass of a row visits them.
+  #ownedBy(drafts: readonly Draft[]): TreeObject[] {
+    const { byOwner, order } = this.#heldIndex();
+    const owned = new Set<TreeObject>();
+
+    for (const draft of drafts) {
+      for (const entry of byOwner.get(draft.node.id) ?? []) if (!this.#isPlaced(entry)) owned.add(entry);
+    }
+    return [...owned].sort((one, other) => (order.get(one) ?? 0) - (order.get(other) ?? 0));
+  }
+
+  // The objects of the Cluster in their order, their places in it, and the objects of each owner, built once.
+  #heldIndex(): HeldIndex {
+    if (this.#held === undefined) {
+      const list = this.#candidates();
+      const byOwner = new Map<string, TreeObject[]>();
+
+      for (const entry of list) {
+        for (const owner of ownersOf(entry.object)) {
+          push(byOwner, addressOf(owner.group, owner.kind, owner.name), entry);
+        }
+      }
+      this.#held = { list, order: new Map(list.map((entry, at) => [entry, at])), byOwner };
+    }
+    return this.#held;
   }
 
   // The kinds that can name an object that the Cluster owns by the rules of P7, and that could not be read, by their
@@ -1204,10 +1434,11 @@ class Placer {
   }
 
   // Other objects (P7): an object of the Cluster that no row places, with its reason, which holds what it owns and
-  // names by the same rules. The objects go there one at a time, owners first, and the rows above place again after
-  // each, so that an object that the last one controls or names goes under it, never beside it with a false reason. An
-  // object whose owner is of a kind still loading waits for it, and so does an object whose owner, or whose Machine or
-  // MachinePool that names it, waits.
+  // names by the same rules. The objects go there one at a time, owners first, and after each the rows above place
+  // what it holds, and what that holds in turn (`#placeHeld`), so that an object that the last one controls or names
+  // goes under it, never beside it with a false reason. An object whose owner is of a kind still loading waits for it,
+  // and so does an object whose owner, or whose Machine or MachinePool that names it, waits. The work grows with the
+  // objects, never with their square (P16).
   #placeOthers(templates: boolean): void {
     // The objects that no row placed, in the order of the rows of P7 that place their kinds, then of their addresses,
     // whatever the order of a store.
@@ -1215,30 +1446,59 @@ class Placer {
       .filter((entry) => !this.#isPlaced(entry) && isTemplateKind(entry.kind.kind) === templates)
       .sort((one, other) => one.kind.row - other.kind.row || compareText(addressOfEntry(one), addressOfEntry(other)));
     const above = this.#holdersAmong(remaining);
+    // What each of them would hold among them, the inverse of `above`.
+    const holds = new Map<TreeObject, TreeObject[]>();
+
+    for (const [entry, holders] of above) for (const holder of new Set(holders)) push(holds, holder, entry);
+
     const waiting = new Set(remaining.filter((entry) => this.#ownerOf(entry.object) === "wait"));
 
-    for (let grown = true; grown; ) {
-      grown = false;
-      for (const entry of remaining) {
-        if (!waiting.has(entry) && (above.get(entry) ?? []).some((holder) => waiting.has(holder))) {
-          waiting.add(entry);
-          grown = true;
+    for (const pending = [...waiting]; pending.length > 0; ) {
+      for (const held of holds.get(pending.pop() as TreeObject) ?? []) {
+        if (!waiting.has(held)) {
+          waiting.add(held);
+          pending.push(held);
         }
       }
     }
 
     const ready = remaining.filter((entry) => !waiting.has(entry));
-    const open = (entry: TreeObject) => !this.#isPlaced(entry);
+    const placeOf = new Map(ready.map((entry, place) => [entry, place]));
+    const placeOfNode = new Map(
+      ready.map((entry, place) => [addressOf(entry.kind.group, entry.kind.kind, entry.name), place]),
+    );
+    // How many holders of each object are still to be placed, and, by their places in the order above, the objects
+    // whose holders are all placed.
+    const holders = ready.map((entry) => new Set(above.get(entry) ?? []).size);
+    const free: number[] = [];
+    let first = 0;
 
+    for (const [place, count] of holders.entries()) if (count === 0) pushHeap(free, place);
     for (;;) {
-      const left = ready.filter(open);
       // An object that another of them would hold goes after that one; of objects that would hold each other, the
       // first in the order above.
-      const next = left.find((entry) => !(above.get(entry) ?? []).some((holder) => open(holder))) ?? left[0];
+      while (free.length > 0 && this.#isPlaced(ready[free[0]])) popHeap(free);
+      while (first < ready.length && this.#isPlaced(ready[first])) first++;
+
+      const next = ready[free.length > 0 ? (popHeap(free) as number) : first];
 
       if (next === undefined) return;
+
+      const made = this.#made.length;
+
       this.#placeOther(next);
-      this.#settle();
+      this.#placeHeld();
+      // Each of them placed now is a holder fewer for what it would hold among them.
+      for (const draft of this.#made.slice(made)) {
+        const place = draft.node.form === "object" ? placeOfNode.get(draft.node.id) : undefined;
+
+        if (place === undefined) continue;
+        for (const held of holds.get(ready[place]) ?? []) {
+          const heldPlace = placeOf.get(held);
+
+          if (heldPlace !== undefined && --holders[heldPlace] === 0) pushHeap(free, heldPlace);
+        }
+      }
     }
   }
 
