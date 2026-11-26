@@ -10,6 +10,7 @@ import {
   namespaceRead,
   reduceReads,
   TIME,
+  treeNotices,
 } from "./read-state";
 
 import type { KindDescriptor, ReadEvent, ReadFailure, ReadsState } from "./read-state";
@@ -497,21 +498,94 @@ function refresh(kind: string, id: number, namespaces: string[], failures: ReadF
   return [{ ...(started as Extract<ReadEvent, { type: "load-started" }>), refresh: true }, ...rest];
 }
 
-describe("the kinds that the tree adds (SPEC-0005, P6)", () => {
-  it("say, refused, that their nodes read as not read, or that the ClusterResourceSets rest on ResourcesApplied alone", () => {
-    const FILTER_A: ReadEvent = { type: "filter-changed", namespaces: ["a"], selectedAll: false };
+describe("the notices of the tree (SPEC-0005, P6, P19)", () => {
+  const FILTER_A: ReadEvent = { type: "filter-changed", namespaces: ["a"], selectedAll: false };
+  const NOT_READ = "Until they can be read, their nodes in the tree read as not read";
+  const classes: KindDescriptor & { key: string } = {
+    key: CLASSES,
+    kind: "ClusterClass",
+    noun: "ClusterClasses",
+    resource: "clusterclasses",
+    group: "cluster.x-k8s.io",
+    feeds: "cluster-class",
+  };
+
+  it("say of a kind that gives the tree its nodes alone that its nodes read as not read", () => {
+    const state = run([FILTER_A, ...load(CONFIGS, 1, ["a"], [REFUSED_A])]);
+    const [notice] = treeNotices(state, [clusters, configs]);
+
+    expect(notice.title).toBe("The KubeadmConfigs could not all be read");
+    expect(notice.lines).toEqual([
+      "Reading them takes get, list and watch on kubeadmconfigs of bootstrap.cluster.x-k8s.io, in those namespaces or over the whole cluster.",
+      `${NOT_READ}.`,
+    ]);
+  });
+
+  it("say of the bindings that the resources of the ClusterResourceSets read as not read too, which rest on ResourcesApplied alone", () => {
+    const state = run([FILTER_A, ...load(BINDINGS, 2, ["a"], [FAILED])]);
+
+    expect(treeNotices(state, [bindings]).map((notice) => notice.lines)).toEqual([
+      [
+        `${NOT_READ}, and so do the resources of the ClusterResourceSets of the Cluster.`,
+        "Until then, the ClusterResourceSets of the tree rest on ResourcesApplied alone, which the status model notes.",
+      ],
+    ]);
+  });
+
+  it("say of the Machines which nodes they leave unread, the objects that only they name among them, and which inputs the Cluster and the objects of the tree go without", () => {
+    const state = run([FILTER_A, ...load(MACHINES, 1, ["a"], [REFUSED_A])]);
+
+    expect(treeNotices(state, [machines])[0].lines.slice(1)).toEqual([
+      `${NOT_READ}, and so do the objects that only they name, since the tree learns their kinds from them.`,
+      "Until then, the Cluster and the objects of the tree that count Machines are evaluated without them, which the status model notes: their activities read Unknown where their Machines count, never Idle.",
+    ]);
+  });
+
+  it("say of the ClusterClasses read in another namespace that the Cluster of the tree is evaluated without its class, never the Clusters of that namespace", () => {
+    const state = run([
+      { type: "filter-changed", namespaces: ["a", "classes"], selectedAll: false },
+      ...load(CLASSES, 1, ["classes"], [REFUSED_B]),
+    ]);
+    const [notice] = treeNotices(state, [classes]);
+
+    expect(notice.lines.slice(1)).toEqual([
+      `${NOT_READ}.`,
+      "Until then, the Cluster of the tree is evaluated without its ClusterClass, which the status model notes: the availability gates of its ClusterClass are not read.",
+    ]);
+    expect(notice.lines.join(" ")).not.toMatch(/the Clusters of those namespaces/);
+  });
+
+  it.each([
+    "machines",
+    "machine-sets",
+    "parts",
+    "machine-pools",
+    "health-checks",
+    "cluster-class",
+    "infrastructure",
+    "nodes",
+    "bindings",
+  ] as const)("say, for a kind that feeds %s, which nodes it leaves unread", (feeds) => {
+    const state = run([FILTER_A, ...load(MACHINES, 1, ["a"], [FAILED])]);
+    const [notice] = treeNotices(state, [{ ...machines, feeds }]);
+
+    expect(notice.lines[0].startsWith(NOT_READ)).toBe(true);
+  });
+
+  it("say nothing of the Clusters, which the tree says in its place", () => {
+    const state = run([FILTER_A, ...load(CLUSTERS, 1, ["a"], [REFUSED_A])]);
+
+    expect(treeNotices(state, [clusters])).toEqual([]);
+  });
+
+  it("are not those of the list, which says nothing more of a kind that the tree alone reads", () => {
     const state = run([FILTER_A, ...load(CONFIGS, 1, ["a"], [REFUSED_A]), ...load(BINDINGS, 2, ["a"], [FAILED])]);
     const [nodes, bound] = listNotices(state, clusters, [configs, bindings], 1).overList;
 
-    expect(nodes.title).toBe("The KubeadmConfigs could not all be read");
     expect(nodes.lines).toEqual([
       "Reading them takes get, list and watch on kubeadmconfigs of bootstrap.cluster.x-k8s.io, in those namespaces or over the whole cluster.",
-      "Until they can be read, their nodes in the tree read as not read.",
     ]);
-    expect(bound.title).toBe("The ClusterResourceSetBindings could not all be read");
-    expect(bound.lines).toEqual([
-      "Until they can be read, the ClusterResourceSets of those namespaces rest on ResourcesApplied alone, which the status model notes.",
-    ]);
+    expect(bound.lines).toEqual([]);
   });
 });
 
@@ -581,6 +655,29 @@ describe("a refresh of the tree (SPEC-0005, P23)", () => {
     expect(released.kinds[MACHINES]?.refreshHold).toBeUndefined();
     expect(released.kinds[MACHINES]?.last?.endedAt).toBe(7000);
     expect(namespaceRead(released, MACHINES, "a").state).toBe("read");
+  });
+
+  it("that fails again with the same answer keeps one entry for it, at the time of the last", () => {
+    const twice = run(
+      [...refresh(MACHINES, 3, ["a"], [REFUSED_A], 9000), ...refresh(MACHINES, 4, ["a"], [REFUSED_A], 9500)],
+      read,
+    );
+    const other = run(refresh(MACHINES, 5, ["a"], [FAILED], 9800), twice);
+
+    expect(twice.kinds[MACHINES]?.refreshHold).toEqual({ namespaces: ["a"], failures: [REFUSED_A], at: 9500 });
+    expect(listNotices(twice, clusters, [machines], 2).overList[0]).toMatchObject({
+      messages: [REFUSED_A.message],
+      at: 9500,
+    });
+    // Another answer is one entry more.
+    expect(other.kinds[MACHINES]?.refreshHold?.failures).toEqual([REFUSED_A, FAILED]);
+  });
+
+  it("that a store starts after a 410, and that fails again with the same answer, keeps one entry for it, at the time of the last", () => {
+    const failed: ReadEvent = { type: "refresh-failed", kind: MACHINES, failure: FAILED, at: 9000 };
+    const again = run([failed, { ...failed, at: 9500 }], read);
+
+    expect(again.kinds[MACHINES]?.refreshHold).toEqual({ namespaces: ["a", "b"], failures: [FAILED], at: 9500 });
   });
 
   it("marks the loads that it starts, and no other", () => {

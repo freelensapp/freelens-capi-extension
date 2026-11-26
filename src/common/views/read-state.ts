@@ -201,6 +201,14 @@ function unique(namespaces: readonly string[]): string[] {
   return [...new Set(namespaces)];
 }
 
+// The failures of the hold of a refresh, which a refresh that fails, or the reload after a 410 that fails, adds to: an
+// answer given again keeps one entry, the latest, and the hold the time of the latest (SPEC-0005, P23).
+function withAnswers(held: readonly ReadFailure[], added: readonly ReadFailure[]): ReadFailure[] {
+  const same = (one: ReadFailure, other: ReadFailure) => one.refused === other.refused && one.message === other.message;
+
+  return [...held.filter((failure) => !added.some((each) => same(each, failure))), ...added];
+}
+
 function endLoad(state: ReadsState, event: Extract<ReadEvent, { type: "load-ended" }>): ReadsState {
   const { kind, id, overWholeCluster, followed, at } = event;
   const reads = kindOf(state, kind);
@@ -219,7 +227,7 @@ function endLoad(state: ReadsState, event: Extract<ReadEvent, { type: "load-ende
       running: reads.running.filter((running) => running.id !== id),
       refreshHold: {
         namespaces: unique([...(reads.refreshHold?.namespaces ?? []), ...load.namespaces]),
-        failures: [...(reads.refreshHold?.failures ?? []), ...load.failures],
+        failures: withAnswers(reads.refreshHold?.failures ?? [], load.failures),
         at,
       },
     }));
@@ -254,7 +262,7 @@ function refreshFailed(state: ReadsState, kind: string, failure: ReadFailure, at
     reload: reads.reload && { failures: [...reads.reload.failures, failure] },
     refreshHold: {
       namespaces: unique([...(reads.refreshHold?.namespaces ?? []), ...(reads.last?.namespaces ?? [])]),
-      failures: [...(reads.refreshHold?.failures ?? []), failure],
+      failures: withAnswers(reads.refreshHold?.failures ?? [], [failure]),
       at,
     },
   }));
@@ -442,32 +450,70 @@ const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure" | "nodes"
   controllers: "the availability of the controllers of their providers is not known",
 };
 
-// What a kind that cannot be read leaves unread or out of the model, as its value of `KindFeeds` says (P25; SPEC-0005,
-// P6): nothing more for the Clusters, whose notice says it.
+// What a kind that cannot be read leaves out of the list of the Clusters and of the model, as its value of `KindFeeds`
+// says (P25): nothing more for the Clusters, whose notice says it, and nothing for the kinds that the tree of a
+// Cluster alone reads, whose notices are those of the tree (`treeNotices`).
 function whatItLeavesOut(feeds: KindFeeds): string {
   switch (feeds) {
     case "rows":
+    case "nodes":
+    case "bindings":
       return "";
     case "infrastructure":
       return "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health.";
-    case "nodes":
-      return "Until they can be read, their nodes in the tree read as not read.";
-    case "bindings":
-      return "Until they can be read, the ClusterResourceSets of those namespaces rest on ResourcesApplied alone, which the status model notes.";
     default:
       return `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[feeds]}.`;
   }
 }
 
+// What the tree of a Cluster says of a kind that it cannot read (SPEC-0005, P19, "Partial"): which nodes it leaves
+// unread, as P12 reads them, the objects that only that kind names among them for a kind whose objects name the kinds
+// of the providers, and the resources of the ClusterResourceSets for the bindings; then which inputs the model leaves
+// out, for the Cluster of the tree, the one Cluster that it evaluates without its class whatever namespace its class
+// reference names, and for the objects of the tree that take them, as the value of `KindFeeds` of the kind says.
+const TREE_MODEL_WORDS: Readonly<Partial<Record<KindFeeds, string>>> = {
+  machines:
+    "Until then, the Cluster and the objects of the tree that count Machines are evaluated without them, which the status model notes: their activities read Unknown where their Machines count, never Idle.",
+  "machine-sets":
+    "Until then, the Cluster and its MachineDeployments are evaluated without them, which the status model notes: the activities of the MachineDeployments, and so those of the Cluster, read Unknown, never Idle.",
+  parts:
+    "Until then, the Cluster is evaluated without them, which the status model notes: its activities read Unknown, never Idle.",
+  "machine-pools":
+    "Until then, the Cluster is evaluated without them, which the status model notes: its health leaves out its MachinePools, and its activities read Unknown, never Idle.",
+  "health-checks":
+    "Until then, the Cluster and the objects of the tree are evaluated without them, which the status model notes: the threshold of their Machines is the default of the project, 10 minutes.",
+  "cluster-class":
+    "Until then, the Cluster of the tree is evaluated without its ClusterClass, which the status model notes: the availability gates of its ClusterClass are not read.",
+  bindings:
+    "Until then, the ClusterResourceSets of the tree rest on ResourcesApplied alone, which the status model notes.",
+};
+
+// The kinds whose objects name the kinds of the providers that the tree reads (SPEC-0005, P6, P12): the Machines,
+// the MachineSets, the MachineDeployments, the MachinePools and the control planes, which take these values.
+const NAMES_PROVIDER_KINDS: readonly KindFeeds[] = ["machines", "machine-sets", "parts", "machine-pools"];
+
+function treeLines({ feeds }: KindDescriptor): string[] {
+  const unread = NAMES_PROVIDER_KINDS.includes(feeds)
+    ? ", and so do the objects that only they name, since the tree learns their kinds from them"
+    : feeds === "bindings"
+      ? ", and so do the resources of the ClusterResourceSets of the Cluster"
+      : "";
+  const model = TREE_MODEL_WORDS[feeds];
+
+  return [
+    `Until they can be read, their nodes in the tree read as not read${unread}.`,
+    ...(model === undefined ? [] : [model]),
+  ];
+}
+
 // The notice of a kind of the context that the page holds back (P25): after a load that failed, after a refresh that
-// failed, or after both, with the failures of each.
-function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | undefined {
+// failed, or after both, with the failures of each, and the lines that the view of the page gives it.
+function contextNotice(descriptor: KindDescriptor, reads: KindReads, lines: readonly string[]): Notice | undefined {
   const { loadHold, refreshHold } = reads;
 
   if (loadHold === undefined && refreshHold === undefined) return undefined;
 
   const failures = [...(loadHold?.failures ?? []), ...(refreshHold?.failures ?? [])];
-  const what = whatItLeavesOut(descriptor.feeds);
   const title =
     loadHold === undefined
       ? `The ${descriptor.noun} could not be read again, at ${TIME}`
@@ -480,9 +526,27 @@ function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | u
     tone: "warning",
     title,
     messages: failures.map((failure) => failure.message),
-    lines: [...refusalLine(descriptor, failures), ...(what === "" ? [] : [what])],
+    lines: [...refusalLine(descriptor, failures), ...lines],
     at: refreshHold?.at,
   };
+}
+
+// The notices that the tree of a Cluster shows above it (SPEC-0005, P19, "Partial", "A refresh that failed"): one for
+// each kind that it reads and holds back, after a load or a refresh that failed, with the message of each answer, the
+// permission it takes, the nodes it leaves unread and the inputs of the model it leaves out. The Clusters are said in
+// the place of the tree.
+export function treeNotices(
+  state: ReadsState,
+  kinds: readonly (KindDescriptor & { readonly key: string })[],
+): Notice[] {
+  return kinds.flatMap((descriptor) => {
+    const notice =
+      descriptor.feeds === "rows"
+        ? undefined
+        : contextNotice(descriptor, kindOf(state, descriptor.key), treeLines(descriptor));
+
+    return notice === undefined ? [] : [notice];
+  });
 }
 
 // What the page draws of the reads of its list: a notice in the place of the rows, when no row is listed, the notices
@@ -558,7 +622,8 @@ export function listNotices(
   }
 
   for (const descriptor of context) {
-    const notice = contextNotice(descriptor, kindOf(state, descriptor.key));
+    const what = whatItLeavesOut(descriptor.feeds);
+    const notice = contextNotice(descriptor, kindOf(state, descriptor.key), what === "" ? [] : [what]);
 
     if (notice !== undefined) overList.push(notice);
   }
