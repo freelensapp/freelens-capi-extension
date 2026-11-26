@@ -2198,6 +2198,34 @@ describe("the trial of S7", () => {
     expect(find("DevMachineTemplate", S7.controlPlaneOnly)).toBeDefined();
   });
 
+  it("names the containers of case 2 as down takes them: its load balancer, and the node of its Machine", () => {
+    // The development provider names the node of a Machine that is not of a MachinePool after the Machine, which is
+    // the name of the Cluster with what follows when it starts with it, and the load balancer after the Cluster
+    // (test/infrastructure/docker/internal/controllers/backends/docker/dockermachine_backend.go:809-814;
+    // test/infrastructure/docker/internal/docker/util.go:47-53; loadbalancer.go:103).
+    const machine = find("Machine", `${S7.infrastructureOnly}-control-plane-0`).metadata.name;
+    const labels = (role: string) => ({
+      Labels: { "io.x-k8s.kind.cluster": S7.infrastructureOnly, "io.x-k8s.kind.role": role },
+    });
+    const containers = [
+      { Id: "load-balancer", Name: `/${S7.infrastructureOnly}-lb`, Config: labels("external-load-balancer") },
+      { Id: "node", Name: `/${machine}`, Config: labels("control-plane") },
+    ];
+
+    expect(machine.startsWith(`${S7.infrastructureOnly}-`)).toBe(true);
+    expect(workloadContainerIds(containers, S7.infrastructureOnly)).toEqual(["load-balancer", "node"]);
+    // One character shorter, it would be the name that kind gives a node, and down would leave every container.
+    expect(() =>
+      workloadContainerIds(
+        [
+          ...containers,
+          { Id: "kind", Name: `/${S7.infrastructureOnly}-control-plane`, Config: labels("control-plane") },
+        ],
+        S7.infrastructureOnly,
+      ),
+    ).toThrow(/is not one that the development provider makes/);
+  });
+
   it("writes every object in the namespace of the trial, at v1beta2", () => {
     expect(objects).toHaveLength(8);
     for (const object of objects) {

@@ -1,11 +1,12 @@
 // The expectations of S7 (s7-expectations.ts), which the test of the real tier checks on its readings, checked here on
-// readings rebuilt from the trial by hand on Cluster API v1.14.4: each case passes on what the trial saw, at the
-// times it saw each change, and fails on a reading that contradicts one of its rows. The messages that no expectation
-// reads are left empty, and the one it compares is a text of the test.
+// readings rebuilt from the trial by hand on Cluster API v1.14.4, from the first run of the test in CI and from the
+// code of the release: each case passes on what they saw, at the times they saw each change, and fails on a reading
+// that contradicts one of its rows. The messages that no expectation reads are left empty, and the one it compares is
+// a text of the test.
 
 import { describe, expect, it } from "vitest";
 import { S7 } from "../../e2e/scripts/manifests.mts";
-import { expectCase1, expectCase2, expectCase3, WATCH_SECONDS } from "./s7-expectations";
+import { expectCase1, expectCase2, expectCase3, WATCH_SECONDS, watchNamespace } from "./s7-expectations";
 
 import type { KubeObject, OwnerReference } from "../../e2e/scripts/fixtures.mts";
 import type { S7Reading } from "./s7-expectations";
@@ -59,7 +60,10 @@ const CORE = "cluster.x-k8s.io/v1beta2";
 const CLUSTER_OWNER: OwnerReference = { apiVersion: CORE, kind: "Cluster", name: S7.infrastructureOnly };
 
 // Case 2, as the trial saw it: the first condition at +1s, the first full status at +2s, the infrastructure at +4s,
-// the probe at +36s, the Node at +37s, the control plane initialized at +38s, the Machine available at +53s.
+// the probe at +36s, the Node at +37s, the control plane initialized at +38s, the Machine available at +53s. Until
+// its DevCluster reports `Ready`, the Cluster mirrors `InfrastructureReady` as `False` `NotReady`, the fallback that the
+// code writes from the first full status (core/reconcilers/cluster/cluster_controller_status.go:365-374), which the
+// trial could not see.
 const CASE_2: readonly Change[] = [
   { from: 1, type: "Paused", status: "False", reason: "NotPaused" },
   { from: 2, type: "Available", status: "False", reason: "NotAvailable" },
@@ -78,6 +82,7 @@ const CASE_2: readonly Change[] = [
   { from: 2, type: "WorkerMachinesUpToDate", status: "True", reason: "NoReplicas" },
   { from: 2, type: "ControlPlaneMachinesUpToDate", status: "True", reason: "NoReplicas" },
   { from: 3, type: "ControlPlaneMachinesReady", status: "False", reason: "NotReady" },
+  { from: 2, type: "InfrastructureReady", status: "False", reason: "NotReady" },
   { from: 4, type: "InfrastructureReady", status: "True", reason: "Ready" },
   { from: 36, type: "RemoteConnectionProbe", status: "True", reason: "ProbeSucceeded" },
   { from: 36, type: "Available", status: "Unknown", reason: "AvailableUnknown" },
@@ -87,7 +92,9 @@ const CASE_2: readonly Change[] = [
 ];
 
 // Case 3, as the trial saw it: the Cluster with its first full status at +2s, its KubeadmControlPlane at +4s, scaling
-// up, and the Cluster scaling up with it from +5s, its mirror keeping the time of +2s.
+// up, and the Cluster scaling up with it from +5s, its mirror keeping the time of +2s. Until then the Cluster has
+// `ScalingUp` `False`, as the code writes it from the first full status while the control plane reports none
+// (core/reconcilers/cluster/cluster_controller_status.go:88, :997-1003), which the trial could not see.
 const CASE_3: readonly Change[] = [
   { from: 1, type: "Paused", status: "False", reason: "NotPaused" },
   { from: 2, type: "Available", status: "False", reason: "NotAvailable" },
@@ -106,6 +113,7 @@ const CASE_3: readonly Change[] = [
   ...["ControlPlaneMachinesReady", "ControlPlaneMachinesUpToDate", "WorkerMachinesReady", "WorkerMachinesUpToDate"].map(
     (type) => ({ from: 2, type, status: "True", reason: "NoReplicas" }),
   ),
+  { from: 2, type: "ScalingUp", status: "False", reason: "NotScalingUp" },
   { from: 5, type: "ScalingUp", status: "True", reason: "ScalingUp" },
   { from: 5, type: "ControlPlaneAvailable", status: "False", reason: "NotAvailable", message: NOT_INITIALIZED },
 ];
@@ -145,7 +153,15 @@ function statusOf(changes: readonly Change[], seconds: number, rest: Record<stri
   return conditions.length === 0 ? {} : { status: { conditions, ...rest } };
 }
 
-// The objects of the namespace at a time, as the trial saw them.
+// The metadata of an object of the trial with its generation.
+function metadataOf(name: string, generation: number) {
+  return { metadata: { name, namespace: NAMESPACE, creationTimestamp: at(0), generation } };
+}
+
+// The objects of the namespace at a time, as the trial saw them. Each status observes a generation from the first
+// full status of its object. The Cluster of case 2 takes its endpoint from its DevCluster together with its
+// infrastructure, at +4s, a change of its spec that makes its generation 2, which its status observes from +7s: the
+// first run in CI read the older one at +6.361s (s7-expectations.ts).
 function objectsAt(seconds: number): KubeObject[] {
   const infrastructure = S7.infrastructureOnly;
   const controlPlane = S7.controlPlaneOnly;
@@ -153,10 +169,14 @@ function objectsAt(seconds: number): KubeObject[] {
 
   return [
     object(CORE, "Cluster", infrastructure, {
+      ...metadataOf(infrastructure, seconds >= 4 ? 2 : 1),
       spec: {
         infrastructureRef: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "DevCluster", name: infrastructure },
       },
-      ...statusOf(CASE_2, seconds, seconds >= 4 ? { initialization: { infrastructureProvisioned: true } } : {}),
+      ...statusOf(CASE_2, seconds, {
+        ...(seconds >= 2 ? { observedGeneration: seconds >= 7 ? 2 : 1 } : {}),
+        ...(seconds >= 4 ? { initialization: { infrastructureProvisioned: true } } : {}),
+      }),
     }),
     object("infrastructure.cluster.x-k8s.io/v1beta2", "DevCluster", infrastructure, {
       ...statusOf([{ from: 4, type: "Ready", status: "True", reason: "Ready" }], seconds),
@@ -175,14 +195,20 @@ function objectsAt(seconds: number): KubeObject[] {
       }),
     }),
     object(CORE, "Cluster", controlPlane, {
+      ...metadataOf(controlPlane, 1),
       spec: {
         controlPlaneRef: { apiGroup: "controlplane.cluster.x-k8s.io", kind: "KubeadmControlPlane", name: controlPlane },
       },
-      ...statusOf(CASE_3, seconds, { initialization: { infrastructureProvisioned: true } }),
+      ...statusOf(
+        CASE_3,
+        seconds,
+        seconds >= 2 ? { observedGeneration: 1, initialization: { infrastructureProvisioned: true } } : {},
+      ),
     }),
     object("controlplane.cluster.x-k8s.io/v1beta2", "KubeadmControlPlane", controlPlane, {
+      ...metadataOf(controlPlane, 1),
       spec: { replicas: 1, version: "v1.37.0" },
-      ...statusOf(CONTROL_PLANE, seconds, counters),
+      ...statusOf(CONTROL_PLANE, seconds, seconds >= 4 ? { observedGeneration: 1, ...counters } : {}),
     }),
   ];
 }
@@ -201,9 +227,13 @@ function readingAt(seconds: number, change?: (objects: KubeObject[]) => void): S
   };
 }
 
-// The readings of the trial, every five seconds from the creation to the end of the watch, and at each change.
+// The readings of the trial, every five seconds from the creation to the end of the watch, at each change, and at +6s,
+// where the first run in CI found the older generation of case 2.
 const TIMES = [
-  ...new Set([0, 1, 2, 3, 4, 5, 7, 36, 37, 38, 53, ...Array.from({ length: WATCH_SECONDS / 5 + 1 }, (_, n) => n * 5)]),
+  ...new Set([
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 36, 37, 38, 53],
+    ...Array.from({ length: WATCH_SECONDS / 5 + 1 }, (_, n) => n * 5),
+  ]),
 ].sort((a, b) => a - b);
 
 function trial(change?: (objects: KubeObject[], seconds: number) => void): S7Reading[] {
@@ -385,8 +415,59 @@ describe("the expectations of S7", () => {
       },
       /^the endpoint at \+60s/,
     ],
+    [
+      "an infrastructure that is no longer provisioned",
+      (objects: KubeObject[], seconds: number) => {
+        const cluster = find(objects, "Cluster", S7.controlPlaneOnly);
+
+        if (seconds >= 60) cluster.status = { ...cluster.status, initialization: {} };
+      },
+      /^status.initialization.infrastructureProvisioned at \+60s/,
+    ],
+    [
+      "an infrastructure that is never provisioned",
+      (objects: KubeObject[]) => {
+        const cluster = find(objects, "Cluster", S7.controlPlaneOnly);
+
+        if (cluster.status !== undefined) cluster.status = { ...cluster.status, initialization: {} };
+      },
+      /^status.initialization.infrastructureProvisioned at the end of the watch/,
+    ],
+    [
+      "an infrastructure that is not provisioned",
+      (objects: KubeObject[]) => {
+        const cluster = find(objects, "Cluster", S7.controlPlaneOnly);
+
+        if (cluster.status !== undefined) {
+          cluster.status = { ...cluster.status, initialization: { infrastructureProvisioned: false } };
+        }
+      },
+      /^status.initialization.infrastructureProvisioned at \+2s/,
+    ],
   ] as const)("refuse, for case 3, %s", (_, change, failure) => {
     expect(() => expectCase3(trial(change))).toThrow(failure);
+  });
+
+  it.each([
+    [
+      "a reading between the first full conditions of its Cluster and the rest of its status",
+      (objects: KubeObject[], seconds: number) => {
+        const cluster = find(objects, "Cluster", S7.controlPlaneOnly);
+
+        if (seconds === 2) cluster.status = { conditions: cluster.status?.conditions };
+      },
+    ],
+    [
+      "a generation of its Cluster that its status has not observed yet",
+      (objects: KubeObject[], seconds: number) => {
+        const cluster = find(objects, "Cluster", S7.controlPlaneOnly);
+
+        if (seconds >= 60) cluster.metadata.generation = 2;
+        if (seconds >= 65) cluster.status = { ...cluster.status, observedGeneration: 2 };
+      },
+    ],
+  ] as const)("hold, for case 3, on %s", (_, change) => {
+    expectCase3(trial(change));
   });
 
   it("refuse, for case 3, a Secret of a kubeconfig", () => {
@@ -396,5 +477,91 @@ describe("the expectations of S7", () => {
     }));
 
     expect(() => expectCase3(readings)).toThrow(/^the Secret of the kubeconfig/);
+  });
+});
+
+describe("the watch of S7", () => {
+  // A clock of the test, which every sleep moves on.
+  function clock() {
+    let time = CREATION;
+
+    return {
+      now: () => time,
+      sleep: async (milliseconds: number) => {
+        time += milliseconds;
+      },
+    };
+  }
+
+  const DEADLINE = CREATION + 60_000;
+  const EVERY = 5_000;
+
+  it("reads again after a reading that fails, until the watch is over, and says why", async () => {
+    const { now, sleep } = clock();
+    const lines: string[] = [];
+    let reads = 0;
+    const readings = await watchNamespace({
+      read: () => {
+        reads += 1;
+        if (reads === 2) throw new Error("kubectl get failed with 1: the connection to the server was refused");
+        return readingAt((now() - CREATION) / 1000);
+      },
+      refusal: () => false,
+      over: (reading) => reading.at - CREATION >= 15_000,
+      deadline: DEADLINE,
+      every: EVERY,
+      now,
+      sleep,
+      log: (line) => lines.push(line),
+    });
+
+    expect(readings.map((reading) => (reading.at - CREATION) / 1000)).toEqual([0, 10, 15]);
+    expect(lines).toEqual([
+      "A reading of the namespace failed, and is taken again: kubectl get failed with 1: the connection to the server was refused",
+    ]);
+  });
+
+  it("ends at once on a refusal of the checks of the target", async () => {
+    const { now, sleep } = clock();
+    const refusal = new Error("The node of the kind cluster is not the container that the scripts created");
+    let reads = 0;
+    const watching = watchNamespace({
+      read: () => {
+        reads += 1;
+        if (reads === 2) throw refusal;
+        return readingAt(0);
+      },
+      refusal: (error) => error === refusal,
+      over: () => false,
+      deadline: DEADLINE,
+      every: EVERY,
+      now,
+      sleep,
+      log: () => {},
+    });
+
+    await expect(watching).rejects.toBe(refusal);
+    expect({ reads, at: now() }).toEqual({ reads: 2, at: CREATION + EVERY });
+  });
+
+  it("ends at the deadline with the readings it has, when every later reading fails", async () => {
+    const { now, sleep } = clock();
+    let reads = 0;
+    const readings = await watchNamespace({
+      read: () => {
+        reads += 1;
+        if (reads > 1) throw new Error("kubectl get did not complete");
+        return readingAt(0);
+      },
+      refusal: () => false,
+      over: () => false,
+      deadline: DEADLINE,
+      every: EVERY,
+      now,
+      sleep,
+      log: () => {},
+    });
+
+    expect({ readings: readings.length, reads, at: now() }).toEqual({ readings: 1, reads: 13, at: DEADLINE });
   });
 });

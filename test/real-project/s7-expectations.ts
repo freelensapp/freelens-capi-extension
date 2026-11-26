@@ -2,8 +2,13 @@
 // readings that the test of the real tier takes of the namespace of the trial, s7.tests.ts: what the trial by hand
 // saw on Cluster API v1.14.4, the rows of the table of S7 that it confirmed and those that it corrected, among them
 // the control plane with no endpoint that scales up for good. Each holds at every reading, from the first full status
-// of its object, which the trial saw within two seconds of the creation, to the end of the watch. The unit tests,
-// s7-expectations.test.ts, check them on readings rebuilt from the trial, and on readings that contradict a row.
+// of its object, which the trial saw within two seconds of the creation, to the end of the watch, as the code of the
+// release writes it. What a controller writes a moment after the rest is derived from the reading or asserted once
+// written: the controllers patch the conditions of an object first, then its spec, then the rest of its status
+// (util/patch/patch.go:171-189), so a reading can find new conditions next to the status before them, and a
+// generation that the status has not observed yet. The watch that takes the readings is here too, apart from the
+// cluster. The unit tests, s7-expectations.test.ts, check the expectations on readings rebuilt from the trial and from
+// the first run in CI, and on readings that contradict a row, and the watch with a clock of their own.
 
 import { expect } from "vitest";
 import { S7 } from "../../e2e/scripts/manifests.mts";
@@ -22,8 +27,9 @@ const FIRST_PROVISIONING = 1800 * SECOND;
 // the workload clusters fail to connect for the fifth time at +153s, with nothing changed in either case from +53s.
 export const WATCH_SECONDS = 240;
 
-// How long the test waits for case 2 to settle, its probe succeeded and its control plane initialized, which the
-// trial saw at +36s and +38s, and its Machine available at +53s: ten times as long.
+// The longest the test reads the namespace for, from the creation of the Clusters, which the watch lies within: the
+// time it gives case 2 to settle, its probe succeeded and its control plane initialized, which the trial saw at +36s
+// and +38s, and its Machine available at +53s, ten times over.
 export const SETTLE_SECONDS = 600;
 
 // A reading of the namespace of the trial.
@@ -35,6 +41,50 @@ export interface S7Reading {
   // The owners of the Secret `<cluster>-kubeconfig` of each Cluster of the trial, by the name of the Cluster, and
   // undefined while it has none. The content of a Secret is never read.
   readonly kubeconfigs: Readonly<Record<string, readonly OwnerReference[] | undefined>>;
+}
+
+// What the watch reads with: the test of the real tier gives the namespace and the clock, the unit tests their own.
+export interface Watch {
+  // A reading of the namespace, which throws when a request fails or the checks of the target refuse it.
+  read(): S7Reading;
+  // Whether an error is a refusal of the checks of the target.
+  refusal(error: unknown): boolean;
+  // Whether the watch is over after a reading.
+  over(reading: S7Reading): boolean;
+  // The time past which the watch reads no more, in milliseconds since the Unix epoch.
+  readonly deadline: number;
+  // The time between two readings, in milliseconds.
+  readonly every: number;
+  now(): number;
+  sleep(milliseconds: number): Promise<void>;
+  log(line: string): void;
+}
+
+// Reads the namespace until the watch is over, or until the deadline, when the expectations say what was missing. A
+// reading that fails is taken again until the deadline, as the waits of the scripts take theirs, and said with its
+// reason; a refusal of the checks of the target ends the watch at once, since no retry makes another cluster the one
+// of the scripts.
+export async function watchNamespace(watch: Watch): Promise<S7Reading[]> {
+  const readings: S7Reading[] = [];
+
+  for (;;) {
+    let reading: S7Reading | undefined;
+
+    try {
+      reading = watch.read();
+    } catch (error) {
+      if (watch.refusal(error)) throw error;
+      watch.log(
+        `A reading of the namespace failed, and is taken again: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (reading !== undefined) {
+      readings.push(reading);
+      if (watch.over(reading)) return readings;
+    }
+    if (watch.now() >= watch.deadline) return readings;
+    await watch.sleep(watch.every);
+  }
 }
 
 function named(reading: S7Reading, kind: string, name: string): KubeObject | undefined {
@@ -53,6 +103,21 @@ function expectCondition(object: KubeObject, type: string, status: string, reaso
     `${nameOf(object)}: ${type}`,
   ).toEqual({ status, ...(reason === undefined ? {} : { reason }) });
   return found as Condition;
+}
+
+// The marks of a Cluster of the trial at a reading (SPEC-0003, "Freshness"): Older generation exactly when its
+// `metadata.generation` is ahead of its `status.observedGeneration`, as it is for a moment after its controller writes
+// its spec, the endpoint that case 2 takes from its DevCluster among it: the status of that reconcile observes the
+// generation it read (util/patch/patch.go:150-155), and the next reconcile the new one. The first run in CI read it at
+// +6.361s. Nothing of the trial is paused, the view gives every controller as available, and the rule of a Cluster
+// does not follow its workload cluster (P25), so it has no other mark.
+function marksOf(cluster: KubeObject): string[] {
+  const generation = cluster.metadata.generation;
+  const observed = path(cluster, "status", "observedGeneration");
+
+  return typeof generation === "number" && typeof observed === "number" && observed < generation
+    ? ["Older generation"]
+    : [];
 }
 
 // The Cluster of a case at each reading from its first full status, which carries `Available`.
@@ -95,7 +160,8 @@ export function expectCase1(refusal: string, readings: readonly S7Reading[]): vo
 // controller; `WorkersAvailable` `True` `NoWorkers`; `Available` `False` until the probe first succeeds, then `Unknown`
 // `AvailableUnknown`, never `True`. The model: Unhealthy until the probe first succeeds, then Unknown, with the note of
 // P7; Provisioning until the control plane is initialized, then Idle; while Unhealthy and Provisioning, in the tone
-// of progress until 30 minutes after the creation; and Unknown before the first full status.
+// of progress until 30 minutes after the creation; the mark of an older generation exactly when the reading has one;
+// and Unknown before the first full status.
 export function expectCase2(readings: readonly S7Reading[]): void {
   const name = S7.infrastructureOnly;
   const machineName = `${name}-control-plane-0`;
@@ -163,7 +229,7 @@ export function expectCase2(readings: readonly S7Reading[]): void {
       health: unhealthy ? "Unhealthy" : "Unknown",
       tone: unhealthy && !initialized ? `progress by Provisioning until ${FIRST_PROVISIONING / SECOND}s` : "health",
       activities: initialized ? ["Idle"] : ["Provisioning Progressing since 0s"],
-      marks: [],
+      marks: marksOf(cluster),
       notes: ["never-available: spec.controlPlaneRef"],
     });
   }
@@ -177,16 +243,19 @@ export function expectCase2(readings: readonly S7Reading[]): void {
 }
 
 // Case 3, a control plane reference only: `InfrastructureReady` `Unknown` `InternalError`, for good, with
-// `status.initialization.infrastructureProvisioned` true; `ControlPlaneAvailable` `False`, with the reason and the
-// message of the `Available` of a KubeadmControlPlane that is not initialized, and its own first time, which the
-// mirror keeps when the status does not change (util/conditions/setter.go:64); the probe `False` `ProbeFailed`, with
-// no endpoint and no kubeconfig; `Available` `False`, never `True`; the KubeadmControlPlane `ScalingUp` `True` for
-// good with no Machine, and the Cluster with it. The model: Unhealthy, with the note of P7; Provisioning for good, and
-// Scaling up, Progressing, which no rule assumes ends; in the tone of progress for 30 minutes from the creation, then
-// of a warning, the KubeadmControlPlane too.
+// `status.initialization.infrastructureProvisioned` true from the request that follows the first full conditions
+// (util/patch/patch.go:171-189), and for good; `ControlPlaneAvailable` `False`, with the reason and the message of the
+// `Available` of a KubeadmControlPlane that is not initialized, and its own first time, which the mirror keeps when
+// the status does not change (util/conditions/setter.go:64); the probe `False` `ProbeFailed`, with no endpoint and no
+// kubeconfig; `Available` `False`, never `True`; the KubeadmControlPlane `ScalingUp` `True` for good with no Machine,
+// and the Cluster with it. The model: Unhealthy, with the note of P7 and the mark of an older generation exactly when
+// the reading has one; Provisioning for good, and Scaling up, Progressing, which no rule assumes ends, with Unknown
+// until the KubeadmControlPlane has a full status; in the tone of progress for 30 minutes from the creation, then of
+// a warning, the KubeadmControlPlane too.
 export function expectCase3(readings: readonly S7Reading[]): void {
   const name = S7.controlPlaneOnly;
   const settled = settledReadings(readings, name);
+  let provisioned = false;
 
   expectWatched(readings, name);
   expect(settled.length).toBeGreaterThan(0);
@@ -194,9 +263,14 @@ export function expectCase3(readings: readonly S7Reading[]): void {
     const at = `at +${(reading.at - created(cluster)) / SECOND}s`;
     const controlPlane = named(reading, "KubeadmControlPlane", name);
     const view = new ObjectSet(name, reading.objects);
+    const infrastructureProvisioned = path(cluster, "status", "initialization", "infrastructureProvisioned");
 
     expectCondition(cluster, "InfrastructureReady", "Unknown", "InternalError");
-    expect(path(cluster, "status", "initialization", "infrastructureProvisioned"), at).toBe(true);
+    // Unset for a moment after the first full conditions, then true for good.
+    if (provisioned || infrastructureProvisioned !== undefined) {
+      expect(infrastructureProvisioned, `status.initialization.infrastructureProvisioned ${at}`).toBe(true);
+      provisioned = true;
+    }
     expectCondition(cluster, "RemoteConnectionProbe", "False", "ProbeFailed");
     expect(reading.kubeconfigs[name], `the Secret of the kubeconfig ${at}`).toBeUndefined();
     expect(path(cluster, "spec", "controlPlaneEndpoint", "host") ?? "", `the endpoint ${at}`).toBe("");
@@ -226,16 +300,19 @@ export function expectCase3(readings: readonly S7Reading[]): void {
     const since = (condition: Condition | undefined) =>
       (Date.parse(String(condition?.lastTransitionTime)) - created(cluster)) / SECOND;
 
-    // Its first status has no `ScalingUp` before its KubeadmControlPlane has one, which leaves the source unread (P1).
+    // The Cluster writes `ScalingUp` from its first full status, `False` `NotScalingUp` while its control plane reports
+    // none (core/reconcilers/cluster/cluster_controller_status.go:88, :976-983, :997-1003). Until its
+    // KubeadmControlPlane, created before it, has a full status of its own, `Available` and `ScalingUp` among it, that
+    // part is unread, and so is the activity of the Cluster (P1).
     expect(readStatus(view.statusOf(cluster, reading.at), created(cluster)), `the model ${at}`).toEqual({
       health: "Unhealthy",
       tone: `progress by Provisioning until ${FIRST_PROVISIONING / SECOND}s`,
       activities: [
         "Provisioning Progressing since 0s",
         ...(scaling?.status === "True" ? [`Scaling up Progressing since ${since(scaling)}s`] : []),
-        ...(scaling === undefined ? ["Unknown"] : []),
+        ...(scaling === undefined || source === undefined ? ["Unknown"] : []),
       ],
-      marks: [],
+      marks: marksOf(cluster),
       notes: ["never-available: spec.infrastructureRef"],
     });
     if (source !== undefined) {
@@ -261,6 +338,10 @@ export function expectCase3(readings: readonly S7Reading[]): void {
   const source = controlPlane === undefined ? undefined : conditionOf(controlPlane, "Available");
 
   expect(controlPlane?.apiVersion).toBe(CONTROL_PLANE);
+  expect(
+    path(cluster, "status", "initialization", "infrastructureProvisioned"),
+    "status.initialization.infrastructureProvisioned at the end of the watch",
+  ).toBe(true);
   expect({ reason: mirror?.reason, message: mirror?.message }, "the mirror").toEqual({
     reason: source?.reason,
     message: source?.message,

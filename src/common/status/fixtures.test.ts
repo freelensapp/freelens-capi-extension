@@ -3,15 +3,18 @@
 // evaluated with the context that a view builds from the same set (test/status-views.ts), every provider available,
 // as on the tier that installs with clusterctl, which has no object of the operator to tell (P24). Every case first
 // asserts, on the fixture, the conditions that its row names, so that a capture in another state fails as such and
-// not as a fault of the model; then the health, the tone, the activities and the marks of its row, at the capture
-// and past the thresholds.
+// not as a fault of the model; then the health with its issues, the tone, the activities and the marks of its row,
+// at the capture and past the thresholds.
 //
 // - "At the capture" is the time of the capture, `CAPTURE_TIME` of the scripts, from which the fixtures keep every
 //   time as an offset; "past the thresholds" is 30 minutes and one second after it. Every time that a threshold
-//   counts from is at or before the capture, and no threshold of the model is longer than the 30 minutes of a Cluster
-//   (D2, P2), which the first cases check on every set.
+//   counts from is at or before the capture, and every MachineHealthCheck of the sets leaves the threshold of a
+//   Machine at 600 seconds, its `nodeStartupTimeoutSeconds` unset, 0 or 600 (D2), which the first cases check on
+//   every set: so no threshold of the model is longer than the 30 minutes of a Cluster (P2).
 // - Every row but those of `provisioning` is read after the 30 minutes of its Cluster: when the capture falls within
-//   them, the case moves the creation of the Cluster back by 30 minutes, the one field it changes.
+//   them, the case moves the creation of the Cluster back by 30 minutes, the one field it changes. A view that reads
+//   a set applied with its times moved to the present, as the sessions of SPEC-0004 do, reads it within those 30
+//   minutes, where the floor of P2 keeps every activity of the Cluster in the tone of progress.
 
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -34,6 +37,7 @@ import {
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
 import type { Condition, StatusReading } from "../../../test/status-views";
+import type { Activity } from "./activity";
 import type { ObjectStatus } from "./index";
 
 const SECOND = 1000;
@@ -64,9 +68,19 @@ function offset(instant: number | undefined): string {
   return offsetFrom(CAPTURE, instant);
 }
 
-// What a case asserts of a result, every time written as its offset from the capture.
-function read(status: ObjectStatus): StatusReading {
-  return readStatus(status, CAPTURE);
+// What a case asserts of a result, every time written as its offset from the capture: the issues of its health
+// with the rest, whatever the word, since the details list them for an Unhealthy object too.
+interface Reading extends StatusReading {
+  readonly issues: readonly string[];
+}
+
+function read(status: ObjectStatus): Reading {
+  return { ...readStatus(status, CAPTURE), issues: issuesOf(status) };
+}
+
+// The activities of a result, with their tones and conditions, which the reading does not carry.
+function activitiesOf(status: ObjectStatus): readonly Activity[] {
+  return status.activities.state === "read" ? status.activities.activities : [];
 }
 
 // The one object of a kind in a set.
@@ -170,8 +184,9 @@ describe("the fixture sets", () => {
     ).toEqual([...STATES].sort());
   });
 
-  it("start every threshold at or before the capture, and give no Machine more than 30 minutes", () => {
+  it("start every threshold at or before the capture, and leave the threshold of every Machine at 600 seconds", () => {
     const later: string[] = [];
+    const timeouts: string[] = [];
 
     for (const state of STATES) {
       for (const object of readSet(state)) {
@@ -189,11 +204,15 @@ describe("the fixture sets", () => {
           }
         }
         if (object.kind === "MachineHealthCheck") {
-          expect(path(object, "spec", "checks", "nodeStartupTimeoutSeconds") ?? 600).toBeLessThanOrEqual(1800);
+          const timeout = path(object, "spec", "checks", "nodeStartupTimeoutSeconds");
+
+          // Unset and 0 leave a Machine the 600 seconds of the project, which the views count (D2).
+          if (![undefined, 0, 600].includes(timeout as number)) timeouts.push(`${state} ${name(object)} ${timeout}`);
         }
       }
     }
     expect(later).toEqual([]);
+    expect(timeouts).toEqual([]);
   });
 });
 
@@ -202,12 +221,20 @@ describe("A Cluster provisioning", () => {
   const cluster = only(set, "Cluster");
   const controlPlane = only(set, "KubeadmControlPlane", CONTROL_PLANE);
   const [machine] = set.controlledBy(controlPlane, "Machine");
+  // The infrastructure machine that the control plane Machine names.
+  const infrastructure = set.named(
+    "DevMachine",
+    String(path(machine, "spec", "infrastructureRef", "name")),
+  ) as KubeObject;
+  const resourceSet = only(set, "ClusterResourceSet", ADDONS);
+  const healthChecks = set.ofKind("MachineHealthCheck");
   const firstProvisioning = created(cluster) + CLUSTER;
 
   function clusterHas() {
     expectCondition(cluster, "ControlPlaneInitialized", "False");
     expectCondition(cluster, "Available", "False");
     expectCondition(cluster, "ScalingUp", "False");
+    for (const type of ["ControlPlaneMachinesReady", "WorkerMachinesReady"]) expectCondition(cluster, type, "False");
     expect(CAPTURE - created(cluster)).toBeLessThan(CLUSTER);
   }
 
@@ -215,14 +242,66 @@ describe("A Cluster provisioning", () => {
     clusterHas();
     expect(path(controlPlane, "status", "initialization", "controlPlaneInitialized")).toBeUndefined();
     expectCondition(controlPlane, "ScalingUp", "False");
+    expectCondition(controlPlane, "Initialized", "False");
+    expectCondition(controlPlane, "MachinesReady", "False");
     expect(set.controlledBy(controlPlane, "Machine").map(name)).toEqual([name(machine)]);
     expect(hasNode(machine)).toBe(false);
+  }
+
+  // The DevMachine of the control plane Machine: provisioned, as the field of its contract says (P17), its bootstrap
+  // still running.
+  function infrastructureHas() {
+    controlPlaneHas();
+    expect(infrastructure, "the DevMachine of the control plane Machine").toBeDefined();
+    expect(path(infrastructure, "status", "initialization", "provisioned")).toBe(true);
+    expectCondition(infrastructure, "Ready", "False");
+    expectCondition(infrastructure, "BootstrapCompleted", "False");
+    for (const type of ["CGroupsReady", "ContainerProvisioned", "PreLoadedImagesReady"]) {
+      expectCondition(infrastructure, type, "True");
+    }
+  }
+
+  // The ClusterResourceSet of kindnet: its Cluster, in its first provisioning, cannot be reached yet, and its binding
+  // has no entry of the resource (P12).
+  function resourceSetHas() {
+    clusterHas();
+    expectCondition(cluster, "RemoteConnectionProbe", "False");
+    expectCondition(resourceSet, "ResourcesApplied", "False", "InternalError");
+    expect(
+      set.ofKind("ClusterResourceSetBinding", ADDONS).map((binding) => ({
+        cluster: path(binding, "spec", "clusterName"),
+        bindings: path(binding, "spec", "bindings"),
+      })),
+    ).toEqual([{ cluster: cluster.metadata.name, bindings: [{ clusterResourceSetName: resourceSet.metadata.name }] }]);
+  }
+
+  // Its MachineHealthChecks: fewer healthy targets than expected, none of them failing a check, since they start.
+  function healthChecksHave() {
+    clusterHas();
+    expect(healthChecks.map(name)).toHaveLength(2);
+    for (const check of healthChecks) {
+      const targets = (path(check, "status", "targets") as string[] | undefined) ?? [];
+
+      expectCondition(check, "RemediationAllowed", "True");
+      expect(path(check, "status", "currentHealthy"), name(check)).toBeLessThan(
+        path(check, "status", "expectedMachines") as number,
+      );
+      expect(targets.length, name(check)).toBeGreaterThan(0);
+      for (const target of targets) {
+        const targetMachine = set.named("Machine", target) as KubeObject;
+
+        expect(targetMachine, target).toBeDefined();
+        expect(hasNode(targetMachine), `${target} has a Node`).toBe(false);
+        expect(conditionOf(targetMachine, "HealthCheckSucceeded")?.status, target).not.toBe("False");
+      }
+    }
   }
 
   it("the Cluster, at the capture: Unhealthy, in the tone of progress for its first 30 minutes, Provisioning since its creation", () => {
     clusterHas();
     expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: ["ControlPlaneInitialized", "ControlPlaneMachinesReady", "WorkerMachinesReady"],
       tone: `progress by Provisioning until ${offset(firstProvisioning)}`,
       activities: [`Provisioning Progressing since ${offset(created(cluster))}`],
       marks: [],
@@ -234,6 +313,7 @@ describe("A Cluster provisioning", () => {
     clusterHas();
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Unhealthy",
+      issues: ["ControlPlaneInitialized", "ControlPlaneMachinesReady", "WorkerMachinesReady"],
       tone: "warning by Provisioning",
       activities: [`Provisioning Progressing since ${offset(created(cluster))}`],
       marks: [],
@@ -246,6 +326,7 @@ describe("A Cluster provisioning", () => {
     // The threshold of its Machine, raised to the end of the 30 minutes of the Cluster (P2).
     expect(read(set.statusOf(controlPlane, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: ["Initialized", "MachinesReady"],
       tone: `progress by Provisioning until ${offset(Math.max(created(machine) + MACHINE, firstProvisioning))}`,
       activities: [`Provisioning Progressing since ${offset(created(machine))}`],
       marks: [],
@@ -257,12 +338,59 @@ describe("A Cluster provisioning", () => {
     controlPlaneHas();
     expect(read(set.statusOf(controlPlane, PAST))).toEqual({
       health: "Unhealthy",
+      issues: ["Initialized", "MachinesReady"],
       tone: "warning by Provisioning",
       activities: [`Provisioning Progressing since ${offset(created(machine))}`],
       marks: [],
       notes: [],
     });
   });
+
+  // Idle, its contract field set (P17): the tone of progress comes from the first provisioning of its Cluster alone.
+  for (const [label, now] of [
+    ["at the capture", CAPTURE],
+    ["past the thresholds", PAST],
+  ] as const) {
+    it(`the DevMachine of its control plane Machine, ${label}: Unhealthy from BootstrapCompleted, Idle, in the tone of ${now === CAPTURE ? "progress of the first provisioning of its Cluster (D2)" : "a warning"}`, () => {
+      infrastructureHas();
+      expect(read(set.statusOf(infrastructure, now))).toEqual({
+        health: "Unhealthy",
+        issues: ["BootstrapCompleted"],
+        tone:
+          now === CAPTURE ? `progress by Provisioning until ${offset(firstProvisioning)}` : "warning by Provisioning",
+        activities: ["Idle"],
+        marks: [],
+        notes: [],
+      });
+    });
+
+    it(`its ClusterResourceSet, ${label}: Unhealthy, its resource missing from the binding of its Cluster, Idle, in the tone of ${now === CAPTURE ? "progress of the first provisioning of that Cluster (P12, D2)" : "a warning"}`, () => {
+      resourceSetHas();
+      expect(read(set.statusOf(resourceSet, now))).toEqual({
+        health: "Unhealthy",
+        issues: [`resource ${resourceSet.metadata.name}`],
+        tone:
+          now === CAPTURE ? `progress by Provisioning until ${offset(firstProvisioning)}` : "warning by Provisioning",
+        activities: ["Idle"],
+        marks: [],
+        notes: [],
+      });
+    });
+
+    it(`its MachineHealthChecks, whose targets start, ${label}: Healthy (P11), Idle`, () => {
+      healthChecksHave();
+      for (const check of healthChecks) {
+        expect(read(set.statusOf(check, now)), name(check)).toEqual({
+          health: "Healthy",
+          issues: [],
+          tone: "health",
+          activities: ["Idle"],
+          marks: [],
+          notes: [],
+        });
+      }
+    });
+  }
 });
 
 describe("Provisioned and healthy", () => {
@@ -311,6 +439,7 @@ describe("Provisioned and healthy", () => {
       for (const now of [CAPTURE, PAST]) {
         expect(read(set.statusOf(object, now)), `${name(object)} at ${offset(now)}`).toEqual({
           health: "Healthy",
+          issues: [],
           tone: "health",
           activities: ["Idle"],
           marks: [],
@@ -334,6 +463,7 @@ describe("Provisioned and healthy", () => {
       }
       expect(read(set.statusOf(object, CAPTURE)), name(object)).toEqual({
         health: "none: no status",
+        issues: [],
         tone: "health",
         activities: ["none"],
         marks: [],
@@ -380,12 +510,13 @@ describe("A Machine that never got a Node", () => {
 
     expect(read(status)).toEqual({
       health: "Unknown",
+      issues: ["Available"],
       tone: "health",
       activities: [`Provisioning Progressing since ${offset(created(machine))}`],
       marks: [],
       notes: [],
     });
-    expect(status.activities.state === "read" && status.activities.activities[0].tone).toBe("progress");
+    expect(activitiesOf(status)[0].tone).toBe("progress");
     expect(status.changesAt).toBe(threshold());
   });
 
@@ -393,14 +524,22 @@ describe("A Machine that never got a Node", () => {
     machineHas();
     const status = set.statusOf(machine, PAST);
 
-    expect(read(status).activities).toEqual([`Provisioning Progressing since ${offset(created(machine))}`]);
-    expect(status.activities.state === "read" && status.activities.activities[0].tone).toBe("warning");
+    expect(read(status)).toEqual({
+      health: "Unknown",
+      issues: ["Available"],
+      tone: "health",
+      activities: [`Provisioning Progressing since ${offset(created(machine))}`],
+      marks: [],
+      notes: [],
+    });
+    expect(activitiesOf(status)[0].tone).toBe("warning");
   });
 
   it("its MachineSet, at the capture: Unhealthy, in the tone of progress, Provisioning since that Machine was created", () => {
     machineSetHas();
     expect(read(set.statusOf(machineSet as KubeObject, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: [],
       tone: `progress by Provisioning until ${offset(threshold())}`,
       activities: [`Provisioning Progressing since ${offset(created(machine))}`],
       marks: [],
@@ -410,17 +549,31 @@ describe("A Machine that never got a Node", () => {
 
   it("its MachineSet, past the threshold of that Machine: in the tone of a warning", () => {
     machineSetHas();
-    expect(read(set.statusOf(machineSet as KubeObject, PAST)).tone).toBe("warning by Provisioning");
+    expect(read(set.statusOf(machineSet as KubeObject, PAST))).toEqual({
+      health: "Unhealthy",
+      issues: [],
+      tone: "warning by Provisioning",
+      activities: [`Provisioning Progressing since ${offset(created(machine))}`],
+      marks: [],
+      notes: [],
+    });
   });
 
+  // The Cluster counts only its MachineDeployments and MachinePools in `WorkersAvailable`
+  // (core/reconcilers/cluster/cluster_controller_status.go:660-714), and its worker Machines in `WorkerMachinesReady`
+  // (:68, :84, :731-741), which it has not computed again since that Machine came: it reconciles on a change of its
+  // control plane Machines, MachineDeployments and MachinePools, not of a MachineSet or a worker Machine (the README
+  // of the set), so it reports `True`.
   it("its Cluster, which owns that MachineSet beside its topology and does not follow it: Healthy and Idle", () => {
     machineSetHas();
     expect(machineSet?.metadata.ownerReferences?.map((owner) => owner.kind)).toEqual(["Cluster"]);
     expectCondition(cluster, "Available", "True");
     expectCondition(cluster, "WorkersAvailable", "True");
+    expectCondition(cluster, "WorkerMachinesReady", "True");
     for (const now of [CAPTURE, PAST]) {
       expect(read(set.statusOf(cluster, now))).toEqual({
         health: "Healthy",
+        issues: [],
         tone: "health",
         activities: ["Idle"],
         marks: [],
@@ -437,6 +590,10 @@ describe("Rolling out", () => {
   const machines = set.machinesOf(deployment) ?? [];
   const starting = machines.filter((machine) => conditionOf(machine, "Ready")?.status !== "True");
   const [newMachine] = starting;
+  const notUpToDate = machines.filter((machine) => conditionOf(machine, "UpToDate")?.status === "False");
+  const oldMachineSets = set
+    .controlledBy(deployment, "MachineSet")
+    .filter((machineSet) => set.controlledBy(machineSet, "Machine").some((machine) => notUpToDate.includes(machine)));
 
   function deploymentHas() {
     expectReachable(cluster);
@@ -462,13 +619,32 @@ describe("Rolling out", () => {
     expectCondition(cluster, "WorkerMachinesUpToDate", "False");
   }
 
+  // The Machines that the rollout replaces, and their MachineSet: ready and available, not up to date.
+  function oldMachinesHave() {
+    deploymentHas();
+    expect(notUpToDate.map(name)).toHaveLength(2);
+    for (const machine of notUpToDate) {
+      expectCondition(machine, "UpToDate", "False", "NotUpToDate");
+      expectCondition(machine, "Available", "True");
+      expectCondition(machine, "Ready", "True");
+      expectNoActivityCondition(machine);
+      expect(machine.metadata.deletionTimestamp, `${name(machine)} is not deleting`).toBeUndefined();
+    }
+    expect(oldMachineSets.map(name)).toHaveLength(1);
+    for (const machineSet of oldMachineSets) {
+      expectCondition(machineSet, "MachinesUpToDate", "False");
+      expectCondition(machineSet, "MachinesReady", "True");
+      expectNoActivityCondition(machineSet);
+      expect(path(machineSet, "status", "availableReplicas")).toBe(path(machineSet, "spec", "replicas"));
+      expect(set.controlledBy(machineSet, "Machine").map(name).sort()).toEqual(notUpToDate.map(name).sort());
+    }
+  }
+
   it("the MachineDeployment, at the capture: Degraded from MachinesReady alone, Provisioning, Rolling out and Scaling down", () => {
     deploymentHas();
-    const status = set.statusOf(deployment, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["MachinesReady"]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(deployment, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["MachinesReady"],
       tone: `progress by Scaling down until ${offset(transition(deployment, "ScalingDown") + DELETION)}`,
       activities: [
         `Provisioning Progressing since ${offset(created(newMachine))}`,
@@ -484,6 +660,7 @@ describe("Rolling out", () => {
     deploymentHas();
     expect(read(set.statusOf(deployment, PAST))).toEqual({
       health: "Degraded",
+      issues: ["MachinesReady"],
       tone: "warning by Scaling down",
       activities: [
         `Rolling out Progressing since ${offset(transition(deployment, "RollingOut"))}`,
@@ -496,11 +673,9 @@ describe("Rolling out", () => {
 
   it("its Cluster, at the capture: Degraded from WorkerMachinesReady alone, Provisioning through its MachineDeployment, Rolling out and Scaling down", () => {
     clusterHas();
-    const status = set.statusOf(cluster, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["WorkerMachinesReady"]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["WorkerMachinesReady"],
       tone: `progress by Scaling down until ${offset(transition(cluster, "ScalingDown") + DELETION)}`,
       activities: [
         `Provisioning Progressing since ${offset(created(newMachine))}`,
@@ -516,6 +691,7 @@ describe("Rolling out", () => {
     clusterHas();
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Degraded",
+      issues: ["WorkerMachinesReady"],
       tone: "warning by Scaling down",
       activities: [
         `Rolling out Progressing since ${offset(transition(cluster, "RollingOut"))}`,
@@ -525,43 +701,110 @@ describe("Rolling out", () => {
       notes: [],
     });
   });
+
+  it("its Machines that are not up to date, and their MachineSet: Healthy and Idle, with the note that their Machines differ from the spec (P4)", () => {
+    oldMachinesHave();
+    for (const object of [...notUpToDate, ...oldMachineSets]) {
+      for (const now of [CAPTURE, PAST]) {
+        expect(read(set.statusOf(object, now)), `${name(object)} at ${offset(now)}`).toEqual({
+          health: "Healthy",
+          issues: [],
+          tone: "health",
+          activities: ["Idle"],
+          marks: [],
+          notes: ["machines-differ-from-spec"],
+        });
+      }
+    }
+  });
 });
 
 describe("Scaling up, held by the preflight checks", () => {
   const set = fixture("scaling-up-held");
+  const cluster = only(set, "Cluster");
+  const controlPlane = only(set, "KubeadmControlPlane", CONTROL_PLANE);
   const deployment = only(set, "MachineDeployment");
   const machineSet = only(set, "MachineSet");
   const owners = [deployment, machineSet];
+  const [newControlPlaneMachine] = set.controlledBy(controlPlane, "Machine").filter((each) => !hasNode(each));
 
   function has() {
-    expectReachable(only(set, "Cluster"));
+    expectReachable(cluster);
     for (const owner of owners) {
       expectCondition(owner, "ScalingUp", "True");
       expect(set.machinesOf(owner)?.length).toBeLessThan(path(owner, "spec", "replicas") as number);
-      expect((set.machinesOf(owner) ?? []).every(hasNode), `every Machine of ${name(owner)} has a Node`).toBe(true);
+      // Every Machine of them available, so none is Provisioning (D3).
+      for (const machine of set.machinesOf(owner) ?? []) expectCondition(machine, "Available", "True");
     }
     expectCondition(deployment, "Available", "False");
     expect(path(deployment, "spec", "rollout", "strategy", "rollingUpdate", "maxUnavailable")).toBe(0);
     expect(conditionOf(machineSet, "ScalingUp")?.message).toContain(" is blocked because");
+    expect(conditionOf(deployment, "ScalingUp")?.message).not.toContain(" is blocked because");
+  }
+
+  // The Cluster upgrades its topology: its KubeadmControlPlane rolls out, with a new Machine that has no Node yet, and
+  // scales down, while the MachineDeployment scales up.
+  function clusterHas() {
+    has();
+    expectCondition(cluster, "Available", "False");
+    expectCondition(cluster, "WorkersAvailable", "False");
+    expectCondition(cluster, "TopologyReconciled", "False", "ClusterUpgrading");
+    expect(conditionOf(cluster, "TopologyReconciled")?.message).not.toContain("hook");
+    for (const type of ["RollingOut", "ScalingUp", "ScalingDown"]) expectCondition(cluster, type, "True");
+    expectCondition(cluster, "ControlPlaneMachinesReady", "False");
+    expectCondition(cluster, "WorkerMachinesReady", "True");
+    expectCondition(cluster, "ControlPlaneMachinesUpToDate", "False");
+    expect(newControlPlaneMachine, "a control plane Machine with no Node").toBeDefined();
   }
 
   for (const [label, now] of [
     ["at the capture", CAPTURE],
     ["past the thresholds", PAST],
   ] as const) {
-    it(`the MachineDeployment and its MachineSet, ${label}: Unhealthy, Scaling up, Progressing, in the tone of ${now === CAPTURE ? "progress" : "a warning"}`, () => {
+    it(`the MachineDeployment and its MachineSet, ${label}: Unhealthy, Scaling up, Progressing, each with its own ScalingUp, in the tone of ${now === CAPTURE ? "progress" : "a warning"}`, () => {
       has();
       for (const owner of owners) {
         const ending = transition(owner, "ScalingUp") + MACHINE;
+        const status = set.statusOf(owner, now);
+        const scaling = conditionOf(owner, "ScalingUp") as Condition;
 
-        expect(read(set.statusOf(owner, now)), name(owner)).toEqual({
+        expect(read(status), name(owner)).toEqual({
           health: "Unhealthy",
+          issues: [],
           tone: now === CAPTURE ? `progress by Scaling up until ${offset(ending)}` : "warning by Scaling up",
           activities: [`Scaling up Progressing since ${offset(transition(owner, "ScalingUp"))}`],
           marks: [],
           notes: [],
         });
+        // The message that the details show with it, that of the MachineSet with ` is blocked because` (D4).
+        expect(activitiesOf(status)[0].condition, name(owner)).toMatchObject({
+          type: "ScalingUp",
+          status: "True",
+          reason: scaling.reason,
+          message: scaling.message,
+        });
       }
+    });
+
+    it(`the Cluster, ${label}: Unhealthy, Provisioning through its control plane, Upgrading, Rolling out, Scaling up and Scaling down, in the tone of ${now === CAPTURE ? "progress" : "a warning"}`, () => {
+      clusterHas();
+      expect(read(set.statusOf(cluster, now))).toEqual({
+        health: "Unhealthy",
+        issues: ["ControlPlaneMachinesReady"],
+        tone:
+          now === CAPTURE
+            ? `progress by Scaling down until ${offset(transition(cluster, "ScalingDown") + DELETION)}`
+            : "warning by Scaling down",
+        activities: [
+          `Provisioning Progressing since ${offset(created(newControlPlaneMachine))}`,
+          `Upgrading Progressing since ${offset(transition(cluster, "TopologyReconciled"))}`,
+          `Rolling out Progressing since ${offset(transition(cluster, "RollingOut"))}`,
+          `Scaling up Progressing since ${offset(transition(cluster, "ScalingUp"))}`,
+          `Scaling down Progressing since ${offset(transition(cluster, "ScalingDown"))}`,
+        ],
+        marks: [],
+        notes: [],
+      });
     });
   }
 });
@@ -582,6 +825,7 @@ describe("Scaling up", () => {
     expectReachable(cluster);
     expectCondition(deployment, "ScalingUp", "False");
     expectCondition(deployment, "Available", "False");
+    expectCondition(deployment, "MachinesReady", "False");
     expect(path(deployment, "spec", "rollout", "strategy", "rollingUpdate", "maxUnavailable")).toBe(0);
     expect(newWorker, "a new worker").toBeDefined();
     expectMachineStarting(newWorker, true);
@@ -595,6 +839,7 @@ describe("Scaling up", () => {
       expectCondition(cluster, type, "True");
     }
     expectCondition(cluster, "WorkersAvailable", "False");
+    for (const type of ["ControlPlaneMachinesReady", "WorkerMachinesReady"]) expectCondition(cluster, type, "False");
     expectCondition(cluster, "ScalingUp", "True");
     expectCondition(controlPlane, "ScalingUp", "True");
     expect(newControlPlaneMachine, "a new control plane Machine").toBeDefined();
@@ -605,6 +850,7 @@ describe("Scaling up", () => {
     deploymentHas();
     expect(read(set.statusOf(deployment, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: ["MachinesReady"],
       tone: `progress by Provisioning until ${offset(created(newWorker) + MACHINE)}`,
       activities: [`Provisioning Progressing since ${offset(created(newWorker))}`],
       marks: [],
@@ -616,6 +862,7 @@ describe("Scaling up", () => {
     deploymentHas();
     expect(read(set.statusOf(deployment, PAST))).toEqual({
       health: "Unhealthy",
+      issues: ["MachinesReady"],
       tone: "health",
       activities: ["Idle"],
       marks: [],
@@ -629,6 +876,7 @@ describe("Scaling up", () => {
 
     expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: ["ControlPlaneMachinesReady", "WorkerMachinesReady"],
       tone: `progress by Scaling up until ${offset(transition(cluster, "ScalingUp") + MACHINE)}`,
       activities: [
         `Provisioning Progressing since ${offset(oldest)}`,
@@ -643,6 +891,7 @@ describe("Scaling up", () => {
     clusterHas();
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Unhealthy",
+      issues: ["ControlPlaneMachinesReady", "WorkerMachinesReady"],
       tone: "warning by Scaling up",
       activities: [
         `Provisioning Progressing since ${offset(created(newControlPlaneMachine))}`,
@@ -656,25 +905,40 @@ describe("Scaling up", () => {
 
 describe("Scaling down", () => {
   const set = fixture("scaling-down");
+  const cluster = only(set, "Cluster");
   const deployment = only(set, "MachineDeployment");
   const deleting = (set.machinesOf(deployment) ?? []).filter((each) => each.metadata.deletionTimestamp !== undefined);
+  const [machine] = deleting;
 
   function has() {
-    expectReachable(only(set, "Cluster"));
+    expectReachable(cluster);
     expectCondition(deployment, "ScalingDown", "True");
     expectCondition(deployment, "Available", "True");
     expectCondition(deployment, "MachinesReady", "False");
     expect(deleting.map(name)).toHaveLength(1);
-    expect(CAPTURE - deleted(deleting[0])).toBeLessThan(DELETION);
+    expect(CAPTURE - deleted(machine)).toBeLessThan(DELETION);
+  }
+
+  // The Machine that it deletes, held by a hook before its drain.
+  function machineHas() {
+    has();
+    expectCondition(machine, "Deleting", "True", "WaitingForPreDrainHook");
+    expectCondition(machine, "Ready", "False");
+  }
+
+  function clusterHas() {
+    has();
+    expectCondition(cluster, "Available", "True");
+    expectCondition(cluster, "WorkerMachinesReady", "False");
+    expectCondition(cluster, "ScalingDown", "True");
+    for (const type of ["RollingOut", "ScalingUp", "Remediating"]) expectCondition(cluster, type, "False");
   }
 
   it("a MachineDeployment scaling down, at the capture: Degraded from MachinesReady, Scaling down in the tone of progress", () => {
     has();
-    const status = set.statusOf(deployment, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["MachinesReady"]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(deployment, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["MachinesReady"],
       tone: `progress by Scaling down until ${offset(transition(deployment, "ScalingDown") + DELETION)}`,
       activities: [`Scaling down Progressing since ${offset(transition(deployment, "ScalingDown"))}`],
       marks: [],
@@ -686,12 +950,56 @@ describe("Scaling down", () => {
     has();
     expect(read(set.statusOf(deployment, PAST))).toEqual({
       health: "Degraded",
+      issues: ["MachinesReady"],
       tone: "warning by Scaling down",
       activities: [`Scaling down Progressing since ${offset(transition(deployment, "ScalingDown"))}`],
       marks: [],
       notes: [],
     });
   });
+
+  for (const [label, now, tone] of [
+    ["at the capture", CAPTURE, "terminated"],
+    ["past 15 minutes of its deletion", PAST, "warning"],
+  ] as const) {
+    it(`the Machine that it deletes, ${label}: no health, Deleting alone, with the stage of its reason, in the tone ${tone}`, () => {
+      machineHas();
+      const status = set.statusOf(machine, now);
+
+      expect(read(status)).toEqual({
+        health: "none: deleting",
+        issues: [],
+        tone: "health",
+        activities: [`Deleting Progressing since ${offset(deleted(machine))}`],
+        marks: [],
+        notes: [],
+      });
+      expect(activitiesOf(status)[0]).toMatchObject({
+        tone,
+        condition: { type: "Deleting", reason: "WaitingForPreDrainHook" },
+      });
+    });
+  }
+
+  for (const [label, now] of [
+    ["at the capture", CAPTURE],
+    ["past 15 minutes from the transition of ScalingDown", PAST],
+  ] as const) {
+    it(`its Cluster, ${label}: Degraded from WorkerMachinesReady, Scaling down in the tone of ${now === CAPTURE ? "progress" : "a warning"}`, () => {
+      clusterHas();
+      expect(read(set.statusOf(cluster, now))).toEqual({
+        health: "Degraded",
+        issues: ["WorkerMachinesReady"],
+        tone:
+          now === CAPTURE
+            ? `progress by Scaling down until ${offset(transition(cluster, "ScalingDown") + DELETION)}`
+            : "warning by Scaling down",
+        activities: [`Scaling down Progressing since ${offset(transition(cluster, "ScalingDown"))}`],
+        marks: [],
+        notes: [],
+      });
+    });
+  }
 });
 
 describe("Paused", () => {
@@ -710,6 +1018,7 @@ describe("Paused", () => {
 
       expect(read(status), name(object)).toEqual({
         health: "Healthy",
+        issues: [],
         tone: "health",
         activities: [`Paused Progressing since ${offset(transition(object, "Paused"))}`],
         marks: [`Paused since ${offset(transition(object, "Paused"))}`],
@@ -725,6 +1034,7 @@ describe("Paused", () => {
       expectCondition(object, "Paused", "False");
       expect(read(set.statusOf(object, CAPTURE)), name(object)).toEqual({
         health: "Healthy",
+        issues: [],
         tone: "health",
         activities: ["Idle"],
         marks: [],
@@ -737,14 +1047,27 @@ describe("Paused", () => {
 describe("Deleting", () => {
   const set = fixture("deleting");
   const cluster = only(set, "Cluster");
+  const deployment = only(set, "MachineDeployment");
 
   function has() {
     expect(cluster.metadata.deletionTimestamp).toBeDefined();
     expectCondition(cluster, "Deleting", "True", "WaitingForWorkersDeletion");
     expect(conditionOf(cluster, "TopologyReconciled")?.message).not.toContain("hook");
-    // A scale down that its deletion makes, which a deleting object does not show (D3).
+    // A scale down that its deletion makes, which a deleting object does not show, as decided while implementing
+    // (SPEC-0003, "Notes and deviations").
     expectCondition(cluster, "ScalingDown", "True");
     expect(CAPTURE - deleted(cluster)).toBeLessThan(DELETION);
+  }
+
+  // Its MachineDeployment, deleted with it, and scaling down to no Machine; its workload cluster still reachable, which
+  // the mark of P25 on an object of the Cluster follows.
+  function deploymentHas() {
+    has();
+    expectReachable(cluster);
+    expect(deployment.metadata.deletionTimestamp).toBeDefined();
+    expectCondition(deployment, "Deleting", "True", "Deleting");
+    expectCondition(deployment, "ScalingDown", "True");
+    expect(CAPTURE - deleted(deployment)).toBeLessThan(DELETION);
   }
 
   for (const [label, now, tone] of [
@@ -757,15 +1080,31 @@ describe("Deleting", () => {
 
       expect(read(status)).toEqual({
         health: "none: deleting",
+        issues: [],
         tone: "health",
         activities: [`Deleting Progressing since ${offset(deleted(cluster))}`],
         marks: [],
         notes: [],
       });
-      expect(status.activities.state === "read" && status.activities.activities[0]).toMatchObject({
+      expect(activitiesOf(status)[0]).toMatchObject({
         tone,
         condition: { type: "Deleting", reason: "WaitingForWorkersDeletion" },
       });
+    });
+
+    it(`its MachineDeployment, ${label}: no health, Deleting alone, its scale down not shown, in the tone ${tone}`, () => {
+      deploymentHas();
+      const status = set.statusOf(deployment, now);
+
+      expect(read(status)).toEqual({
+        health: "none: deleting",
+        issues: [],
+        tone: "health",
+        activities: [`Deleting Progressing since ${offset(deleted(deployment))}`],
+        marks: [],
+        notes: [],
+      });
+      expect(activitiesOf(status)[0]).toMatchObject({ tone, condition: { type: "Deleting", reason: "Deleting" } });
     });
   }
 });
@@ -788,6 +1127,23 @@ describe("With a managed topology, upgrading", () => {
     expect(newMachine, "a control plane Machine with no Node").toBeDefined();
   }
 
+  // The KubeadmControlPlane upgrades: a version of `status.versions` below that of its spec, which the project writes
+  // with no time (P28, P34); it rolls out to a new Machine with no Node yet, and scales down.
+  function controlPlaneHas() {
+    has();
+    expect(path(controlPlane, "spec", "version")).toBe("v1.37.0");
+    expect(
+      ((path(controlPlane, "status", "versions") as { version: string }[] | undefined) ?? []).map(
+        (entry) => entry.version,
+      ),
+    ).toContain("v1.36.4");
+    expectCondition(controlPlane, "Available", "True");
+    expectCondition(controlPlane, "ScalingDown", "True");
+    expectCondition(controlPlane, "ScalingUp", "False");
+    expectCondition(controlPlane, "MachinesReady", "False");
+    expectCondition(controlPlane, "MachinesUpToDate", "False");
+  }
+
   const activities = () => [
     `Provisioning Progressing since ${offset(created(newMachine))}`,
     `Upgrading Progressing since ${offset(transition(cluster, "TopologyReconciled"))}`,
@@ -795,13 +1151,18 @@ describe("With a managed topology, upgrading", () => {
     `Scaling down Progressing since ${offset(transition(cluster, "ScalingDown"))}`,
   ];
 
+  const controlPlaneActivities = () => [
+    `Provisioning Progressing since ${offset(created(newMachine))}`,
+    "Upgrading Progressing",
+    `Rolling out Progressing since ${offset(transition(controlPlane, "RollingOut"))}`,
+    `Scaling down Progressing since ${offset(transition(controlPlane, "ScalingDown"))}`,
+  ];
+
   it("the Cluster, at the capture: Degraded from ControlPlaneMachinesReady, Provisioning through its control plane, Upgrading, Rolling out and Scaling down", () => {
     has();
-    const status = set.statusOf(cluster, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["ControlPlaneMachinesReady"]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady"],
       tone: `progress by Scaling down until ${offset(transition(cluster, "ScalingDown") + DELETION)}`,
       activities: activities(),
       marks: [],
@@ -813,8 +1174,41 @@ describe("With a managed topology, upgrading", () => {
     has();
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady"],
       tone: "warning by Scaling down",
       activities: activities(),
+      marks: [],
+      notes: [],
+    });
+  });
+
+  it("its KubeadmControlPlane, at the capture: Degraded from MachinesReady, Provisioning, Upgrading with no start and past its threshold at once (P34), Rolling out and Scaling down, in the tone of progress", () => {
+    controlPlaneHas();
+    const status = set.statusOf(controlPlane, CAPTURE);
+
+    expect(read(status)).toEqual({
+      health: "Degraded",
+      issues: ["MachinesReady"],
+      tone: `progress by Scaling down until ${offset(transition(controlPlane, "ScalingDown") + DELETION)}`,
+      activities: controlPlaneActivities(),
+      marks: [],
+      notes: [],
+    });
+    expect(activitiesOf(status).map((activity) => `${activity.name}: ${activity.tone}`)).toEqual([
+      "Provisioning: progress",
+      "Upgrading: warning",
+      "Rolling out: progress",
+      "Scaling down: progress",
+    ]);
+  });
+
+  it("its KubeadmControlPlane, past the thresholds: in the tone of a warning", () => {
+    controlPlaneHas();
+    expect(read(set.statusOf(controlPlane, PAST))).toEqual({
+      health: "Degraded",
+      issues: ["MachinesReady"],
+      tone: "warning by Scaling down",
+      activities: controlPlaneActivities(),
       marks: [],
       notes: [],
     });
@@ -836,6 +1230,7 @@ describe("Without a managed topology", () => {
     for (const now of [CAPTURE, PAST]) {
       expect(read(set.statusOf(cluster, now))).toEqual({
         health: "Healthy",
+        issues: [],
         tone: "health",
         activities: ["Idle"],
         marks: [],
@@ -875,11 +1270,9 @@ describe("With MachinePools only", () => {
 
   it("the Cluster, at the capture: Degraded where the project says available, in the tone of progress through its parts", () => {
     clusterHas();
-    const status = set.statusOf(cluster, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["ControlPlaneMachinesReady", `machine-pool ${pool.metadata.name}`]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady", `machine-pool ${pool.metadata.name}`],
       tone: `progress by Provisioning until ${offset(created(poolMachines[0]) + MACHINE)}`,
       activities: [`Provisioning Progressing since ${offset(created(controlPlaneMachine))}`],
       marks: [],
@@ -891,6 +1284,7 @@ describe("With MachinePools only", () => {
     clusterHas();
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady", `machine-pool ${pool.metadata.name}`],
       tone: "health",
       activities: ["Idle"],
       marks: [],
@@ -902,6 +1296,7 @@ describe("With MachinePools only", () => {
     poolHas();
     expect(read(set.statusOf(pool, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: poolMachines.map((machine) => `machine ${machine.metadata.name}`),
       tone: `progress by Provisioning until ${offset(created(poolMachines[0]) + MACHINE)}`,
       activities: [`Provisioning Progressing since ${offset(created(poolMachines[0]))}`, "Unknown"],
       marks: [],
@@ -913,6 +1308,7 @@ describe("With MachinePools only", () => {
     poolHas();
     expect(read(set.statusOf(pool, PAST))).toEqual({
       health: "Unhealthy",
+      issues: poolMachines.map((machine) => `machine ${machine.metadata.name}`),
       tone: "health",
       activities: ["Unknown"],
       marks: [],
@@ -943,6 +1339,7 @@ describe("With MachinePools only, written by hand", () => {
 
     expect(read(status)).toEqual({
       health: "Unknown",
+      issues: [],
       tone: "health",
       activities: ["Unknown"],
       marks: [],
@@ -956,6 +1353,7 @@ describe("With MachinePools only, written by hand", () => {
     for (const now of [CAPTURE, PAST]) {
       expect(read(atZero.statusOf(only(atZero, "MachinePool"), now))).toEqual({
         health: "Healthy",
+        issues: [],
         tone: "health",
         activities: ["Scaling down Progressing", "Unknown"],
         marks: [],
@@ -971,11 +1369,9 @@ describe("With MachinePools only, written by hand", () => {
     expectCondition(cluster, "WorkersAvailable", "True", "NoWorkers");
     expectNoActivityCondition(cluster);
     expectMachineStarting(controlPlaneMachine, true);
-    const status = set.statusOf(cluster, CAPTURE);
-
-    expect(issuesOf(status)).toEqual(["ControlPlaneMachinesReady"]);
-    expect(read(status)).toEqual({
+    expect(read(set.statusOf(cluster, CAPTURE))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady"],
       tone: `progress by Provisioning until ${offset(created(controlPlaneMachine) + MACHINE)}`,
       activities: [`Provisioning Progressing since ${offset(created(controlPlaneMachine))}`],
       marks: [],
@@ -983,6 +1379,7 @@ describe("With MachinePools only, written by hand", () => {
     });
     expect(read(set.statusOf(cluster, PAST))).toEqual({
       health: "Degraded",
+      issues: ["ControlPlaneMachinesReady"],
       tone: "health",
       activities: ["Idle"],
       marks: [],
@@ -993,14 +1390,18 @@ describe("With MachinePools only, written by hand", () => {
 
 describe("A remediation in progress", () => {
   const set = fixture("remediation");
+  const cluster = only(set, "Cluster");
   const deployment = only(set, "MachineDeployment");
   const machineSet = only(set, "MachineSet");
   const workers = set.machinesOf(deployment) ?? [];
   const waiting = workers.find((each) => each.metadata.deletionTimestamp === undefined) as KubeObject;
   const remediated = workers.find((each) => each.metadata.deletionTimestamp !== undefined) as KubeObject;
+  const healthCheck = set
+    .ofKind("MachineHealthCheck")
+    .find((check) => workers.every((worker) => set.machinesOf(check)?.includes(worker))) as KubeObject;
 
   function machineHas() {
-    expectReachable(only(set, "Cluster"));
+    expectReachable(cluster);
     expect(workers.map(name)).toHaveLength(2);
     expectCondition(waiting, "HealthCheckSucceeded", "False");
     expectCondition(waiting, "OwnerRemediated", "False", "RemediationDeferred");
@@ -1011,13 +1412,39 @@ describe("A remediation in progress", () => {
     machineHas();
     expectCondition(remediated, "OwnerRemediated", "False", "MachineDeleting");
     expectCondition(remediated, "Deleting", "True", "WaitingForPreDrainHook");
-    for (const owner of [machineSet, deployment]) expectCondition(owner, "Remediating", "True");
+    expect(CAPTURE - deleted(remediated)).toBeLessThan(DELETION);
+    for (const owner of [machineSet, deployment]) {
+      expectCondition(owner, "Remediating", "True");
+      expectCondition(owner, "MachinesReady", "False");
+    }
+  }
+
+  // Its MachineHealthCheck of the workers: neither of its two targets healthy, each failing its check (P11).
+  function healthCheckHas() {
+    ownersHave();
+    expect(healthCheck, "the MachineHealthCheck of the workers").toBeDefined();
+    expectCondition(healthCheck, "RemediationAllowed", "True");
+    expect(path(healthCheck, "status", "currentHealthy")).toBe(0);
+    expect(path(healthCheck, "status", "expectedMachines")).toBe(2);
+    for (const worker of workers) expectCondition(worker, "HealthCheckSucceeded", "False");
+  }
+
+  // The Cluster takes for its tone the activities of its MachineDeployment (D2), its Replacing among them, which is
+  // not an activity of a Cluster (H2).
+  function clusterHas() {
+    ownersHave();
+    expectCondition(cluster, "Available", "False");
+    expectCondition(cluster, "WorkersAvailable", "False");
+    expectCondition(cluster, "WorkerMachinesReady", "False");
+    expectCondition(cluster, "Remediating", "True");
+    for (const type of ["RollingOut", "ScalingUp", "ScalingDown"]) expectCondition(cluster, type, "False");
   }
 
   it("the Machine whose remediation waits, at the capture: Unhealthy, Remediating, and Provisioning while younger than its threshold (D3)", () => {
     machineHas();
     expect(read(set.statusOf(waiting, CAPTURE))).toEqual({
       health: "Unhealthy",
+      issues: ["Available", "HealthCheckSucceeded", "OwnerRemediated"],
       tone: `progress by Remediating until ${offset(transition(waiting, "OwnerRemediated") + MACHINE)}`,
       activities: [
         `Provisioning Progressing since ${offset(created(waiting))}`,
@@ -1032,6 +1459,7 @@ describe("A remediation in progress", () => {
     machineHas();
     expect(read(set.statusOf(waiting, PAST))).toEqual({
       health: "Unhealthy",
+      issues: ["Available", "HealthCheckSucceeded", "OwnerRemediated"],
       tone: "warning by Remediating",
       activities: [`Remediating Progressing since ${offset(transition(waiting, "OwnerRemediated"))}`],
       marks: [],
@@ -1050,6 +1478,7 @@ describe("A remediation in progress", () => {
 
         expect(read(set.statusOf(owner, now)), name(owner)).toEqual({
           health: "Unhealthy",
+          issues: ["MachinesReady"],
           tone:
             now === CAPTURE ? `progress by Replacing until ${offset(replacing + DELETION)}` : "warning by Replacing",
           activities: [
@@ -1061,6 +1490,57 @@ describe("A remediation in progress", () => {
           notes: [],
         });
       }
+    });
+
+    it(`the remediated Machine, ${label}: no health, Deleting alone, with the stage of its reason, in the tone ${now === CAPTURE ? "terminated" : "warning"}`, () => {
+      ownersHave();
+      const status = set.statusOf(remediated, now);
+
+      expect(read(status)).toEqual({
+        health: "none: deleting",
+        issues: [],
+        tone: "health",
+        activities: [`Deleting Progressing since ${offset(deleted(remediated))}`],
+        marks: [],
+        notes: [],
+      });
+      expect(activitiesOf(status)[0]).toMatchObject({
+        tone: now === CAPTURE ? "terminated" : "warning",
+        condition: { type: "Deleting", reason: "WaitingForPreDrainHook" },
+      });
+    });
+
+    it(`its MachineHealthCheck of the workers, ${label}: Degraded, its issues the two Machines that fail their check (P11), Idle`, () => {
+      healthCheckHas();
+      expect(read(set.statusOf(healthCheck, now))).toEqual({
+        health: "Degraded",
+        issues: workers.map((worker) => `machine ${worker.metadata.name}`).sort(),
+        tone: "health",
+        activities: ["Idle"],
+        marks: [],
+        notes: [],
+      });
+    });
+
+    it(`its Cluster, ${label}: Unhealthy from WorkerMachinesReady, ${now === CAPTURE ? "Provisioning through its MachineDeployment and Remediating, in the tone of progress" : "Remediating, in the tone of a warning"} of the Replacing of its MachineDeployment (D2)`, () => {
+      clusterHas();
+      const replacing = deleted(remediated);
+
+      expect(read(set.statusOf(cluster, now))).toEqual({
+        health: "Unhealthy",
+        issues: ["WorkerMachinesReady"],
+        tone: now === CAPTURE ? `progress by Replacing until ${offset(replacing + DELETION)}` : "warning by Replacing",
+        activities: [
+          ...(now === CAPTURE ? [`Provisioning Progressing since ${offset(created(waiting))}`] : []),
+          `Remediating Progressing since ${offset(transition(cluster, "Remediating"))}`,
+        ],
+        marks: [],
+        notes: [],
+      });
+      expect(set.statusOf(cluster, now).tone.setBy?.heldBy, "the part that sets the tone").toMatchObject({
+        kind: "MachineDeployment",
+        name: deployment.metadata.name,
+      });
     });
   }
 });
@@ -1086,6 +1566,7 @@ describe("Objects with no status", () => {
       }
       expect(read(set.statusOf(object, CAPTURE)), name(object)).toEqual({
         health: "Unknown",
+        issues: [],
         tone: "health",
         activities: ["Unknown"],
         marks: [],
@@ -1094,7 +1575,7 @@ describe("Objects with no status", () => {
     }
   });
 
-  it("its MachineHealthCheck, ClusterResourceSet, ClusterClass and IPAddressClaim: Unknown, with the note of P12 and the provider that no pool of the set names", () => {
+  it("its MachineHealthCheck, ClusterResourceSet, ClusterClass and IPAddressClaim: Unknown, with the note of P12, and for the claim its provider, since its pool belongs to a group that no provider of the tier serves", () => {
     const objects = [
       only(set, "MachineHealthCheck"),
       only(set, "ClusterResourceSet", ADDONS),
@@ -1110,6 +1591,7 @@ describe("Objects with no status", () => {
       has(object);
       expect(read(set.statusOf(object, CAPTURE)), name(object)).toEqual({
         health: "Unknown",
+        issues: [],
         tone: "health",
         activities: ["Unknown"],
         marks: [],
@@ -1137,6 +1619,7 @@ describe("Objects with no status", () => {
       has(object);
       expect(read(set.statusOf(object, CAPTURE)), name(object)).toEqual({
         health: "none: no status",
+        issues: [],
         tone: "health",
         activities: ["none"],
         marks: [],

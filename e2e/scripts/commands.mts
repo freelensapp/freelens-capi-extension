@@ -243,20 +243,30 @@ function targetFacts(target: Tier): TargetFacts {
   };
 }
 
+// A refusal of the checks of a target. A wait reads again after a request that failed, which may succeed later, and
+// stops at once on a refusal, since no retry makes another cluster the one that the scripts created.
+export class TargetRefusal extends Error {}
+
 // The checks of a target before any request: the kubeconfig of the scripts holds one context, whose API
 // server is on a loopback address, published there by the node that the scripts recorded when they created
 // the cluster.
 function checkTarget(target: Tier, facts: TargetFacts): void {
-  assertKindNode(facts.node, {
-    name: target.name,
-    server: localApiServer(facts.config, target.context),
-    nodeId: recordedNode(target),
-    dockerSocket: target.dockerSocket,
-  });
+  try {
+    assertKindNode(facts.node, {
+      name: target.name,
+      server: localApiServer(facts.config, target.context),
+      nodeId: recordedNode(target),
+      dockerSocket: target.dockerSocket,
+    });
+  } catch (error) {
+    throw new TargetRefusal(message(error));
+  }
 }
 
 function verifyTarget(target: Tier): void {
-  ensure(existsSync(target.kubeconfig), `The state folder has no kubeconfig of ${target.name}: take it down`);
+  if (!existsSync(target.kubeconfig)) {
+    throw new TargetRefusal(`The state folder has no kubeconfig of ${target.name}: take it down`);
+  }
   checkTarget(target, targetFacts(target));
 }
 
@@ -1141,12 +1151,14 @@ export interface RealProjectSession {
   close(): void;
 }
 
-// Opens the cluster of the real project for a test, as a command of the scripts opens it: the local Docker first,
-// then the state folder under the lock of the run, a real project with the providers of the pins and no other, and
-// the files of the pins it uses, checked. It fails, holding nothing, when any of them is not so.
+// Opens the cluster of the real project for a test, as a command of the scripts opens it: the private umask, the
+// local Docker, then the state folder under the lock of the run; and as a capture goes on, since a test makes workload
+// clusters too: the tools, the limits of inotify, a real project with the providers of the pins and no other, and the
+// files of the pins it uses, checked. It fails, holding nothing, when any of them is not so.
 export async function openRealProject(): Promise<RealProjectSession> {
-  const { pins } = readPins(ROOT);
+  const { pins, workflow } = readPins(ROOT);
 
+  process.umask(0o077);
   localDocker();
   preparePrivateFolder(STATE, ROOT);
 
@@ -1155,6 +1167,8 @@ export async function openRealProject(): Promise<RealProjectSession> {
   const release = takeLock(STATE, process.pid, alive);
 
   try {
+    preflight(workflow, pins.managementKubernetes.version, REAL_PROJECT_NEEDS);
+    raiseInotifyLimits();
     verifyTarget(MANAGEMENT);
 
     const { missing, other } = providersAgainstPins(installedProviders(), pins.clusterApi.version);

@@ -9,17 +9,25 @@
 //    namespace applies, with one control plane Machine of its own;
 // 3. a Cluster with a control plane reference only, to a KubeadmControlPlane of one replica.
 //
-// It reads the namespace every five seconds until case 2 settles and the watch of s7-expectations.ts ends, then
-// checks every reading against what the trial by hand saw. Outside CI it skips with a warning when the real project
-// is not up; in CI (`CI` set) it fails instead.
+// It reads the namespace every five seconds until case 2 settles and the watch of s7-expectations.ts ends, ten minutes
+// after the creation at most, then checks every reading against what the trial by hand saw. A reading that fails is
+// taken again; a refusal of the checks of the target ends the test at once. Outside CI it skips with a warning when the
+// real project is not up; in CI (`CI` set) it fails instead.
 
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { openRealProject } from "../../e2e/scripts/commands.mts";
+import { openRealProject, TargetRefusal } from "../../e2e/scripts/commands.mts";
 import { S7, s7Clusters, s7ClusterWithNoReference } from "../../e2e/scripts/manifests.mts";
 import { readNamespace } from "../../e2e/scripts/states.mts";
 import { conditionOf } from "../status-views";
-import { expectCase1, expectCase2, expectCase3, SETTLE_SECONDS, WATCH_SECONDS } from "./s7-expectations";
+import {
+  expectCase1,
+  expectCase2,
+  expectCase3,
+  SETTLE_SECONDS,
+  WATCH_SECONDS,
+  watchNamespace,
+} from "./s7-expectations";
 
 import type { RealProjectSession } from "../../e2e/scripts/commands.mts";
 import type { OwnerReference } from "../../e2e/scripts/fixtures.mts";
@@ -118,24 +126,14 @@ function watched(reading: S7Reading): boolean {
   );
 }
 
-// Reads the namespace until the watch is over, or until the time that the trial justifies has passed, when the
-// expectations say what was missing.
-async function watch(session: RealProjectSession, readings: S7Reading[], from: number): Promise<void> {
-  const deadline = from + (SETTLE_SECONDS + WATCH_SECONDS) * SECOND;
-
-  for (;;) {
-    const reading = readTrial(session);
-
-    readings.push(reading);
-    if (watched(reading) || reading.at >= deadline) return;
-    await delay(READ_EVERY);
-  }
-}
-
 describe.skipIf(project === undefined)("S7 on the real project", () => {
   const session = project as RealProjectSession;
   const readings: S7Reading[] = [];
   let refusal = "";
+
+  // The time limits of the hooks bound a run anywhere, a namespace left by a run that was killed included, whose
+  // removal each deletion bounds at five minutes. In CI the step of the workflow has a quarter of an hour in all, and
+  // the step that takes the environment down removes what a step cut by that limit leaves.
 
   beforeAll(
     async () => {
@@ -151,9 +149,20 @@ describe.skipIf(project === undefined)("S7 on the real project", () => {
       const from = Date.now();
 
       session.kubectl(["create", "--filename", "-"], { input: list(s7Clusters(session.kubernetesVersion)) });
-      await watch(session, readings, from);
+      readings.push(
+        ...(await watchNamespace({
+          read: () => readTrial(session),
+          refusal: (error) => error instanceof TargetRefusal,
+          over: watched,
+          deadline: from + SETTLE_SECONDS * SECOND,
+          every: READ_EVERY,
+          now: Date.now,
+          sleep: (milliseconds) => delay(milliseconds),
+          log: (line) => console.warn(line),
+        })),
+      );
     },
-    (SETTLE_SECONDS + WATCH_SECONDS + 7 * 60) * SECOND,
+    (SETTLE_SECONDS + 7 * 60) * SECOND,
   );
 
   afterAll(
