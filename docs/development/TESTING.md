@@ -32,9 +32,9 @@ SPEC-0003 those of the trial of S7 ("Tests", "With the real project: S7"). The
 status model is read on the fixtures by `src/common/status/fixtures.test.ts`
 (SPEC-0003, "Tests"). `pnpm test:integration` runs the integration tests,
 described in `AGENTS.md`: the session of the template, which installs the
-extension, and the session of the fixtures ("Continuous integration").
-`pnpm test:real-project` runs the tests of the real tier ("Tests of the real
-tier").
+extension, the session of the fixtures, and the session of the list of Clusters
+of SPEC-0004 ("Continuous integration"). `pnpm test:real-project` runs the
+tests of the real tier ("Tests of the real tier").
 
 ## The test environment
 
@@ -341,13 +341,20 @@ was killed left them.
 
 - `integration-tests.yaml`, on every pull request and push to `main`: the kind
   cluster of its sessions is the cluster of the definitions, which the workflow
-  creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
-  fixtures of `healthy`, before it starts Freelens dev with a profile that syncs
-  the kubeconfig of the scripts alone. The session of the fixtures,
-  `integration/__tests__/fixtures.tests.ts`, opens that cluster and checks that
-  the host imports the extension in the frame of the cluster with no error in
-  either process, and that it lists every object of the set, in the list of
-  its kind, by the cell of its name; `TEST_FIXTURE_STATE` names another state.
+  creates with `pnpm e2e:cluster:up:definitions` before it starts Freelens dev
+  with a profile that syncs the kubeconfig of the scripts alone, and to which
+  it applies the fixtures of every state, `pnpm e2e:fixtures:up all`, each in
+  the namespace of its state, once Freelens dev answers, as its last step
+  before the tests: the session of the list of Clusters checks the marks that
+  the fixtures give within 25 minutes of their apply (SPEC-0004, P33, "Notes
+  and deviations"). The session of the
+  fixtures, `integration/__tests__/fixtures.tests.ts`, opens that cluster and
+  checks that the host imports the extension in the frame of the cluster with
+  no error in either process, and that it lists every object of the set of
+  `healthy`, in the list of its kind, by the cell of its name;
+  `TEST_FIXTURE_STATE` names another state. The session of the list of
+  Clusters, `integration/__tests__/clusters.tests.ts`, reads the fixtures of
+  every state at once in the page of the extension (`AGENTS.md`).
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in
