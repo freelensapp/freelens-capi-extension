@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EXPECTED_TREES, outlineRows, TREE_CLUSTERS } from "../../../integration/__tests__/tree-expectations";
 import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { resolved, treeKeyOf, treeOutline, treeSourceOf } from "../../../test/tree-sources";
 import { statusOf } from "../status/index";
 import { buildTree, evaluateTree, indexTree, kindWords, TreeBuilds, unreadWords } from "./cluster-tree";
 import { clusterContextOf, StatusMemo } from "./context";
+import * as references from "./references";
 
 import type { OutlineRow } from "../../../integration/__tests__/tree-expectations";
 import type { TreeSourceOptions } from "../../../test/tree-sources";
@@ -55,7 +56,7 @@ function treeOf(
   options: TreeSourceOptions = {},
   namespace = name,
 ): ClusterTree {
-  const source = treeSourceOf(objects, options);
+  const source = treeSourceOf(objects, { cluster: { namespace, name }, ...options });
   const outcome = buildTree(indexTree(source.clusters, source.objects), namespace, name);
 
   if (outcome.state !== "found") throw new Error(`No tree of ${namespace}/${name}: ${outcome.state}`);
@@ -122,6 +123,34 @@ describe("the tree of the Cluster of each state (P7, P8)", () => {
       }
     },
   );
+
+  it("places what each object names by what followedReferencesOf says that it names, the function that the reads follow too (P8)", () => {
+    const source = treeSourceOf(setOf("healthy"));
+    const index = indexTree(source.clusters, source.objects);
+    const said = vi.spyOn(references, "followedReferencesOf");
+
+    try {
+      buildTree(index, HEALTHY, HEALTHY);
+
+      const asked = new Set(
+        said.mock.calls.map(([object]) => `${String(object.kind)} ${String(object.metadata?.name)}`),
+      );
+
+      expect([...asked].sort()).toEqual(
+        [
+          "Cluster freelens-capi-healthy",
+          "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+          "Machine freelens-capi-healthy-d2lgq-zqlcx",
+          "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+          "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+          "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+          "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+        ].sort(),
+      );
+    } finally {
+      said.mockRestore();
+    }
+  });
 });
 
 describe("a template (P7)", () => {
@@ -836,6 +865,64 @@ describe("a node that cannot be read (P12)", () => {
 
     expect(node.form).toBe("reference");
     expect(node.read.state === "pending" ? "pending" : unreadWords(node.read)).toBe(words);
+  });
+
+  it("says Not read of a kind that the reads never tried, never that the cluster serves no such kind", () => {
+    // The reads of healthy as if they had not followed the references to the DevMachineTemplates.
+    const source = treeSourceOf(setOf("healthy"));
+    const tree = source.objects.tree;
+
+    if (tree === undefined) throw new Error("No kinds of the tree");
+
+    const providers = new Map(tree.providers);
+
+    providers.delete("infrastructure.cluster.x-k8s.io/DevMachineTemplate");
+
+    const outcome = buildTree(
+      indexTree(source.clusters, { ...source.objects, tree: { ...tree, providers } }),
+      HEALTHY,
+      HEALTHY,
+    );
+    const node = nodeOf<ReferenceNode>(
+      (outcome as { tree: ClusterTree }).tree,
+      "infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-rclml",
+    );
+
+    expect(text(node)).toBe("DevMachineTemplate freelens-capi-healthy-rclml (template) [not read]");
+    expect(node.read.state === "pending" ? "pending" : unreadWords(node.read)).toBe(
+      "Not read. The tree has not read its kind.",
+    );
+  });
+
+  it("says of the template of a control plane that the Cluster does not name what the read of its kind says, since the reads follow it", () => {
+    const objects = setOf("without-topology");
+    const name = "freelens-capi-without-topology";
+    const id = `infrastructure.cluster.x-k8s.io/OtherMachineTemplate/${name}-control-plane`;
+
+    delete named(objects, "Cluster").spec.controlPlaneRef;
+    named(objects, "KubeadmControlPlane").spec.machineTemplate.spec.infrastructureRef.kind = "OtherMachineTemplate";
+
+    const read = nodeOf<ReferenceNode>(treeOf(objects, name), id);
+    const notServed = nodeOf<ReferenceNode>(
+      treeOf(objects, name, {
+        resolutions: {
+          "infrastructure.cluster.x-k8s.io/OtherMachineTemplate": {
+            state: "unresolved",
+            reference: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "OtherMachineTemplate", name: "" },
+            reason: "not-served",
+            failure: undefined,
+          },
+        },
+      }),
+      id,
+    );
+
+    expect(read.read.state === "pending" ? "pending" : unreadWords(read.read)).toBe(
+      "No such object is in the namespace of the Cluster.",
+    );
+    expect(notServed.read.state === "pending" ? "pending" : unreadWords(notServed.read)).toBe(
+      "Not read. This cluster serves no such kind.",
+    );
   });
 
   it("says the reason alone for an object that its namespace, which was read, does not hold", () => {

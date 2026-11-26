@@ -23,11 +23,12 @@
 //
 // The kinds of a view are its parameter (SPEC-0005, P6): the details of a Cluster and the panel in the details of the
 // host read the kinds of SPEC-0004, and follow the references of their Cluster alone; the tree reads more kinds,
-// follows every reference that it places an object by, and reads the ClusterClasses in the namespace that the class
-// reference of its Cluster names, and no other, once the Cluster is read. When that is another namespace than that of
-// the Cluster, the filter of the reads holds both, and every other store keeps the namespace of the Cluster alone; when
-// the reference names another namespace, the store of ClusterClasses stops, the view forgets it, and a new one reads
-// the namespace now named.
+// follows every reference that it places an object by, through the two functions of `references.ts` that the tree
+// uses too, which say which objects of the Cluster it follows and what each of them names, and reads the
+// ClusterClasses in the namespace that the class reference of its Cluster names, and no other, once the Cluster is
+// read. When that is another namespace than that of the Cluster, the filter of the reads holds both, and every other
+// store keeps the namespace of the Cluster alone; when the reference names another namespace, the store of
+// ClusterClasses stops, the view forgets it, and a new one reads the namespace now named.
 //
 // The stores are built in the effect, once for each API and namespace, so that the second run of an effect that
 // Freelens dev renders in `React.StrictMode` builds nothing more, and a view that never mounts builds nothing. Each
@@ -51,10 +52,9 @@ import { failureOf, firstLoadsEnded, NO_READS, reduceReads } from "../../common/
 import {
   classReferenceOf,
   contractReferenceOf,
-  controlPlaneTemplateOf,
-  machineReferencesOf,
+  followedObjectsOf,
+  followedReferencesOf,
   resolveReference,
-  templateReferencesOf,
 } from "../../common/views/references";
 import { Cluster, ClusterStore } from "../api/cluster/cluster-v1beta2";
 import {
@@ -90,7 +90,6 @@ import { storeKey } from "./page-reads";
 import { ProviderObjectStore } from "./provider-object-store";
 import { StoreAdapter } from "./store-adapter";
 
-import type { ContractVersion } from "../../common/parsers/contract-label";
 import type { ClusterObject, KubeObjectData } from "../../common/status/index";
 import type { ContextIndex, ContextObjects, KindObjects, ProviderKindObjects } from "../../common/views/context";
 import type { KindDescriptor, KindFeeds, ReadEvent, ReadsState } from "../../common/views/read-state";
@@ -411,43 +410,36 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
     );
   }
 
-  // The objects of the Cluster of the view of a kind of a model, by the name that their spec gives their Cluster.
-  #ofCluster(kind: ModelKind): KubeObjectData[] {
-    return (this.#modelObjects(kind).items as readonly KubeObjectData[]).filter(
-      (object) => (object.spec as { clusterName?: unknown } | undefined)?.clusterName === this.name,
-    );
-  }
-
-  // The references that the tree follows beside those of its Cluster (SPEC-0005, P6): those of its Machines, the
-  // templates of its MachineDeployments, MachineSets and MachinePools, the bootstrap config and the infrastructure
-  // machine pool of a MachinePool, and the template of the Machines of its control plane, at the version of the
-  // contract of its definition; none for a view that follows those of its Cluster alone.
+  // The references that the tree follows beside those of its Cluster (SPEC-0005, P6), those by which it places what
+  // they name: of the Machines, the MachineDeployments, the MachineSets and the MachinePools of its Cluster, and of its
+  // control planes, the KubeadmControlPlanes at `v1beta2` with no definition and the objects of the kind of a provider
+  // that the Cluster names as its control plane once its definition resolves (`followedObjectsOf`), each by what
+  // `followedReferencesOf` says that it names; none for a view that follows those of its Cluster alone.
   #treeReferences(): FollowedReference[] {
-    if (this.viewKinds.references !== "tree") return [];
+    const cluster = this.#own();
+
+    if (this.viewKinds.references !== "tree" || cluster === undefined) return [];
 
     const { models } = this.viewKinds;
-    const controlPlane = this.#controlPlane();
+    const itemsOf = (kind: ModelKind) => this.#modelObjects(kind).items as readonly KubeObjectData[];
+    const [controlPlane] = this.#providers("controlPlaneRef");
+    const resolution = controlPlane?.resolution;
+    const ofProvider =
+      controlPlane === undefined || resolution?.state !== "resolved" || this.#isModel(controlPlane.reference)
+        ? undefined
+        : {
+            objects: this.#objectsOf(controlPlane.api, this.namespace).items as readonly KubeObjectData[],
+            contract: resolution.contract,
+          };
 
-    return [
-      ...this.#ofCluster(models.machines).flatMap(machineReferencesOf),
-      ...[models.machineDeployments, models.machineSets, models.machinePools].flatMap((kind) =>
-        this.#ofCluster(kind).flatMap(templateReferencesOf),
-      ),
-      ...(controlPlane === undefined ? [] : controlPlaneTemplateOf(controlPlane.object, controlPlane.contract)),
-    ];
-  }
-
-  // The control plane that the Cluster of the view names, once it is read, with the contract of its definition.
-  #controlPlane(): { readonly object: KubeObjectData; readonly contract: ContractVersion } | undefined {
-    const [read] = this.#providers("controlPlaneRef");
-
-    if (read === undefined || read.resolution.state !== "resolved") return undefined;
-
-    const object = this.#objectsOf(read.api, this.namespace).items.find(
-      (item: KubeObjectData) => item.metadata?.name === read.reference.name,
-    ) as KubeObjectData | undefined;
-
-    return object === undefined ? undefined : { object, contract: read.resolution.contract };
+    return followedObjectsOf(cluster, {
+      machines: itemsOf(models.machines),
+      machineDeployments: itemsOf(models.machineDeployments),
+      machineSets: itemsOf(models.machineSets),
+      machinePools: itemsOf(models.machinePools),
+      kubeadmControlPlanes: itemsOf(models.kubeadmControlPlanes),
+      ...(ofProvider === undefined ? {} : { controlPlanes: ofProvider }),
+    }).flatMap(({ object, controlPlane: contract }) => followedReferencesOf(object, contract));
   }
 
   // The kinds of a provider that the references of the tree name, each once, but those that a model of the view reads.

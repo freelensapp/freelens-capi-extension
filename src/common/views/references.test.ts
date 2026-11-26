@@ -2,16 +2,18 @@ import { describe, expect, it } from "vitest";
 import { fixtureSet } from "../../../test/fixture-sets";
 import {
   classReferenceOf,
+  clusterNamesOf,
   clusterReferencesOf,
   contractReferenceOf,
   controlPlaneTemplateOf,
   definitionOf,
   findDefinition,
+  followedObjectsOf,
+  followedReferencesOf,
   isClusterApiKind,
   isTemplateKind,
   machineReferencesOf,
   objectReferenceOf,
-  referencesOf,
   resolveReference,
   targetReadOf,
   templateReferencesOf,
@@ -284,7 +286,7 @@ describe("the references that the tree follows (SPEC-0005, P6, P7, P8)", () => {
     objects.find(
       (object) => object.kind === kind && (name === undefined || (object.metadata as { name: string }).name === name),
     ) as KubeObjectData;
-  const summary = (entries: ReturnType<typeof referencesOf>) =>
+  const summary = (entries: ReturnType<typeof followedReferencesOf>) =>
     entries.map(
       ({ reference, field, role }) => `${field} ${role} ${reference.apiGroup}/${reference.kind}/${reference.name}`,
     );
@@ -358,7 +360,32 @@ describe("the references that the tree follows (SPEC-0005, P6, P7, P8)", () => {
       "spec.machineTemplate.infrastructureRef template infrastructure.cluster.x-k8s.io/DevMachineTemplate/old-contract",
     ]);
     expect(controlPlaneTemplateOf(v1beta1, "v1beta2")).toEqual([]);
-    expect(referencesOf(v1beta1, { contract: "v1beta1" })).toHaveLength(1);
+    expect(followedReferencesOf(v1beta1, { contract: "v1beta1" })).toHaveLength(1);
+  });
+
+  it("are said for each object by one function: of a Cluster, a Machine, a MachineDeployment, a MachineSet and a MachinePool by their kinds, and of a KubeadmControlPlane at v1beta2 with no definition", () => {
+    for (const [objects, kind] of [
+      [healthy, "Cluster"],
+      [healthy, "Machine"],
+      [healthy, "MachineDeployment"],
+      [healthy, "MachineSet"],
+      [pools, "MachinePool"],
+    ] as const) {
+      const object = named(objects, kind);
+      const expected = {
+        Cluster: clusterReferencesOf,
+        Machine: machineReferencesOf,
+        MachineDeployment: templateReferencesOf,
+        MachineSet: templateReferencesOf,
+        MachinePool: templateReferencesOf,
+      }[kind](object);
+
+      expect(expected.length, kind).toBeGreaterThan(0);
+      expect(followedReferencesOf(object), kind).toEqual(expected);
+    }
+    expect(summary(followedReferencesOf(named(healthy, "KubeadmControlPlane")))).toEqual([
+      "spec.machineTemplate.spec.infrastructureRef template infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-rclml",
+    ]);
   });
 
   it("give the group of an object reference of v1beta1, and never its version", () => {
@@ -397,12 +424,131 @@ describe("the references that the tree follows (SPEC-0005, P6, P7, P8)", () => {
       named(healthy, "ClusterClass"),
       named(noStatus, "MachineDrainRule"),
     ]) {
-      expect(referencesOf(object), String(object.kind)).toEqual([]);
+      expect(followedReferencesOf(object), String(object.kind)).toEqual([]);
     }
     // The Node of a Machine is no reference that the tree follows.
-    expect(summary(referencesOf(named(healthy, "Machine"))).map((line) => line.split(" ")[0])).toEqual([
+    expect(summary(followedReferencesOf(named(healthy, "Machine"))).map((line) => line.split(" ")[0])).toEqual([
       "spec.infrastructureRef",
       "spec.bootstrap.configRef",
     ]);
+  });
+});
+
+describe("the objects of a Cluster that the reads of its tree follow (SPEC-0005, P6, P7)", () => {
+  const HEALTHY = "freelens-capi-healthy";
+
+  type Writable = KubeObjectData & {
+    metadata: { name: string; namespace?: string; labels?: Record<string, string> };
+    spec: { clusterName?: string; controlPlaneRef?: unknown };
+  };
+
+  function healthy(): Writable[] {
+    return structuredClone(fixtureSet("healthy")) as unknown as Writable[];
+  }
+
+  function of(objects: readonly Writable[], kind: string): Writable[] {
+    return objects.filter((object) => object.kind === kind);
+  }
+
+  function sources(objects: readonly Writable[]) {
+    return {
+      machines: of(objects, "Machine"),
+      machineDeployments: of(objects, "MachineDeployment"),
+      machineSets: of(objects, "MachineSet"),
+      machinePools: of(objects, "MachinePool"),
+      kubeadmControlPlanes: of(objects, "KubeadmControlPlane"),
+    };
+  }
+
+  function followed(cluster: KubeObjectData, given: Parameters<typeof followedObjectsOf>[1]): string[] {
+    return followedObjectsOf(cluster, given).map(
+      ({ object, controlPlane }) =>
+        `${String(object.kind)} ${(object.metadata as { name: string }).name}${controlPlane === undefined ? "" : ` at ${controlPlane.contract}`}`,
+    );
+  }
+
+  it("give the names of the Clusters of an object by its label and by spec.clusterName", () => {
+    const [machine] = of(healthy(), "Machine");
+
+    expect(clusterNamesOf(machine)).toEqual([HEALTHY]);
+    machine.metadata.labels = { "cluster.x-k8s.io/cluster-name": "other" };
+    expect(clusterNamesOf(machine)).toEqual(["other", HEALTHY]);
+    machine.spec.clusterName = "";
+    expect(clusterNamesOf(machine)).toEqual(["other"]);
+  });
+
+  it("are the Machines, the MachineDeployments and the MachineSets of the Cluster, and the KubeadmControlPlane that it names at v1beta2", () => {
+    const objects = healthy();
+    const [cluster] = of(objects, "Cluster");
+
+    expect(followed(cluster, sources(objects)).sort()).toEqual(
+      [
+        "KubeadmControlPlane freelens-capi-healthy-d2lgq at v1beta2",
+        "Machine freelens-capi-healthy-d2lgq-zqlcx",
+        "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+        "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+        "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+        "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      ].sort(),
+    );
+  });
+
+  it("leave out an object of another Cluster of the namespace, and keep one that names the Cluster by its label or its spec.clusterName alone", () => {
+    const objects = healthy();
+    const [cluster] = of(objects, "Cluster");
+    const [first, second, third] = of(objects, "Machine");
+
+    first.metadata.labels = {};
+    second.spec.clusterName = "other";
+    third.metadata.labels = { "cluster.x-k8s.io/cluster-name": "other" };
+    third.spec.clusterName = "other";
+
+    const machines = followed(cluster, sources(objects)).filter((line) => line.startsWith("Machine "));
+
+    expect(machines).toEqual([`Machine ${first.metadata.name}`, `Machine ${second.metadata.name}`]);
+  });
+
+  it("are every control plane of the Cluster: one that it does not name but labels, and none of another Cluster", () => {
+    const objects = healthy();
+    const [cluster] = of(objects, "Cluster");
+    const [controlPlane] = of(objects, "KubeadmControlPlane");
+    const labelled = structuredClone(controlPlane);
+    const foreign = structuredClone(controlPlane);
+
+    delete cluster.spec.controlPlaneRef;
+    labelled.metadata.name = "labelled";
+    foreign.metadata.name = "foreign";
+    foreign.metadata.labels = { "cluster.x-k8s.io/cluster-name": "other" };
+
+    const lines = followed(cluster, sources([...objects, labelled, foreign])).filter((line) =>
+      line.startsWith("KubeadmControlPlane "),
+    );
+
+    expect(lines).toEqual([
+      `KubeadmControlPlane ${controlPlane.metadata.name} at v1beta2`,
+      "KubeadmControlPlane labelled at v1beta2",
+    ]);
+  });
+
+  it("are a control plane of a provider that the Cluster names, with no label, at the contract of its definition", () => {
+    const objects = healthy();
+    const [cluster] = of(objects, "Cluster");
+    const provider = {
+      apiVersion: "controlplane.example.test/v1beta1",
+      kind: "ExampleControlPlane",
+      metadata: { name: "example", namespace: HEALTHY },
+      spec: {},
+    } as unknown as Writable;
+    const other = { ...provider, metadata: { name: "other", namespace: HEALTHY } } as unknown as Writable;
+
+    cluster.spec.controlPlaneRef = {
+      apiGroup: "controlplane.example.test",
+      kind: "ExampleControlPlane",
+      name: "example",
+    };
+
+    expect(
+      followed(cluster, { ...sources([]), controlPlanes: { objects: [provider, other], contract: "v1beta1" } }),
+    ).toEqual(["ExampleControlPlane example at v1beta1"]);
   });
 });

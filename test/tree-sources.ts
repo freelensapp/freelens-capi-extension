@@ -6,13 +6,7 @@
 // one.
 
 import { NO_READS, reduceReads } from "../src/common/views/read-state";
-import {
-  clusterReferencesOf,
-  controlPlaneTemplateOf,
-  isClusterApiKind,
-  machineReferencesOf,
-  templateReferencesOf,
-} from "../src/common/views/references";
+import { followedObjectsOf, followedReferencesOf, isClusterApiKind } from "../src/common/views/references";
 import { ROLE_WORDS } from "../src/common/views/words";
 import { CAPTURE } from "./fixture-sets";
 
@@ -90,17 +84,32 @@ export interface TreeSourceOptions {
   readonly notServed?: readonly string[];
   // The namespace in which the reads of the tree read the ClusterClasses, that of the Cluster by default.
   readonly classNamespace?: string;
+  // The Cluster of the tree, whose references the reads follow, as the read of one Cluster does: by default the one
+  // Cluster of the set.
+  readonly cluster?: { readonly namespace: string; readonly name: string };
 }
 
-// The kinds of a provider that the references of a set name: those of the Clusters, and those that the tree follows
-// beside them, of the Machines, of the MachineDeployments, the MachineSets and the MachinePools, and of the control
-// planes that the Clusters name, at the contract that their resolution gives. An object of a kind that the reads do not
-// give, still loading or refused, names nothing, as in the reads of the tree.
+// The Cluster of the tree: the one that the options name, else the one Cluster of the set.
+function clusterOf(objects: readonly KubeObjectData[], options: TreeSourceOptions): KubeObjectData | undefined {
+  const clusters = objects.filter((object) => kindOf(object) === "cluster.x-k8s.io/Cluster");
+  const named = options.cluster;
+
+  if (named !== undefined) {
+    return clusters.find((each) => each.metadata.namespace === named.namespace && each.metadata.name === named.name);
+  }
+  if (clusters.length > 1) throw new Error("The set holds more than one Cluster: name the Cluster of the tree");
+  return clusters[0];
+}
+
+// The kinds of a provider that the references of the Cluster of the tree name, and those that the reads of its tree
+// follow beside them, through the functions of the read: the objects that `followedObjectsOf` gives, each by what
+// `followedReferencesOf` says that it names, the control plane of a provider at the contract that its resolution
+// gives. An object of a kind that the reads do not give, still loading or refused, names nothing, as in the reads of
+// the tree.
 function providerKinds(
   given: readonly KubeObjectData[],
   options: TreeSourceOptions,
 ): { readonly cluster: Set<string>; readonly tree: Set<string> } {
-  const { resolutions } = options;
   const objects = given.filter(
     (object) =>
       !(options.pending ?? []).includes(kindOf(object)) && (options.failures?.[kindOf(object)] ?? []).length === 0,
@@ -112,28 +121,32 @@ function providerKinds(
       if (!isClusterApiKind(reference.apiGroup, reference.kind)) into.add(`${reference.apiGroup}/${reference.kind}`);
     }
   };
+  const own = clusterOf(objects, options);
 
-  for (const object of objects) {
-    if (object.kind === "Cluster") {
-      add(cluster, clusterReferencesOf(object));
+  if (own === undefined) return { cluster, tree };
 
-      const controlPlane = clusterReferencesOf(object).find((entry) => entry.role === "control-plane");
+  const references = followedReferencesOf(own);
+  const controlPlane = references.find((entry) => entry.role === "control-plane")?.reference;
+  const id = controlPlane === undefined ? undefined : `${controlPlane.apiGroup}/${controlPlane.kind}`;
+  const resolution = id === undefined ? undefined : (options.resolutions?.[id] ?? resolved(id));
+  const ofKind = (kind: string) => objects.filter((object) => kindOf(object) === kind);
 
-      if (controlPlane === undefined) continue;
-
-      const id = `${controlPlane.reference.apiGroup}/${controlPlane.reference.kind}`;
-      const resolution = resolutions?.[id];
-      const contract = resolution?.state === "resolved" ? resolution.contract : "v1beta2";
-
-      for (const each of objects.filter((candidate) => kindOf(candidate) === id)) {
-        add(tree, controlPlaneTemplateOf(each, contract));
-      }
-    } else if (object.kind === "Machine") {
-      add(tree, machineReferencesOf(object));
-    } else if (["MachineDeployment", "MachineSet", "MachinePool"].includes(object.kind)) {
-      add(tree, templateReferencesOf(object));
-    }
-  }
+  add(cluster, references);
+  add(
+    tree,
+    followedObjectsOf(own, {
+      machines: ofKind("cluster.x-k8s.io/Machine"),
+      machineDeployments: ofKind("cluster.x-k8s.io/MachineDeployment"),
+      machineSets: ofKind("cluster.x-k8s.io/MachineSet"),
+      machinePools: ofKind("cluster.x-k8s.io/MachinePool"),
+      kubeadmControlPlanes: ofKind("controlplane.cluster.x-k8s.io/KubeadmControlPlane"),
+      ...(id === undefined || controlPlane === undefined || isClusterApiKind(controlPlane.apiGroup, controlPlane.kind)
+        ? {}
+        : resolution?.state === "resolved"
+          ? { controlPlanes: { objects: ofKind(id), contract: resolution.contract } }
+          : {}),
+    }).flatMap(({ object, controlPlane: contract }) => followedReferencesOf(object, contract)),
+  );
   return { cluster, tree };
 }
 
@@ -187,16 +200,13 @@ export function treeSourceOf(objects: readonly KubeObjectData[], options: TreeSo
 
     return [kind, { ...(unread ? { key: undefined, items: [] } : of(kind)), resolution }];
   };
+  // The kinds that the references of the Cluster of the tree name, as the read of one Cluster reads them.
+  const own = clusterOf(objects, options);
   const clusterKinds = (role: "infrastructure-cluster" | "control-plane") =>
     new Map(
-      [
-        ...new Set(
-          objects
-            .filter((object) => object.kind === "Cluster")
-            .flatMap((cluster) => clusterReferencesOf(cluster).filter((entry) => entry.role === role))
-            .map(({ reference }) => `${reference.apiGroup}/${reference.kind}`),
-        ),
-      ].map(provider),
+      (own === undefined ? [] : followedReferencesOf(own))
+        .filter((entry) => entry.role === role)
+        .map(({ reference }) => provider(`${reference.apiGroup}/${reference.kind}`)),
     );
 
   return {

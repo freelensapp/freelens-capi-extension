@@ -70,7 +70,7 @@ function viewOf(
   options: TreeSourceOptions = {},
   namespace = name,
 ): View {
-  const source = treeSourceOf(objects, options);
+  const source = treeSourceOf(objects, { cluster: { namespace, name }, ...options });
   const index = indexTree(source.clusters, source.objects);
   const outcome = buildTree(index, namespace, name);
 

@@ -47,14 +47,13 @@ import { selectorSelects } from "./label-selector";
 import { fieldsOf, labelOf, listOf, nameOf, namespaceOf, ownersOf, textOf, versionOf } from "./objects";
 import { namespaceRead } from "./read-state";
 import {
+  CLUSTER_NAME_LABEL,
   classReferenceOf,
-  clusterReferencesOf,
+  clusterNamesOf,
   contractReferenceOf,
-  controlPlaneTemplateOf,
+  followedReferencesOf,
   isClusterApiKind,
   isTemplateKind,
-  machineReferencesOf,
-  templateReferencesOf,
 } from "./references";
 
 import type { ContractVersion } from "../parsers/contract-label";
@@ -79,7 +78,6 @@ import type {
 } from "./references";
 
 const CORE = "cluster.x-k8s.io";
-const CLUSTER_NAME_LABEL = "cluster.x-k8s.io/cluster-name";
 const CONTROL_PLANE_LABEL = "cluster.x-k8s.io/control-plane";
 
 // The rows of P7, which order the nodes under one node (P14).
@@ -143,12 +141,16 @@ export interface OwnerName {
   readonly name: string;
 }
 
+// Why the tree cannot read an object or a kind (P12): a reason of SPEC-0004, or a kind that the reads never tried,
+// which no object that they follow names, and which is not read, never "not served", which the definitions alone say.
+export type TreeUnreadReason = UnreadReason | "kind-not-tried";
+
 // Why an object of a kind that the tree reads, or a kind, could not be read (P12): the reason in the words of
 // SPEC-0004, the failures of each answer, and the namespace whose read the reason names, that of the Cluster or that of
 // its class.
 export interface Unread {
   readonly state: "not-read" | "not-found";
-  readonly reason: UnreadReason;
+  readonly reason: TreeUnreadReason;
   readonly failures: readonly ReadFailure[];
   readonly namespace: string;
   readonly classNamespace: boolean;
@@ -471,17 +473,10 @@ function isControlPlaneNode(node: ObjectNode): boolean {
   );
 }
 
-// The names of the Clusters that an object names, by its label or by `spec.clusterName`.
-function clusterNamesOf(object: KubeObjectData): string[] {
-  const label = labelOf(object, CLUSTER_NAME_LABEL);
-  const named = textOf(fieldsOf(object.spec)?.clusterName);
-
-  return [...new Set([label, named].filter((name): name is string => name !== undefined && name !== ""))];
-}
-
 // The references that the tree follows from the objects of the namespaces read, which give the kinds of a provider
 // their roles: those of the Machines, of the MachineDeployments, the MachineSets and the MachinePools, and of the
-// control planes that the Clusters name.
+// control planes, the KubeadmControlPlanes and the objects of the kinds of a provider that the Clusters name as their
+// control planes, by what `followedReferencesOf` says that each names.
 function rolesOf(objects: ContextObjects): Map<string, ReferenceRole[]> {
   const { reads } = objects;
   const roles = new Map<string, ReferenceRole[]>();
@@ -493,18 +488,21 @@ function rolesOf(objects: ContextObjects): Map<string, ReferenceRole[]> {
     }
   };
 
-  for (const machine of readItems(reads, objects.machines)) add(machineReferencesOf(machine));
-  for (const owner of [objects.machineDeployments, objects.machineSets, objects.machinePools].flatMap((kind) =>
-    readItems(reads, kind),
-  )) {
-    add(templateReferencesOf(owner));
+  for (const object of [
+    objects.machines,
+    objects.machineDeployments,
+    objects.machineSets,
+    objects.machinePools,
+    objects.tree?.kubeadmControlPlanes,
+  ].flatMap((kind) => readItems(reads, kind))) {
+    add(followedReferencesOf(object));
   }
   for (const [id, kind] of objects.controlPlanes) {
     if (kind.resolution.state !== "resolved") continue;
 
     const contract = kind.resolution.contract;
 
-    for (const controlPlane of readItems(reads, kind)) add(controlPlaneTemplateOf(controlPlane, contract));
+    for (const controlPlane of readItems(reads, kind)) add(followedReferencesOf(controlPlane, { contract }));
     if (!(roles.get(id) ?? []).includes("control-plane")) push(roles, id, "control-plane");
   }
   for (const id of objects.infrastructures?.keys() ?? []) {
@@ -587,10 +585,12 @@ export function indexTree(
 type KindRead =
   | { readonly state: "read" }
   | { readonly state: "pending" }
-  | { readonly state: "unread"; readonly reason: UnreadReason; readonly failures: readonly ReadFailure[] };
+  | { readonly state: "unread"; readonly reason: TreeUnreadReason; readonly failures: readonly ReadFailure[] };
 
+// A kind that the index does not hold is one that the reads never tried: not read, never not served, which only its
+// definition, or the absence of the API that the host registers from it, says (P12).
 function kindReadOf(index: TreeIndex, kind: TreeKind | undefined, namespace: string): KindRead {
-  if (kind === undefined) return { state: "unread", reason: "not-served", failures: [] };
+  if (kind === undefined) return { state: "unread", reason: "kind-not-tried", failures: [] };
 
   const { resolution } = kind;
 
@@ -840,7 +840,7 @@ class Placer {
 
   // The infrastructure cluster and the control plane, by the references of the Cluster (P7).
   placeClusterReferences(): void {
-    for (const { reference, role, field } of clusterReferencesOf(this.#cluster)) {
+    for (const { reference, role, field } of followedReferencesOf(this.#cluster)) {
       const draft = this.#placeReference(
         reference,
         role,
@@ -964,14 +964,12 @@ class Placer {
       const { node } = draft;
 
       if (node.form !== "object" || node.group !== CORE) continue;
-      if (node.kind === "Machine") {
-        for (const { reference, role, field } of machineReferencesOf(node.object)) {
-          if (this.#placeOnce(reference, role, draft, ROW.machineReference, field)) placed = true;
-        }
-      } else if (node.kind === "MachinePool") {
-        for (const { reference, role, field } of templateReferencesOf(node.object)) {
-          if (role !== "template") if (this.#placeOnce(reference, role, draft, ROW.poolReference, field)) placed = true;
-        }
+      if (node.kind !== "Machine" && node.kind !== "MachinePool") continue;
+
+      const row = node.kind === "Machine" ? ROW.machineReference : ROW.poolReference;
+
+      for (const { reference, role, field } of followedReferencesOf(node.object)) {
+        if (role !== "template" && this.#placeOnce(reference, role, draft, row, field)) placed = true;
       }
     }
     return placed;
@@ -1236,13 +1234,9 @@ class Placer {
 
       const { group, kind } = entry.kind;
       const named =
-        group !== CORE
-          ? []
-          : kind === "Machine"
-            ? machineReferencesOf(entry.object)
-            : kind === "MachinePool"
-              ? templateReferencesOf(entry.object).filter((each) => each.role !== "template")
-              : [];
+        group === CORE && (kind === "Machine" || kind === "MachinePool")
+          ? followedReferencesOf(entry.object).filter((each) => each.role !== "template")
+          : [];
 
       for (const { reference } of named) add(find(reference.apiGroup, reference.kind, reference.name), entry);
     }
@@ -1283,17 +1277,19 @@ class Placer {
         ? "v1beta2"
         : node.resolution?.contract;
 
-      if (draft === this.#controlPlane) {
-        namers.push({ draft, rank: 0, entries: controlPlaneTemplateOf(node.object, contract) });
-      } else if (isControlPlaneNode(node)) {
-        namers.push({ draft, rank: 4, entries: controlPlaneTemplateOf(node.object, contract) });
+      if (draft === this.#controlPlane || isControlPlaneNode(node)) {
+        namers.push({
+          draft,
+          rank: draft === this.#controlPlane ? 0 : 4,
+          entries: contract === undefined ? [] : followedReferencesOf(node.object, { contract }),
+        });
       } else if (node.group === CORE && ["MachineDeployment", "MachineSet", "MachinePool"].includes(node.kind)) {
         const rank = ["MachineDeployment", "MachineSet", "MachinePool"].indexOf(node.kind) + 1;
 
         namers.push({
           draft,
           rank,
-          entries: templateReferencesOf(node.object).filter((entry) => entry.role === "template"),
+          entries: followedReferencesOf(node.object).filter((entry) => entry.role === "template"),
         });
       }
     }
@@ -1732,6 +1728,7 @@ function reasonWords(unread: Unread): string {
   if (unread.classNamespace && unread.reason === "not-found") {
     return `No such object is in the namespace ${unread.namespace}, which the class reference of the Cluster names.`;
   }
+  if (unread.reason === "kind-not-tried") return "The tree has not read its kind.";
   return UNREAD_WORDS[unread.reason];
 }
 

@@ -13,9 +13,11 @@
 //
 // The tree of a Cluster follows more references (SPEC-0005, P6, P7): those of its Machines, the templates of its
 // MachineDeployments, MachineSets and MachinePools, the bootstrap config and the infrastructure machine pool of a
-// MachinePool, and the template of the Machines of its control plane, at `v1beta1` an object reference from whose
-// `apiVersion` the tree takes the group alone. It follows no other reference (P8): not the remediation template of a
-// MachineHealthCheck, the pool of an IPAddressClaim, the Node of a Machine, or the templates of a ClusterClass.
+// MachinePool, and the template of the Machines of each of its control planes, at `v1beta1` an object reference from
+// whose `apiVersion` the tree takes the group alone. It follows no other reference (P8): not the remediation template
+// of a MachineHealthCheck, the pool of an IPAddressClaim, the Node of a Machine, or the templates of a ClusterClass.
+// One function, `followedReferencesOf`, says what an object names, for the reads of the tree and for the tree, and
+// `followedObjectsOf` gives the reads the objects of a Cluster by which the tree places what they name.
 
 import { parseContractLabel } from "../parsers/contract-label";
 import { fieldsOf, groupOf, namespaceOf, textOf } from "./objects";
@@ -125,6 +127,7 @@ export function objectReferenceOf(value: unknown): ContractReference | undefined
 // other groups. Any other kind is of a provider, one in those groups included, since the kinds of a provider are known
 // only at run time (SPEC-0001, R1.15).
 const CLUSTER_API_GROUP = "cluster.x-k8s.io";
+const KUBEADM_CONTROL_PLANE_GROUP = "controlplane.cluster.x-k8s.io";
 const CLUSTER_API_KINDS: ReadonlySet<string> = new Set([
   "addons.cluster.x-k8s.io/ClusterResourceSet",
   "addons.cluster.x-k8s.io/ClusterResourceSetBinding",
@@ -262,17 +265,27 @@ export function controlPlaneTemplateOf(
   return entries.filter((entry) => isTemplateKind(entry.reference.kind));
 }
 
-// The references that the tree follows from an object, by its kind, or, for a control plane of a provider, by the role
-// that the reference of its Cluster gives it, with the contract of its definition (SPEC-0005, P6, P7). It follows no
-// other (P8): not the remediation template that a MachineHealthCheck names, the pool of an IPAddressClaim or of an
+// What an object names that the tree of a Cluster follows (SPEC-0005, P6, P7, P8), the one function that says it for
+// the reads of the tree and for the tree itself: of a Cluster, its infrastructure cluster and its control plane; of a
+// Machine, its infrastructure machine and its bootstrap config; of a MachineDeployment, a MachineSet and a MachinePool,
+// the references of the spec of the template of their Machines; of a control plane, the template of its Machines by the
+// field of its contract: a KubeadmControlPlane at `v1beta2`, which needs no definition, and a control plane of a
+// provider, which the reference of its Cluster tells, at the contract that its definition gives. It follows no other
+// (P8): not the remediation template that a MachineHealthCheck names, the pool of an IPAddressClaim or of an
 // IPAddress, the Node of a Machine, nor the templates of a ClusterClass, whose class is one node.
-export function referencesOf(
+export function followedReferencesOf(
   object: KubeObjectData,
-  controlPlane?: { readonly contract: ContractVersion | undefined },
+  controlPlane?: { readonly contract: ContractVersion },
 ): FollowedReference[] {
+  const group = groupOf(textOf(object.apiVersion) ?? "");
+  const kind = textOf(object.kind);
+
   if (controlPlane !== undefined) return controlPlaneTemplateOf(object, controlPlane.contract);
-  if (groupOf(textOf(object.apiVersion) ?? "") !== CLUSTER_API_GROUP) return [];
-  switch (textOf(object.kind)) {
+  if (group === KUBEADM_CONTROL_PLANE_GROUP && kind === "KubeadmControlPlane") {
+    return controlPlaneTemplateOf(object, "v1beta2");
+  }
+  if (group !== CLUSTER_API_GROUP) return [];
+  switch (kind) {
     case "Cluster":
       return clusterReferencesOf(object);
     case "Machine":
@@ -284,6 +297,78 @@ export function referencesOf(
     default:
       return [];
   }
+}
+
+// The label with the name of the Cluster of an object (SPEC-0001, R3.1).
+export const CLUSTER_NAME_LABEL = "cluster.x-k8s.io/cluster-name";
+
+// The names of the Clusters that an object names, by the label of the name of its Cluster or by `spec.clusterName`,
+// which give the objects of a Cluster to its tree (SPEC-0005, P7).
+export function clusterNamesOf(object: KubeObjectData): string[] {
+  const labels = fieldsOf(fieldsOf(object.metadata)?.labels);
+  const label =
+    labels !== undefined && Object.hasOwn(labels, CLUSTER_NAME_LABEL) ? textOf(labels[CLUSTER_NAME_LABEL]) : undefined;
+  const named = textOf(fieldsOf(object.spec)?.clusterName);
+
+  return [...new Set([label, named].filter((name): name is string => name !== undefined && name !== ""))];
+}
+
+// The objects that the reads of the tree of a Cluster read for what they name, by the kind of their store.
+export interface TreeSources {
+  readonly machines: readonly KubeObjectData[];
+  readonly machineDeployments: readonly KubeObjectData[];
+  readonly machineSets: readonly KubeObjectData[];
+  readonly machinePools: readonly KubeObjectData[];
+  readonly kubeadmControlPlanes: readonly KubeObjectData[];
+  // The objects of the kind of a provider that the control plane reference of the Cluster names, with the contract of
+  // its definition, once that resolves.
+  readonly controlPlanes?: { readonly objects: readonly KubeObjectData[]; readonly contract: ContractVersion };
+}
+
+// An object whose references the tree follows, and, for a control plane, the contract by whose field it names the
+// template of its Machines.
+export interface FollowedObject {
+  readonly object: KubeObjectData;
+  readonly controlPlane: { readonly contract: ContractVersion } | undefined;
+}
+
+// The objects of a Cluster whose references the reads of its tree follow, beside the Cluster itself, to learn the
+// kinds of the providers that the tree reads (SPEC-0005, P6), the objects by which the tree places what they name
+// (P7), so that the reads and the tree follow the same references: the Machines, the MachineDeployments, the
+// MachineSets and the MachinePools that their label or their `spec.clusterName` gives the Cluster, in its namespace;
+// and its control planes, the one that its reference names and any other that its label gives it, a
+// KubeadmControlPlane at `v1beta2` with no definition, and an object of the kind of a provider that the Cluster names
+// as its control plane at the contract of its definition, once that resolves.
+export function followedObjectsOf(cluster: KubeObjectData, sources: TreeSources): FollowedObject[] {
+  const namespace = namespaceOf(cluster);
+  const name = textOf(fieldsOf(cluster.metadata)?.name) ?? "";
+  const named = contractReferenceOf(fieldsOf(cluster.spec)?.controlPlaneRef);
+  const ofCluster = (object: KubeObjectData) =>
+    namespaceOf(object) === namespace && clusterNamesOf(object).includes(name);
+  const isControlPlane = (object: KubeObjectData) =>
+    ofCluster(object) ||
+    (named !== undefined &&
+      namespaceOf(object) === namespace &&
+      groupOf(textOf(object.apiVersion) ?? "") === named.apiGroup &&
+      textOf(object.kind) === named.kind &&
+      textOf(fieldsOf(object.metadata)?.name) === named.name);
+  const { controlPlanes } = sources;
+  const ofProvider =
+    controlPlanes === undefined
+      ? []
+      : controlPlanes.objects
+          .filter(isControlPlane)
+          .map((object) => ({ object, controlPlane: { contract: controlPlanes.contract } }));
+
+  return [
+    ...[...sources.machines, ...sources.machineDeployments, ...sources.machineSets, ...sources.machinePools]
+      .filter(ofCluster)
+      .map((object) => ({ object, controlPlane: undefined })),
+    ...sources.kubeadmControlPlanes
+      .filter(isControlPlane)
+      .map((object) => ({ object, controlPlane: { contract: "v1beta2" as const } })),
+    ...ofProvider,
+  ];
 }
 
 // The version and the plural of the kind that a reference names, from the read of its definition.

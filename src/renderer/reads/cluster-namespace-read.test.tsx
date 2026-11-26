@@ -4,7 +4,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { runInAction } from "mobx";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
+import { TREE_CLUSTERS } from "../../../integration/__tests__/tree-expectations";
+import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { Common, host, Renderer } from "../../../test/freelens-extensions";
 import {
   APIS,
@@ -16,6 +17,8 @@ import {
   TREE_APIS,
 } from "../../../test/host-stores";
 import { hostObjects, objectsOfStates, sourceOf } from "../../../test/view-sources";
+import { buildTree, indexTree } from "../../common/views/cluster-tree";
+import * as references from "../../common/views/references";
 import { ClusterStore } from "../api/cluster/cluster-v1beta2";
 import {
   ClusterClassStore,
@@ -41,6 +44,7 @@ import type { Renderer as Sdk } from "@freelensapp/extensions";
 
 import type { KubeObject } from "../../../e2e/scripts/fixtures.mts";
 import type { HostObject } from "../../../test/host-stores";
+import type { ClusterTree, TreeNode } from "../../common/views/cluster-tree";
 import type { Cluster } from "../api/cluster/cluster-v1beta2";
 
 // The cases of SPEC-0004, "Tests", "Unit", `cluster-namespace-read.test.ts` (P31): a view of one Cluster whose
@@ -666,6 +670,128 @@ describe("the kinds of a view of one Cluster (SPEC-0005, P6)", () => {
       expect(open, kind).toEqual([]);
     }
   });
+});
+
+// The tree of the Cluster of a read, built from what the read gives, as the page builds it.
+function treeOfRead(read: ClusterNamespaceRead): ClusterTree {
+  const outcome = buildTree(indexTree(read.clusters(), read.objects()), read.namespace, read.name);
+
+  if (outcome.state !== "found") throw new Error(`No tree of ${read.namespace}/${read.name}: ${outcome.state}`);
+  return outcome.tree;
+}
+
+// What a node of the tree says of how it was read: an object, or a row made from a reference and why.
+function readOfNode(node: TreeNode | undefined): string {
+  if (node === undefined) return "no node";
+  if (node.form !== "reference") return node.form;
+  return node.read.state === "pending" ? "pending" : `${node.read.state}: ${node.read.reason}`;
+}
+
+describe("the references that the read of the tree follows, those by which the tree places what they name (SPEC-0005, P6, P7)", () => {
+  const TEMPLATE = "infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-rclml";
+
+  // healthy without its MachineDeployment and its MachineSet, so that the control plane alone names the
+  // DevMachineTemplates, and with the change that the case makes to its Cluster.
+  function controlPlaneAlone(change: (cluster: { spec: { controlPlaneRef?: unknown } }) => void = () => undefined) {
+    const objects = structuredClone(fixtureSet("healthy")).filter(
+      (object) => !["MachineDeployment", "MachineSet"].includes(object.kind),
+    ) as KubeObject[];
+
+    change(objects.find((object) => object.kind === "Cluster") as unknown as { spec: { controlPlaneRef?: unknown } });
+    return hostObjects(objects);
+  }
+
+  it("follow the template of a control plane that the Cluster does not name, which the tree places under Other objects", async () => {
+    serveTree(controlPlaneAlone((cluster) => delete cluster.spec.controlPlaneRef));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(byKind(read).has("DevMachineTemplate")).toBe(true);
+    expect(readOfNode(treeOfRead(read).nodes.get(TEMPLATE))).toBe("object");
+    stop();
+  });
+
+  it("follow the template of the KubeadmControlPlane that the Cluster names at v1beta2, while its definition cannot be read", async () => {
+    serveTree(controlPlaneAlone());
+    runInAction(() => {
+      host.crdStore.items = [];
+      host.crdStore.failedLoading = true;
+    });
+
+    const definitions = new Map(
+      [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS].map((definition) => [definition.metadata?.name, definition]),
+    );
+
+    host.crdGet.mockImplementation(async (name) => {
+      if (name === "kubeadmcontrolplanes.controlplane.cluster.x-k8s.io") {
+        throw new Error("Failed to get", { cause: { kind: "Status", code: 403, message: "forbidden" } });
+      }
+      return definitions.get(name) ?? null;
+    });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(read.definitions.readOf("controlplane.cluster.x-k8s.io", "KubeadmControlPlane").state).toBe("refused");
+    expect(byKind(read).has("DevMachineTemplate")).toBe(true);
+    expect(readOfNode(treeOfRead(read).nodes.get(TEMPLATE))).toBe("object");
+    stop();
+  });
+
+  it("follow what each object of the Cluster names by what followedReferencesOf says that it names, the function by which the tree places it (P8)", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const said = vi.spyOn(references, "followedReferencesOf");
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    try {
+      await settle();
+
+      const asked = new Set(
+        said.mock.calls.map(([object]) => `${String(object.kind)} ${String(object.metadata?.name)}`),
+      );
+
+      expect([...asked].sort()).toEqual(
+        [
+          "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+          "Machine freelens-capi-healthy-d2lgq-zqlcx",
+          "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+          "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+          "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+          "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+        ].sort(),
+      );
+    } finally {
+      stop();
+      said.mockRestore();
+    }
+  });
+
+  it.each(STATES)(
+    "give the tree of %s every kind that it places an object by, none of its rows a kind that the read never tried",
+    async (state) => {
+      serveTree(objectsOfStates([state]));
+
+      const read = new ClusterNamespaceRead(TREE_CLUSTERS[state], TREE_CLUSTERS[state], TREE_VIEW_KINDS);
+      const stop = read.start();
+
+      await settle();
+
+      const rows = [...treeOfRead(read).nodes.values()]
+        .filter((node) => node.form === "reference")
+        .map((node) => `${node.id} ${readOfNode(node)}`);
+
+      expect(read.firstLoadsEnded()).toBe(true);
+      expect(rows.filter((row) => !row.endsWith("not-found: not-found"))).toEqual([]);
+      stop();
+    },
+  );
 });
 
 describe("the refresh of the tree (SPEC-0005, P23)", () => {
