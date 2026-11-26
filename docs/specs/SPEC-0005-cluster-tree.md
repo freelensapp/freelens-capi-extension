@@ -3111,7 +3111,9 @@ the contract label of the definition for a control plane of a provider; and
 - Decided while implementing, where P23 is silent: a refresh, or the reload
   after a 410, that fails again with an answer that the hold of its refresh
   already holds keeps one entry for that answer, the latest, and the hold the
-  time of the latest.
+  time of the latest. The read state is that of every view, so the notices of
+  the list and of the details of SPEC-0004 keep one entry too, which its notes
+  record (SPEC-0004, "Notes and deviations").
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

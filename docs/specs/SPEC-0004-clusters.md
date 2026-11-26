@@ -2951,3 +2951,7 @@ No question is open.
   check of Safety finds the names `variables`, `overrides` and `patches`
   wherever they are read or declared, in every module of the views but the one
   that reads their names. This view reads none of them.
+- From the first part of SPEC-0005 (its "Notes and deviations", the answer
+  that a refresh gets again): a refresh, or a reload after a 410, that fails
+  again with the same answer keeps one entry for it, the latest, in the notices
+  of the list and of the details too; P25 holds.
