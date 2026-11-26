@@ -71,6 +71,33 @@ export function certManagerComponents(pins: Pins, downloads: string): PinnedFile
   };
 }
 
+// The package of the Sveltos extension for Freelens, as the npm registry publishes it (SPEC-0004, P29).
+export function sveltosExtensionPackage(pins: Pins, downloads: string): PinnedFile {
+  const { version, sha256 } = pins.sveltos.extension;
+
+  return {
+    name: `the package of @freelensapp/sveltos-extension ${version}`,
+    url: `https://registry.npmjs.org/@freelensapp/sveltos-extension/-/sveltos-extension-${version}.tgz`,
+    file: join(downloads, "sveltos-extension", version, `sveltos-extension-${version}.tgz`),
+    digest: sha256,
+    executable: false,
+  };
+}
+
+// The chart of Sveltos, as its release on GitHub publishes it, whose definitions the session of S6 applies
+// (SPEC-0004, P29).
+export function sveltosChart(pins: Pins, downloads: string): PinnedFile {
+  const { version, sha256 } = pins.sveltos.chart;
+
+  return {
+    name: `the chart projectsveltos ${version}`,
+    url: `https://github.com/projectsveltos/helm-charts/releases/download/projectsveltos-${version}/projectsveltos-${version}.tgz`,
+    file: join(downloads, "projectsveltos", version, `projectsveltos-${version}.tgz`),
+    digest: sha256,
+    executable: false,
+  };
+}
+
 // Every file that the pins name, once each.
 export function everyPinnedFile(pins: Pins, downloads: string): PinnedFile[] {
   return [
@@ -78,6 +105,8 @@ export function everyPinnedFile(pins: Pins, downloads: string): PinnedFile[] {
     ...CLUSTER_API_SOURCES.map((path) => sourceFile(pins, downloads, path)),
     operatorComponents(pins, downloads),
     certManagerComponents(pins, downloads),
+    sveltosExtensionPackage(pins, downloads),
+    sveltosChart(pins, downloads),
   ];
 }
 

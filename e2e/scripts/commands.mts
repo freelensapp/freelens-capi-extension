@@ -30,6 +30,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, wr
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { filesOfTarball } from "./archives.mts";
 import { assertKindNode, assertLocalDocker, ensure, localApiServer, workloadContainerIds } from "./checks.mts";
 import {
   certManagerComponents,
@@ -38,6 +39,8 @@ import {
   pinnedContent,
   releaseAsset,
   sourceFile,
+  sveltosChart,
+  sveltosExtensionPackage,
 } from "./downloads.mts";
 import {
   applyPlan,
@@ -58,6 +61,7 @@ import {
 } from "./fixtures.mts";
 import { childEnvironment, clusterctlAsset, INOTIFY_LIMITS, inotifySettings } from "./host.mts";
 import {
+  chartDefinitions,
   clusterctlConfiguration,
   customResourceDefinitions,
   kindConfiguration,
@@ -1135,29 +1139,58 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
   ensure(!failures.length, `${failures.length} of ${states.length} captures failed:\n- ${failures.join("\n- ")}`);
 }
 
-// The cluster of the real project, as a test of the real tier reaches it (docs/development/TESTING.md, "Tests of the
-// real tier"): through the kubeconfig of the scripts, with the target checked before every request, as every command
-// of the scripts checks it, so that a test refuses any other cluster and writes to this one alone.
-export interface RealProjectSession {
-  // kubectl on the cluster of the real project, and its output. A failure throws, with the last lines of its error.
+// A session of a test on a tier: kubectl on its cluster, through the kubeconfig of the scripts, with the target checked
+// before every request, as every command of the scripts checks it, so that a test refuses any other cluster and writes
+// to this one alone.
+export interface TierSession {
+  // kubectl on the cluster of the tier, and its output. A failure throws, with the last lines of its error.
   kubectl(args: string[], options?: { input?: string; timeout?: number }): string;
-  // A server-side apply of the objects of a manifest, by the field manager of the scripts.
-  apply(manifest: string): void;
-  // The ConfigMap with kindnet and the ClusterResourceSet that applies it, for a namespace.
-  kindnet(namespace: string): string;
-  // The version of Kubernetes of the workload clusters, from the pins.
-  kubernetesVersion: string;
+  // A server-side apply of the objects of a manifest, by the field manager of the scripts, and the names of the objects
+  // applied, as `kind.group/name`.
+  apply(manifest: string): string[];
   // Releases the lock of the state folder, and fails when the kubeconfig of the user changed meanwhile.
   close(): void;
 }
 
-// Opens the cluster of the real project for a test, as a command of the scripts opens it: the private umask, the
-// local Docker, then the state folder under the lock of the run; and as a capture goes on, since a test makes workload
-// clusters too: the tools, the limits of inotify, a real project with the providers of the pins and no other, and the
-// files of the pins it uses, checked. It fails, holding nothing, when any of them is not so.
-export async function openRealProject(): Promise<RealProjectSession> {
-  const { pins, workflow } = readPins(ROOT);
+// The cluster of the real project, as a test of the real tier reaches it (docs/development/TESTING.md, "Tests of the
+// real tier").
+export interface RealProjectSession extends TierSession {
+  // The ConfigMap with kindnet and the ClusterResourceSet that applies it, for a namespace.
+  kindnet(namespace: string): string;
+  // The version of Kubernetes of the workload clusters, from the pins.
+  kubernetesVersion: string;
+  // What `clusterctl describe cluster` prints of a workload cluster of the namespace of the workload clusters of `up`,
+  // with the pinned clusterctl, which checks for no newer clusterctl (SPEC-0001, R4.9): the tool of the project, which
+  // the sessions of the real tier compare the view with (SPEC-0004, "With the real project").
+  describeCluster(name: string): Promise<string>;
+  // The pinned files of S6 (SPEC-0004, P29), each checked against its pin: the package of the Sveltos extension, with
+  // its file name and its SHA-256, and the definitions of the chart of Sveltos, each as its text.
+  sveltos(): Promise<{
+    extension: { file: string; content: Buffer; sha256: string };
+    definitions: string[];
+  }>;
+}
 
+// The cluster of the definitions, as a test in Freelens that writes to it reaches it: the restricted session of
+// SPEC-0004, which makes a second identity there (P23).
+export interface DefinitionsSession extends TierSession {
+  // kubectl as another user, through the impersonation that the kubeconfig of the scripts may do, whose answer is
+  // returned whether it succeeded or not: whether the cluster allows a request to that user, and the message of its
+  // refusal, as the cluster gives it.
+  impersonate(user: string, args: string[]): { status: number; stdout: string; stderr: string };
+  // The API server of the kubeconfig of the scripts and the authority that kind generated for it, for the kubeconfig
+  // of a second identity on the same cluster.
+  apiServer(): { server: string; certificateAuthorityData: string };
+}
+
+// What a session of a test holds beside its tier: the lock of the state folder, and the kubeconfig files of the user,
+// which it compares when it closes.
+type Opened<Session> = Omit<Session, "close">;
+
+// Opens a tier for a test as a command of the scripts runs: the private umask, the local Docker, then the state folder
+// under the lock of the run, which `close` releases, failing when the kubeconfig of the user changed meanwhile. It
+// fails, holding nothing, when `open` does.
+async function openTest<Session extends TierSession>(open: () => Promise<Opened<Session>>): Promise<Session> {
   process.umask(0o077);
   localDocker();
   preparePrivateFolder(STATE, ROOT);
@@ -1167,6 +1200,50 @@ export async function openRealProject(): Promise<RealProjectSession> {
   const release = takeLock(STATE, process.pid, alive);
 
   try {
+    const opened = await open();
+
+    return {
+      ...opened,
+      close: () => {
+        release();
+
+        const changed = changedFiles(before, fingerprints(files));
+
+        ensure(
+          !changed.length,
+          `The kubeconfig ${changed.join(", ")} changed during the run. The scripts never write it: check which program did`,
+        );
+      },
+    } as Session;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+// kubectl and the server-side apply of a test on a tier.
+function tierRequests(target: Tier): Omit<TierSession, "close"> {
+  return {
+    kubectl: (args, options = {}) => kubectl(target, args, { quiet: true, ...options }),
+    apply: (manifest) =>
+      lines(
+        kubectl(
+          target,
+          ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--output", "name", "--filename", "-"],
+          { input: manifest, quiet: true, timeout: 5 * 60_000 },
+        ),
+      ),
+  };
+}
+
+// Opens the cluster of the real project for a test, as a command of the scripts opens it, and as a capture goes on,
+// since a test makes workload clusters too: the tools, the limits of inotify, a real project with the providers of the
+// pins and no other, and the files of the pins it uses, checked. It fails, holding nothing, when any of them is not
+// so.
+export async function openRealProject(): Promise<RealProjectSession> {
+  const { pins, workflow } = readPins(ROOT);
+
+  return openTest<RealProjectSession>(async () => {
     preflight(workflow, pins.managementKubernetes.version, REAL_PROJECT_NEEDS);
     raiseInotifyLimits();
     verifyTarget(MANAGEMENT);
@@ -1182,32 +1259,74 @@ export async function openRealProject(): Promise<RealProjectSession> {
     const kindnet = kindnetManifest(
       (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
     );
+    // clusterctl and its configuration, written from the checked files once, at the first describe.
+    let binary: Promise<string> | undefined;
 
     return {
-      kubectl: (args, options = {}) => kubectl(MANAGEMENT, args, { quiet: true, ...options }),
-      apply: (manifest) => {
-        kubectl(MANAGEMENT, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
-          input: manifest,
+      ...tierRequests(MANAGEMENT),
+      kindnet: (namespace) => kindnetResources(kindnet, namespace),
+      kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
+      describeCluster: async (name) => {
+        binary ??= writeRepository(pins).then(() => clusterctlBinary(pins));
+        return clusterctl(await binary, MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE], {
           quiet: true,
         });
       },
-      kindnet: (namespace) => kindnetResources(kindnet, namespace),
-      kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
-      close: () => {
-        release();
+      sveltos: async () => {
+        const extension = sveltosExtensionPackage(pins, DOWNLOADS);
 
-        const changed = changedFiles(before, fingerprints(files));
-
-        ensure(
-          !changed.length,
-          `The kubeconfig ${changed.join(", ")} changed during the run. The scripts never write it: check which program did`,
-        );
+        return {
+          extension: {
+            file: basename(extension.file),
+            content: await pinnedContent(extension),
+            sha256: extension.digest,
+          },
+          definitions: chartDefinitions(
+            filesOfTarball(await pinnedContent(sveltosChart(pins, DOWNLOADS))),
+            "projectsveltos",
+          ),
+        };
       },
     };
-  } catch (error) {
-    release();
-    throw error;
-  }
+  });
+}
+
+// Opens the cluster of the definitions for a test in Freelens that writes to it, as a command of the scripts opens
+// it, with the target checked before every request. It fails, holding nothing, when the cluster is not the one that
+// the scripts created.
+export async function openDefinitions(): Promise<DefinitionsSession> {
+  return openTest<DefinitionsSession>(async () => {
+    verifyTarget(DEFINITIONS);
+
+    return {
+      ...tierRequests(DEFINITIONS),
+      impersonate: (user, args) => {
+        verifyTarget(DEFINITIONS);
+
+        const result = spawnSync("kubectl", kubectlArguments(DEFINITIONS, [...args, "--as", user]), {
+          env: environment(DEFINITIONS.kubeconfig),
+          encoding: "utf8",
+          timeout: 2 * 60_000,
+          maxBuffer: 64 * 1024 * 1024,
+        });
+
+        if (result.error) throw new Error(`kubectl ${args[0] ?? ""} did not complete: ${result.error.message}`);
+        return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+      },
+      apiServer: () => {
+        const facts = targetFacts(DEFINITIONS);
+
+        checkTarget(DEFINITIONS, facts);
+
+        const [cluster] = (facts.config as { clusters: { cluster: Record<string, string> }[] }).clusters;
+
+        return {
+          server: cluster.cluster.server,
+          certificateAuthorityData: cluster.cluster["certificate-authority-data"],
+        };
+      },
+    };
+  });
 }
 
 // kubectl on the cluster of the definitions.

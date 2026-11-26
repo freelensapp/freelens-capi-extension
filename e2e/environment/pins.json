@@ -3,7 +3,8 @@
     "The versions of what the scripts of the test environment download, and the SHA-256 of each file, which they check before they use it (e2e/scripts/pins.mts). kind is pinned once, in the env of .github/workflows/integration-tests.yaml, and the scripts read it from there.",
     "Renovate updates the version of each object that names a datasource, a depName and a version, in this order. The digests of the new release, and for Cluster API the commit of its tag and the digests of the sources at that commit, are recorded in the same pull request, from the release on GitHub: until then the scripts refuse the downloads, and so does pnpm e2e:pins:check, which the workflow e2e-pins-check.yaml runs on every change to this file.",
     "managementKubernetes is the version of Kubernetes of the kind clusters, the tag of kindest/node, inside supported, the minor versions that the release of Cluster API supports for a management cluster in the table of versions of its book; the scripts refuse it outside them, and a rule of Renovate keeps it inside them. The integration workflow runs its sessions on the cluster of the definitions, at this version.",
-    "certManager is the version that the pinned clusterctl installs by default, and workloadKubernetesVersion one that the release of Cluster API supports for workload clusters, as is workloadKubernetesUpgradeFrom, an earlier one, which the capture of a fixture upgrades from: they change with Cluster API, and Renovate does not follow them. The range of managementKubernetes changes with Cluster API too."
+    "certManager is the version that the pinned clusterctl installs by default, and workloadKubernetesVersion one that the release of Cluster API supports for workload clusters, as is workloadKubernetesUpgradeFrom, an earlier one, which the capture of a fixture upgrades from: they change with Cluster API, and Renovate does not follow them. The range of managementKubernetes changes with Cluster API too.",
+    "sveltos is what the session of S6 of SPEC-0001 installs next to this extension, on the cluster of the real project (SPEC-0004, P29): the Sveltos extension for Freelens, the package @freelensapp/sveltos-extension from the npm registry, at the release that SPEC-0001 read, and the chart projectsveltos from its release on GitHub, whose definitions the CI of that extension applies at that release. Renovate does not follow them: they change with the spec that reads them again."
   ],
   "clusterApi": {
     "datasource": "github-releases",
@@ -52,6 +53,16 @@
     "version": "v1.21.3",
     "assets": {
       "cert-manager.yaml": "c04a51295adda2b1a775146751f973e787190778c7f35180861d9678876e5c74"
+    }
+  },
+  "sveltos": {
+    "extension": {
+      "version": "2.1.0",
+      "sha256": "37fccaca01c827d653561cfe8b84bac0d36b9a9b35c81b7e37e52423ff1af108"
+    },
+    "chart": {
+      "version": "1.16.1",
+      "sha256": "94e879d2e09e1896bccb73cd473ed8be72c4ae3ad88fb915ae2137d7992c2718"
     }
   }
 }

@@ -1,9 +1,9 @@
 // The checks of the scripts of the test environment that need no cluster: the pins, the API server of a
-// kubeconfig of the scripts and its node, the local Docker, the digest of a download, the private state and
-// its lock, the environment of a command, the containers that `down` deletes and what it decides, the
-// providers of the real project against the pins, the command line, what the scripts make of the files of a
-// release, and the fixtures: the shift of their times, the cleaning of a captured object, their apply, their
-// YAML, their states and the sets of the repository.
+// kubeconfig of the scripts and its node, the local Docker, the digest of a download, the files of an archive,
+// the private state and its lock, the environment of a command, the containers that `down` deletes and what it
+// decides, the providers of the real project against the pins, the command line, what the scripts make of the
+// files of a release and of a chart, and the fixtures: the shift of their times, the cleaning of a captured
+// object, their apply, their YAML, their states and the sets of the repository.
 
 import {
   existsSync,
@@ -19,7 +19,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { filesOfTarball, headerChecksum } from "../e2e/scripts/archives.mts";
 import {
   assertDigest,
   assertKindNode,
@@ -36,7 +38,7 @@ import {
   providersAgainstPins,
   takeDown,
 } from "../e2e/scripts/commands.mts";
-import { everyPinnedFile, pinnedContent } from "../e2e/scripts/downloads.mts";
+import { everyPinnedFile, pinnedContent, sveltosChart, sveltosExtensionPackage } from "../e2e/scripts/downloads.mts";
 import {
   applyPlan,
   CAPTURE_TIME,
@@ -58,6 +60,7 @@ import {
 } from "../e2e/scripts/fixtures.mts";
 import { childEnvironment, clusterctlAsset, INOTIFY_LIMITS, inotifySettings } from "../e2e/scripts/host.mts";
 import {
+  chartDefinitions,
   customResourceDefinitions,
   KINDNET_LABEL,
   kindnetLabelArgument,
@@ -272,6 +275,34 @@ describe("the pins", () => {
         pins.managementKubernetes.depName = "kindest/haproxy";
       },
       /managementKubernetes\.depName is not kindest\/node/,
+    ],
+    [
+      "a version of the Sveltos extension with a v, which npm does not write",
+      (pins: Record<string, any>) => {
+        pins.sveltos.extension.version = `v${pins.sveltos.extension.version}`;
+      },
+      /sveltos\.extension\.version is not a version/,
+    ],
+    [
+      "a digest of the chart of Sveltos cut short",
+      (pins: Record<string, any>) => {
+        pins.sveltos.chart.sha256 = pins.sveltos.chart.sha256.slice(0, 32);
+      },
+      /sveltos\.chart\.sha256 is not a SHA-256 digest/,
+    ],
+    [
+      "the pins of S6 without the chart of Sveltos",
+      (pins: Record<string, any>) => {
+        delete pins.sveltos.chart;
+      },
+      /sveltos misses chart/,
+    ],
+    [
+      "an address for the package of the Sveltos extension, which the scripts make",
+      (pins: Record<string, any>) => {
+        pins.sveltos.extension.url = "https://example.com/sveltos-extension.tgz";
+      },
+      /sveltos\.extension has url, which the scripts do not know/,
     ],
   ])("refuses %s", (_case, change, error) => {
     expect(() => parsePins(changedPins(change))).toThrow(error);
@@ -677,13 +708,122 @@ describe("the downloads", () => {
         ...Object.values(pins.clusterApi.sources),
         ...Object.values(pins.clusterApiOperator.assets),
         ...Object.values(pins.certManager.assets),
+        pins.sveltos.extension.sha256,
+        pins.sveltos.chart.sha256,
       ].sort(),
     );
     for (const file of files) {
       expect(file.url).toMatch(
-        /^https:\/\/(github\.com\/(kubernetes-sigs\/cluster-api|kubernetes-sigs\/cluster-api-operator|cert-manager\/cert-manager)\/releases\/download\/|raw\.githubusercontent\.com\/kubernetes-sigs\/cluster-api\/[0-9a-f]{40}\/)/,
+        /^https:\/\/(github\.com\/(kubernetes-sigs\/cluster-api|kubernetes-sigs\/cluster-api-operator|cert-manager\/cert-manager|projectsveltos\/helm-charts)\/releases\/download\/|raw\.githubusercontent\.com\/kubernetes-sigs\/cluster-api\/[0-9a-f]{40}\/|registry\.npmjs\.org\/@freelensapp\/sveltos-extension\/-\/)/,
       );
     }
+  });
+
+  it("takes the package of the Sveltos extension from the npm registry, and the chart of Sveltos from its release, at the versions of the pins (SPEC-0004, P29)", () => {
+    const { pins } = readPins(root);
+    const { version: extension } = pins.sveltos.extension;
+    const { version: chart } = pins.sveltos.chart;
+
+    expect(sveltosExtensionPackage(pins, "/cache")).toEqual({
+      name: `the package of @freelensapp/sveltos-extension ${extension}`,
+      url: `https://registry.npmjs.org/@freelensapp/sveltos-extension/-/sveltos-extension-${extension}.tgz`,
+      file: join("/cache", "sveltos-extension", extension, `sveltos-extension-${extension}.tgz`),
+      digest: pins.sveltos.extension.sha256,
+      executable: false,
+    });
+    expect(sveltosChart(pins, "/cache")).toEqual({
+      name: `the chart projectsveltos ${chart}`,
+      url: `https://github.com/projectsveltos/helm-charts/releases/download/projectsveltos-${chart}/projectsveltos-${chart}.tgz`,
+      file: join("/cache", "projectsveltos", chart, `projectsveltos-${chart}.tgz`),
+      digest: pins.sveltos.chart.sha256,
+      executable: false,
+    });
+    // The releases that SPEC-0001 read and that the CI of the Sveltos extension applies at that release.
+    expect([extension, chart]).toEqual(["2.1.0", "1.16.1"]);
+  });
+});
+
+// An entry of a tar archive, as the POSIX ustar format writes it: a header of 512 bytes, with its checksum, then its data
+// in blocks of 512 bytes.
+function tarEntry(name: string, data: string, options: { type?: string; prefix?: string } = {}): Buffer {
+  const content = Buffer.from(data);
+  const header = Buffer.alloc(512);
+
+  header.write(name, 0, 100, "utf8");
+  header.write("0000644\0", 100);
+  header.write("0000000\0", 108);
+  header.write("0000000\0", 116);
+  header.write(`${content.length.toString(8).padStart(11, "0")}\0`, 124);
+  header.write("00000000000\0", 136);
+  header.write(options.type ?? "0", 156);
+  header.write("ustar\0", 257);
+  header.write("00", 263);
+  header.write(options.prefix ?? "", 345, 155, "utf8");
+  header.write(`${headerChecksum(header).toString(8).padStart(6, "0")}\0 `, 148);
+  return Buffer.concat([header, content, Buffer.alloc((512 - (content.length % 512)) % 512)]);
+}
+
+// A record of an extended header of pax: its length, which counts the whole record, then the key and the value.
+function paxRecord(key: string, value: string): string {
+  const body = ` ${key}=${value}\n`;
+  let length = body.length + 1;
+
+  while (`${length}${body}`.length !== length) length++;
+  return `${length}${body}`;
+}
+
+// A gzipped tar archive of the entries, with the two empty blocks that end it.
+function tarball(...entries: Buffer[]): Buffer {
+  return gzipSync(Buffer.concat([...entries, Buffer.alloc(1024)]));
+}
+
+describe("the files of an archive", () => {
+  it("keeps the regular files by their path, with their content, and no folder or link", () => {
+    const files = filesOfTarball(
+      tarball(
+        tarEntry("chart/", "", { type: "5" }),
+        tarEntry("chart/Chart.yaml", "name: chart\n"),
+        tarEntry("chart/crds/a.yaml", "x".repeat(700)),
+        tarEntry("chart/link", "", { type: "2" }),
+      ),
+    );
+
+    expect([...files.keys()]).toEqual(["chart/Chart.yaml", "chart/crds/a.yaml"]);
+    expect(files.get("chart/Chart.yaml")?.toString("utf8")).toBe("name: chart\n");
+    expect(files.get("chart/crds/a.yaml")?.toString("utf8")).toBe("x".repeat(700));
+  });
+
+  it("takes the path of an entry from its prefix, from the extended header of pax before it, and from a long name of GNU", () => {
+    const long = `chart/crds/${"a".repeat(120)}.yaml`;
+    const files = filesOfTarball(
+      tarball(
+        tarEntry("b.yaml", "b", { prefix: "chart/crds" }),
+        tarEntry("PaxHeader", paxRecord("path", long), { type: "x" }),
+        tarEntry("cut-short.yaml", "pax"),
+        tarEntry("././@LongLink", `${long}-gnu\0`, { type: "L" }),
+        tarEntry("cut-short.yaml", "gnu"),
+        tarEntry("old.yaml", "old", { type: "\0" }),
+      ),
+    );
+
+    expect(Object.fromEntries([...files].map(([path, data]) => [path, data.toString("utf8")]))).toEqual({
+      "chart/crds/b.yaml": "b",
+      [long]: "pax",
+      [`${long}-gnu`]: "gnu",
+      "old.yaml": "old",
+    });
+  });
+
+  it("refuses a header that does not match its checksum, and an archive cut short", () => {
+    const entry = tarEntry("chart/Chart.yaml", "name: chart\n");
+    const changed = Buffer.from(entry);
+
+    changed[0] = "C".charCodeAt(0);
+    expect(() => filesOfTarball(tarball(changed))).toThrow(/does not match the checksum of its header/);
+    expect(() => filesOfTarball(gzipSync(entry))).toThrow(/cut short: it does not end with an empty block/);
+    expect(() => filesOfTarball(gzipSync(tarEntry("chart/crds/a.yaml", "x".repeat(700)).subarray(0, 600)))).toThrow(
+      /cut short: an entry has less data than its header says/,
+    );
   });
 });
 
@@ -1129,6 +1269,22 @@ describe("the files of a release", () => {
     expect(() =>
       customResourceDefinitions(definition("clusters.cluster.x-k8s.io", "apiextensions.k8s.io/v1beta1")),
     ).toThrow(/is not apiextensions\.k8s\.io\/v1/);
+  });
+
+  it("keeps the definitions of the folder crds of a chart, as they are, in the order of their paths, and nothing else (SPEC-0004, P29)", () => {
+    const files = new Map([
+      ["chart/Chart.yaml", Buffer.from("apiVersion: v2\nname: chart\n")],
+      ["chart/crds/b-crd.yaml", Buffer.from(definition("bs.example.com"))],
+      ["chart/crds/a-crd.yaml", Buffer.from(`---\n${definition("as.example.com")}`)],
+      ["chart/crds/README.md", Buffer.from("kind: CustomResourceDefinition\n")],
+      ["chart/templates/crd.yaml", Buffer.from(definition("templates.example.com"))],
+      ["other/crds/c-crd.yaml", Buffer.from(definition("cs.example.com"))],
+    ]);
+
+    expect(chartDefinitions(files, "chart")).toEqual([definition("as.example.com"), definition("bs.example.com")]);
+    expect(() =>
+      chartDefinitions(new Map([...files].filter(([path]) => !path.startsWith("chart/crds/"))), "chart"),
+    ).toThrow(/The chart chart has no definition in its folder crds/);
   });
 
   it("puts the CIDRs of the workload clusters in the kindnet manifest, and refuses one it cannot complete", () => {

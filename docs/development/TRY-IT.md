@@ -6,8 +6,9 @@ the release the extension follows, with two workload clusters of its
 development provider. Everything in it is local and synthetic, and goes away
 with one command.
 
-This first part brings the demo up and down. How to walk through the views on
-it comes with the views.
+This page brings the demo up, installs the extension, walks through its views
+on the demo, and takes it down. Each view adds its walk here; the pass that
+precedes the review of a milestone comes with its own spec, SPEC-0007.
 
 ## What the machine needs
 
@@ -71,6 +72,89 @@ on every address of the machine: its API server, and the statistics of
 HAProxy. The API servers ask for client certificates, which only the
 management cluster holds, but keep the demo down on a network you do not
 trust.
+
+## Install the extension
+
+The extension has no release yet: install it from this checkout, as
+"From a directory" in the [README](../../README.md) says.
+
+```sh
+pnpm build
+```
+
+On the Extensions page of Freelens, enter the path of the checkout, the
+directory with `package.json`, press Install, and confirm that it loads in
+place. The table lists it as enabled. Then open `kind-freelens-capi-management`
+from the catalog, as above.
+
+## Walk through the Clusters
+
+The view of the Clusters ([SPEC-0004](../specs/SPEC-0004-clusters.md)) reads
+and writes nothing; what each part shows is in
+[DESIGN.md](DESIGN.md).
+
+1. **The page.** In the sidebar of the cluster, "Cluster API", then "Workload
+   Clusters". Select `default` in the namespace filter: the page lists
+   `freelens-capi-md` and `freelens-capi-mp`. Look at:
+   - the counters of the control plane and of the workers, the available
+     Machines of the desired, every counter in the tooltip;
+   - the version and the ClusterClass, `quick-start`;
+   - the activities, Idle once a Cluster has settled, each one in flight with
+     its duration while it is provisioning;
+   - the health: `freelens-capi-md` Healthy; `freelens-capi-mp` Degraded,
+     while the project writes its `Available` as `True`: its MachinePool has no
+     network add-on, so its Nodes never become ready;
+   - the status, the headline of the message of `Available`, whole in the
+     tooltip;
+   - the row has no checkbox and no menu, a right click opens nothing, and
+     the search finds a Cluster by its name, a label as `key=value`, its health
+     or its version.
+2. **The details.** A click on a row, or Enter on a name that Tab reaches,
+   opens the details of the extension, "Cluster: `<name>`". Look at the
+   health, the condition it rests on and what sets its tone; the activities
+   with their start; the summary, with its message nested; the issues of
+   `freelens-capi-mp`, `ControlPlaneMachinesReady` among them; the control
+   plane and the workers part by part, each with its own health; the
+   infrastructure, whose DevCluster is a link to the details of Freelens at
+   the version of its contract, over those of the extension, while the other
+   references are text; the topology, the network and the conditions, each
+   with its weight. Escape, the close icon, or a click outside closes them.
+3. **The details of Freelens.** Freelens keeps its own list and details of the
+   Clusters, which open from the definition `clusters.cluster.x-k8s.io`, under
+   "Custom Resources", "Definitions", or from the command palette. In its
+   details of a Cluster, the panel of the extension follows the metadata of
+   Freelens, before its own section of the resource and the events, with the
+   same content.
+4. **The same Clusters from the tool of the project.** The clusterctl of the
+   release is in the cache of the scripts, which checked it against its pin,
+   named for the system and the architecture of the machine,
+   `clusterctl-linux-amd64` below, `clusterctl-darwin-arm64` on macOS on
+   arm64:
+
+   ```sh
+   state=~/.local/state/freelens-capi-extension
+   "$state"/downloads/cluster-api/v1.14.4/clusterctl-linux-amd64 describe cluster freelens-capi-md \
+     --kubeconfig "$state"/freelens-capi-management/kubeconfig
+   ```
+
+   It gives the status and the reason of `Available` that the details give,
+   and counters that add up to those of the control plane and of the workers.
+5. **Every state.** The demo holds two Clusters. The cluster of the
+   definitions holds one for each state that the view tells apart,
+   provisioning, rolling out, scaling, paused, deleting, upgrading, with
+   MachinePools, under remediation, with no status and more, each in a
+   namespace of its own ([TESTING.md](TESTING.md), "The fixtures"):
+
+   ```sh
+   pnpm e2e:cluster:up:definitions
+   pnpm e2e:fixtures:up all
+   ```
+
+   Add its kubeconfig,
+   `~/.local/state/freelens-capi-extension/freelens-capi-definitions/kubeconfig`,
+   in Kubeconfig Syncs, open `kind-freelens-capi-definitions`, and select the
+   namespaces of the states in the filter. Their times move to the moment of
+   the apply, so the marks of the states in flight hold for a while after it.
 
 ## Take it down
 

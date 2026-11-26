@@ -218,6 +218,7 @@ pnpm knip:check           # Unused files, unused and unlisted dependencies (knip
 pnpm test:unit            # vitest
 pnpm test:integration     # vitest, against Freelens dev with a kind cluster
 pnpm test:real-project    # vitest, the tests of the real tier, on the real project (its job of CI alone)
+pnpm test:integration:real-project # vitest, the sessions of the real tier, against Freelens dev on the real project
 
 # Test environment (docs/development/TESTING.md)
 pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
@@ -272,10 +273,13 @@ test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their fi
 test/host-stores.ts              # Stores and APIs of the host on the stub, for the unit tests of the pages
 test/status-views.ts             # The model read with the context that a view builds from a set of objects
 test/environment.test.ts         # Unit tests of the scripts of the test environment
+test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
+test/real-project-checks.test.ts # Unit tests of what the session of the real project compares with clusterctl
 test/real-project/               # Tests of the real tier, `*.tests.ts`: S7 on the real project, and its expectations
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
-integration/__tests__/           # Integration tests, run against Freelens dev over CDP, and their shared module
+integration/__tests__/           # Integration tests, run against Freelens dev over CDP, the sessions of the real tier
+                                 #   among them, and the modules they share or import
 integration/fixtures/            # The fixtures of the test environment: objects of Cluster API, one folder per state
 e2e/environment/pins.json        # Versions and digests of what the scripts of the test environment download
 e2e/scripts/                     # The scripts of the test environment, run by Node as they are
@@ -1096,17 +1100,17 @@ problem does not show.
 
 ### Workflows
 
-| Workflow                 | Runs                                                                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `type-check.yaml`        | `pnpm type:check`                                                                                                        |
-| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                                                       |
-| `unit-tests.yaml`        | `pnpm test:unit`                                                                                                         |
-| `trunk-check.yaml`       | `trunk check --all`                                                                                                      |
-| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                                                            |
-| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version                                            |
-| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`                                    |
-| `test-environment.yaml`  | the fixtures and the real project of the test environment, with the tests of the real tier (docs/development/TESTING.md) |
-| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                                                            |
+| Workflow                 | Runs                                                                                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type-check.yaml`        | `pnpm type:check`                                                                                                                                                           |
+| `check.yaml`             | `pnpm build`, `pnpm lint:check`, `pnpm knip:check`                                                                                                                          |
+| `unit-tests.yaml`        | `pnpm test:unit`                                                                                                                                                            |
+| `trunk-check.yaml`       | `trunk check --all`                                                                                                                                                         |
+| `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                                                                                                               |
+| `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version                                                                                               |
+| `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`                                                                                       |
+| `test-environment.yaml`  | the fixtures and the real project of the test environment, with the tests of the real tier and, in Freelens dev on each release, its sessions (docs/development/TESTING.md) |
+| `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                                                                                                               |
 
 The type check has a workflow of its own, on pull requests and on pushes to
 `main`, as in Freelens. It runs every program, tests, tooling and environment
@@ -1136,8 +1140,11 @@ fixtures of every state with `pnpm e2e:fixtures:up all`, each state in a
 namespace of its own, as its last step before the tests, once Freelens dev
 answers (docs/development/TESTING.md; SPEC-0004, P33). A profile of
 Freelens dev syncs no kubeconfig by default, so the workflow seeds the fresh
-one with a single sync entry, a copy of the kubeconfig of the scripts, which
-holds that cluster alone, and the catalog lists that cluster and nothing else.
+one with two sync entries: a copy of the kubeconfig of the scripts, which
+holds that cluster alone, and the folder of the restricted session, empty and
+readable by the runner user alone, where that session writes the kubeconfig of
+a second identity and deletes it at its end (SPEC-0004, P23). The catalog
+lists that cluster, and the cluster of that identity while its file is there.
 Every test file is a session of its own on the one app, and fails on any error
 logged by either process:
 
@@ -1210,9 +1217,66 @@ logged by either process:
   and the annotation when that removal failed, disconnects the cluster and
   closes the connection whatever failed before, and then throws one error that
   lists every check that failed, so that a planted write shows both.
+- `clusters-restricted.tests.ts` opens the same page as a second identity, a
+  ServiceAccount in a namespace of its own on the cluster of the definitions,
+  which it makes through the scripts of the test environment, with
+  `openDefinitions`, with a token from a TokenRequest in a kubeconfig file of
+  the folder that `TEST_RESTRICTED_KUBECONFIG_FOLDER` names, which the profile
+  syncs (SPEC-0004, P23; docs/development/TESTING.md, "Safety"). Each step of a
+  case grants the identity what it allows, through ClusterRoles that read
+  alone and their bindings, and waits until the cluster answers so, in one
+  batch of SubjectAccessReviews: the Clusters refused in the namespace of
+  `paused`, Partial, with the mark of the host for the failure of its load,
+  over the whole cluster and in both namespaces Restricted, with "not counted"
+  next to that mark; the Machines refused, the Clusters listed with activities
+  that read Unknown, never Idle, and the read that failed in their details;
+  every kind of the page over the whole cluster with no watch of every
+  resource of the core group, the notice of a list that the host reads once
+  and does not follow, and with one namespace none, and a label that it sets
+  with a merge patch found by the search; and S2 last, in a frame that it loads
+  again, since the host lists the definitions as the frame starts: with the
+  definitions refused, the infrastructure cluster a link when the identity may
+  get its definition by its name, and text with its reason and the permission
+  when it may not. Each notice is checked against the message that the cluster
+  gives the identity for the same request, read with an impersonation. A
+  refusal that a case expects is left out of the errors when it arrives, by its
+  status and its address, the frame of that cluster that sent it and the page
+  that this frame shows (`expectRefusals` of the session of the app); any other
+  refusal, and any other error, fails the session. Its end, also when a case
+  failed, disconnects that cluster, deletes the file, every object that it made
+  and the namespace, and checks that they are gone. The token is never logged.
+
+The sessions of the real tier, `clusters-real.tests.ts` and
+`clusters-sveltos.tests.ts`, open the cluster of the real project instead, and
+run in the job of the real project of `test-environment.yaml`, on each release
+of the matrix, with `pnpm test:integration:real-project`; `pnpm
+test:integration` leaves them out. Each reaches the real project through the
+scripts, with `openRealProject`, as the tests of the real tier do, and finds
+the cluster in the catalog by `TEST_KIND_CLUSTER_NAME`,
+`freelens-capi-management` in that job, whose profile syncs a copy of the
+kubeconfig of the scripts for that cluster alone:
+
+- `clusters-real.tests.ts` compares the details of `freelens-capi-md` and of
+  `freelens-capi-mp` with what `clusterctl describe cluster` prints of them,
+  run by the scripts with the pinned clusterctl: the status and the reason of
+  `Available`, the counters that add up to the row of the Cluster, the health
+  Degraded of `freelens-capi-mp` with `ControlPlaneMachinesReady` among its
+  issues while the tool gives its `Available` as `True`, and the topology of
+  both, reading both sides again until they agree, ten minutes at most. It
+  writes nothing.
+- `clusters-sveltos.tests.ts` is S6 (SPEC-0004, P29): it installs the Sveltos
+  extension from the file of its package, which the scripts download and check
+  against its pin, with the `.sha256` beside it, applies the definitions of the
+  chart of Sveltos of the pins, then checks that both pages list the same
+  Clusters, that a label that kubectl sets and removes reaches each, at once in
+  the page that is open and when the other opens, and that no watch of
+  `cluster.x-k8s.io` fails, which the client of the host logs as a warning
+  (`recordWatchFailures`). Its end removes the label, uninstalls the Sveltos
+  extension and deletes the definitions, also when a step failed.
 
 The tests are deterministic, so nothing retries them: the config sets no
-`retry`, and the workflow runs the step once, under `timeout 600`. A retry
+`retry`, and the workflow runs the step once, under `timeout 1500`, and the job
+of the real project its sessions under `timeout 1800`. A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
 loads a second time when it did not render and the dev file route of Freelens
@@ -1328,13 +1392,17 @@ because the callbacks of `page.evaluate` run in the page, and with the types
 of `@freelensapp/extensions`, which declare `globalThis.FreelensExtensionApi`
 for them.
 
-Four variables configure the sessions. `FREELENS_CDP_URL` is the CDP
+Five variables configure the sessions. `FREELENS_CDP_URL` is the CDP
 endpoint (`http://127.0.0.1:9223` by default), `FREELENS_MAIN_LOG` the main
 log, `TEST_KIND_CLUSTER_NAME` names the kind cluster (`kind` by default,
 `freelens-capi-definitions` in the workflow, which gives kubectl the
-kubeconfig of the scripts through `KUBECONFIG`), and `TEST_FIXTURE_STATE` the
-state of the fixtures of the session of the fixtures; every kubectl call names
-its context, `kind-<name>`, so a run never acts on the current context. The
+kubeconfig of the scripts through `KUBECONFIG`), `TEST_FIXTURE_STATE` the
+state of the fixtures of the session of the fixtures, and
+`TEST_RESTRICTED_KUBECONFIG_FOLDER` the folder of the restricted session, which
+the profile syncs; every kubectl call names its context, `kind-<name>`, so a run
+never acts on the current context, and the sessions that write to a cluster
+other than with a label reach it through the scripts, which check the target
+before every request. The
 checkout to install is found from the location of the helpers, and the
 fixtures from that of the session. Outside CI a session skips with a warning
 when Freelens dev does not answer or the cluster is not reachable; in CI (`CI`
@@ -1357,7 +1425,13 @@ with a warning when the namespace of the fixtures is not there. The times of
 the fixtures move to the moment of their apply, and the marks of step 1 of the
 session of the Clusters hold for 25 minutes after it: the session fails at its
 start, saying so, when the Clusters of the fixtures were created longer ago, and
-a local run applies them again first, `pnpm e2e:fixtures:up all`.
+a local run applies them again first, `pnpm e2e:fixtures:up all`. The
+restricted session needs a folder outside every repository, readable by you
+alone, added once in "Kubeconfig Syncs" and named in
+`TEST_RESTRICTED_KUBECONFIG_FOLDER`, and skips with a warning without it. The
+sessions of the real tier need the real project, `pnpm e2e:cluster:up`, and its
+kubeconfig in "Kubeconfig Syncs", with `TEST_KIND_CLUSTER_NAME` set to
+`freelens-capi-management`.
 
 ## Checking the Extension in Freelens Dev
 

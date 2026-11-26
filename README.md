@@ -13,11 +13,85 @@ The Freelens extension for [Cluster API](https://cluster-api.sigs.k8s.io/):
 the clusters that a management cluster manages, with their machines, control
 planes and providers, in [Freelens](https://freelens.app).
 
-It is in development and has no release yet.
+It is in development and has no release yet. It reads, and writes nothing.
+
+In the sidebar of a cluster, the entry "Cluster API" opens "Workload
+Clusters": the Clusters of the namespaces that the namespace filter selects,
+live. Each row shows the available Machines of the desired ones of its control
+plane and of its workers, its version and its ClusterClass, then its state in
+three columns: what the Cluster is doing and for how long, its health in the
+words of the project with a mark when that health is stale, and the headline
+of the message of its `Available` condition, whole in the tooltip. A click on a
+row, or Enter on its name, opens the details of the Cluster: its health, the
+condition it rests on and what sets its tone, its activities, its control plane
+and its workers part by part, its infrastructure, its topology, its network,
+and its conditions, each with its weight. The same details show in the details
+that Freelens opens for a Cluster, after its metadata. A read that the cluster
+refuses or that fails is said as such, with the permission it takes, never as
+an empty list.
 
 ## Requirements
 
 - Freelens >= 2.0.0
+- Cluster API that serves `cluster.x-k8s.io/v1beta2`, from v1.11; the
+  extension follows the release v1.14.4
+
+## Supported APIs
+
+### cluster.x-k8s.io
+
+| API Version | Kind      | Scope      | Description                                               |
+| ----------- | --------- | ---------- | --------------------------------------------------------- |
+| v1beta2     | `Cluster` | Namespaced | The workload clusters: a page with their list and details |
+
+The definitions are those of the release of Cluster API, which `clusterctl
+init` or the Cluster API Operator installs. To try the extension, the demo
+cluster of the test environment runs Cluster API with two workload clusters on
+kind ([TRY-IT.md](docs/development/TRY-IT.md)), and the cluster of the
+definitions holds the objects of every state that the views tell apart
+(`pnpm e2e:cluster:up:definitions` and `pnpm e2e:fixtures:up all`,
+[TESTING.md](docs/development/TESTING.md)).
+
+## Permissions
+
+The extension writes nothing: it sends no request that creates, changes or
+deletes an object, and offers none of the actions of Freelens that would, such
+as the removal of the selected rows. It reads through the connection of
+Freelens, with the permissions of the user of the cluster, and asks for none.
+
+These are the requests that the page of the Clusters sends, in the namespaces
+that the namespace filter selects, or over the whole cluster when it selects
+every namespace, and the details of a Cluster in its namespace. Each needs
+`get`, `list` and `watch` on its resources in those namespaces, or over the
+whole cluster:
+
+| Read                                                                                            | Group                           | Resources                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The Clusters, the rows of the page                                                              | `cluster.x-k8s.io`              | `clusters`                                                                                                                                                |
+| What the status of a Cluster rests on: its Machines, its parts, its health checks and its class | `cluster.x-k8s.io`              | `machines`, `machinesets`, `machinedeployments`, `machinepools`, `machinehealthchecks`, `clusterclasses`                                                  |
+| The kubeadm control plane                                                                       | `controlplane.cluster.x-k8s.io` | `kubeadmcontrolplanes`                                                                                                                                    |
+| The availability of the controllers, where the Cluster API Operator installed them              | `operator.cluster.x-k8s.io`     | `coreproviders`, `bootstrapproviders`, `controlplaneproviders`, `infrastructureproviders`, `addonproviders`, `ipamproviders`, `runtimeextensionproviders` |
+| The control plane and the infrastructure cluster that a Cluster names, of any provider          | the group of each provider      | the plural of each kind                                                                                                                                   |
+
+The version of the kind of a provider comes from the contract label of its
+definition. Freelens lists the definitions itself; for a user who may not list
+them, the extension reads the definition of each kind that a Cluster names by
+its name, which needs `get` on `customresourcedefinitions` of
+`apiextensions.k8s.io`, which may be limited to those names, such as
+`devclusters.infrastructure.cluster.x-k8s.io`. Without it, a reference shows as
+text and says why. A read refused in some namespaces leaves out what it could
+not read and says so, with the message of the cluster and the permission it
+takes.
+
+Freelens follows a list that it reads over the whole cluster only for a user
+who may watch every resource of the core group over the whole cluster; for any
+other user the page says that the list was read once and is not followed, and
+a selection that leaves out a namespace is read and watched namespace by
+namespace. Freelens itself reads the namespaces for its filter.
+
+The extension never reads a Secret, never reads a Cluster at a version other
+than `v1beta2`, and reads no field of the spec of a KubeadmControlPlane but its
+replicas and its version.
 
 ## Install
 
@@ -178,6 +252,15 @@ Optional variables:
   `http://127.0.0.1:9223` by default.
 - `FREELENS_MAIN_LOG`: a log of the main process to check for errors, such
   as its `lens.log`. Without it only the renderer's errors are checked.
+- `TEST_RESTRICTED_KUBECONFIG_FOLDER`: a folder outside the repository that
+  Kubeconfig Syncs lists, where the restricted session writes the kubeconfig
+  of a second identity and deletes it at its end. Without it that session is
+  skipped.
+
+The sessions that need the cluster of the real project run with
+`pnpm test:integration:real-project`; how the test environment brings each
+cluster up, and what each session needs, is in
+[TESTING.md](docs/development/TESTING.md).
 
 ## License
 

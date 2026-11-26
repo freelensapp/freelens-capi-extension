@@ -33,6 +33,20 @@ export function customResourceDefinitions(text: string): string[] {
     });
 }
 
+// The definitions of a chart, from the files of the folder `crds` that its archive holds, unchanged, since helm does
+// not template that folder, the files in the order of their paths: what the CI of the Sveltos extension applies of the
+// chart of Sveltos (SPEC-0004, P29). A chart with no definition there is refused.
+export function chartDefinitions(files: ReadonlyMap<string, Uint8Array>, chart: string): string[] {
+  const folder = `${chart}/crds/`;
+  const definitions = [...files.keys()]
+    .filter((path) => path.startsWith(folder) && /\.ya?ml$/.test(path))
+    .sort()
+    .flatMap((path) => customResourceDefinitions(Buffer.from(files.get(path) ?? []).toString("utf8")));
+
+  ensure(definitions.length, `The chart ${chart} has no definition in its folder crds`);
+  return definitions;
+}
+
 // The CIDRs of the pods of the workload clusters, those of the configuration of the tests of Cluster API for
 // the development provider (`test/e2e/config/docker.yaml` at the tag): the IPv4 one is the default of the
 // templates of the release, and kindnet routes both.
