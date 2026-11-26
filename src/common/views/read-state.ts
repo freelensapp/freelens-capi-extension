@@ -44,7 +44,9 @@ export type KindFeeds =
   | "machine-pools"
   | "health-checks"
   | "cluster-class"
-  | "controllers";
+  | "controllers"
+  // The infrastructure clusters, which the details of a Cluster show, and the model of the Cluster does not take.
+  | "infrastructure";
 
 interface RunningLoad {
   readonly id: number;
@@ -325,6 +327,14 @@ export function namespaceRead(state: ReadsState, kind: string, namespace: string
   return { state: "pending" };
 }
 
+// Whether the host read the last load of a kind over the whole cluster, with no failure, and does not follow it (P34):
+// a change reaches what that load read only when the filter changes or the page opens again.
+export function isNotFollowed(state: ReadsState, kind: string): boolean {
+  const last = kindOf(state, kind).last;
+
+  return last !== undefined && last.overWholeCluster && last.failures.length === 0 && !last.followed;
+}
+
 // Whether the list is ready to show its rows, or its empty list (P19): not before the first load of the Clusters in
 // this mount of the page has ended, and not while a load of the Clusters runs and no row is listed.
 export function isListReady(state: ReadsState, clusters: string, rows: number): boolean {
@@ -386,7 +396,7 @@ function refusalLine(descriptor: KindDescriptor, failures: readonly ReadFailure[
     : [];
 }
 
-const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows">, string> = {
+const FEEDS_WORDS: Record<Exclude<KindFeeds, "rows" | "infrastructure">, string> = {
   machines: "their activities read Unknown where their Machines count, never Idle",
   "machine-sets": "the activities of their MachineDeployments, and so their own, read Unknown, never Idle",
   parts: "their activities read Unknown, never Idle",
@@ -407,7 +417,9 @@ function contextNotice(descriptor: KindDescriptor, reads: KindReads): Notice | u
   const what =
     descriptor.feeds === "rows"
       ? ""
-      : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
+      : descriptor.feeds === "infrastructure"
+        ? "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health."
+        : `Until they can be read, the Clusters of those namespaces are evaluated without them, which the status model notes: ${FEEDS_WORDS[descriptor.feeds]}.`;
   const title =
     loadHold === undefined
       ? `The ${descriptor.noun} could not be read again, at ${TIME}`
@@ -506,7 +518,7 @@ export function listNotices(
   // A list that the host read once over the whole cluster and does not follow (P34).
   const last = reads.last;
 
-  if (last !== undefined && last.overWholeCluster && last.failures.length === 0 && !last.followed) {
+  if (last !== undefined && isNotFollowed(state, clusters.key)) {
     overList.push({
       id: "list:not-followed",
       tone: "info",

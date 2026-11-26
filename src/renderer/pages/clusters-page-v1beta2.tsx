@@ -17,36 +17,54 @@
 // of each render, and again at the earliest time that a result names. It is an `observer`, and follows when the host
 // registers the API of Clusters (AGENTS.md, "Rules That Fail Silently").
 //
-// The details of the extension, which a row opens, come with the second pull request of SPEC-0004: until then a row
-// opens nothing, and never the details of the host, whose menu SPEC-0001, A7 keeps away from the list.
+// The page has one parameter, `details`, which holds `<namespace>/<name>` of the Cluster whose details are open (P6):
+// the list sets it, from a click on a row or on its name, which is a button that the keyboard reaches (P13), and
+// closing the details clears it. The details are those of the extension, the `Drawer` of the host over the list
+// (P15), and never those of the host, whose menu SPEC-0001, A7 keeps away from the list. They take their Cluster from
+// the stores of the page when the page reads its namespace, and otherwise read it through stores of their own (P31);
+// the page publishes its reads while it is mounted, for the panel in the details of the host (P16).
 
 import { Renderer } from "@freelensapp/extensions";
 import { computed } from "mobx";
 import { observer } from "mobx-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { availabilityOf, CLUSTER_DEFINITION, CLUSTER_GROUP } from "../../common/views/availability";
 import { rowCells, versionRanks } from "../../common/views/cluster-cells";
 import { clusterRowOf, contextVersions, indexContext, StatusMemo } from "../../common/views/context";
+import { detailsAddressOf, parseDetailsAddress } from "../../common/views/details-address";
 import { isListReady, isLoaded, listNotices } from "../../common/views/read-state";
-import { contractReferenceOf } from "../../common/views/references";
 import { Cluster } from "../api/cluster/cluster-v1beta2";
 import { Instant, MarkLine, MarkNote, MarksCell, MarkView } from "../components/marks";
 import { NoticeView } from "../components/notice";
+import { ClusterDetailsDrawer } from "../details/cluster-details-drawer";
+import { publishPageSource } from "../reads/cluster-source";
 import { DefinitionReads } from "../reads/definitions";
 import { frameContextOf } from "../reads/frame-context";
 import { PageReads, storeKey, storesKey } from "../reads/page-reads";
-import { clustersKind, contextKinds, controlPlaneKinds, storeOfModel, uniqueStores } from "../reads/page-stores";
+import {
+  clustersKind,
+  contextKinds,
+  controlPlaneKinds,
+  infrastructureKinds,
+  referencesOf,
+  storeOfModel,
+  uniqueStores,
+} from "../reads/page-stores";
 import styles from "./clusters-page.module.scss";
+
+import type { Common } from "@freelensapp/extensions";
 
 import type { ReactNode } from "react";
 
+import type { ClusterObject } from "../../common/status/index";
 import type { Availability } from "../../common/views/availability";
 import type { RowCells } from "../../common/views/cluster-cells";
-import type { ContextIndex, ContextObjects, ControlPlaneObjects, KindObjects } from "../../common/views/context";
-import type { ReadsState } from "../../common/views/read-state";
-import type { ContractReference } from "../../common/views/references";
+import type { ContextIndex, ContextObjects, KindObjects, ProviderKindObjects } from "../../common/views/context";
+import type { KindDescriptor, ReadsState } from "../../common/views/read-state";
 import type { ClusterApi } from "../api/cluster/cluster-v1beta2";
-import type { ContextKinds, ControlPlaneKind, PageStore, ReadKind } from "../reads/page-stores";
+import type { ViewHost } from "../details/cluster-details-v1beta2";
+import type { ClusterSource } from "../reads/cluster-source";
+import type { ContextKinds, PageStore, ProviderKind, ReadKind } from "../reads/page-stores";
 import type { HostStore } from "../reads/store-adapter";
 
 const {
@@ -152,29 +170,26 @@ function objectsOf(kind: ReadKind): KindObjects<never> {
   };
 }
 
-// What the page reads: the kinds of the context and of control plane that the references of the rows name, the store
-// of each once, in the order of the page (P1 to P3, P19). They are read in the render: the host makes the store of a
-// kind of a definition when it is first asked for it, which a derivation of mobx may not do.
+// What the page reads: the kinds of the context, and those of control plane and of infrastructure cluster that the
+// references of the rows name, the store of each once, in the order of the page (P1 to P3, P19); the details show the
+// infrastructure cluster. They are read in the render: the host makes the store of a kind of a definition when it is
+// first asked for it, which a derivation of mobx may not do.
 interface PageKinds {
   readonly referenceIds: readonly string[];
   readonly context: ContextKinds;
-  readonly controlPlanes: ReadonlyMap<string, ControlPlaneKind>;
+  readonly controlPlanes: ReadonlyMap<string, ProviderKind>;
+  readonly infrastructures: ReadonlyMap<string, ProviderKind>;
   readonly readKinds: readonly ReadKind[];
   readonly stores: readonly PageStore[];
 }
 
 function pageKinds(items: readonly Cluster[], clusterStore: PageStore, definitions: DefinitionReads): PageKinds {
-  // The kinds of control plane that the references of the listed Clusters name (P3).
-  const references = new Map<string, ContractReference>();
-
-  for (const cluster of items) {
-    const reference = contractReferenceOf(cluster.spec?.controlPlaneRef);
-
-    if (reference !== undefined) references.set(`${reference.apiGroup}/${reference.kind}`, reference);
-  }
-
+  // The kinds of a provider that the references of the listed Clusters name (P3).
+  const controlPlaneReferences = referencesOf(items, "controlPlaneRef");
+  const infrastructureReferences = referencesOf(items, "infrastructureRef");
   const context = contextKinds();
-  const controlPlanes = controlPlaneKinds([...references.values()], definitions);
+  const controlPlanes = controlPlaneKinds([...controlPlaneReferences.values()], definitions);
+  const infrastructures = infrastructureKinds([...infrastructureReferences.values()], definitions);
   const readKinds = [
     context.machines,
     context.machineSets,
@@ -185,18 +200,29 @@ function pageKinds(items: readonly Cluster[], clusterStore: PageStore, definitio
     context.clusterClasses,
     ...context.operator,
     ...controlPlanes.values(),
+    ...infrastructures.values(),
   ];
 
   return {
-    referenceIds: [...references.keys()].sort(),
+    referenceIds: [...new Set([...controlPlaneReferences.keys(), ...infrastructureReferences.keys()])].sort(),
     context,
     controlPlanes,
+    infrastructures,
     readKinds,
     stores: uniqueStores([clustersKind(clusterStore), ...readKinds]),
   };
 }
 
-function contextObjectsOf(reads: ReadsState, { context, controlPlanes }: PageKinds): ContextObjects {
+function providerObjectsOf(kinds: ReadonlyMap<string, ProviderKind>): Map<string, ProviderKindObjects> {
+  return new Map(
+    [...kinds].map(([id, kind]): [string, ProviderKindObjects] => [
+      id,
+      { ...objectsOf(kind), resolution: kind.resolution },
+    ]),
+  );
+}
+
+function contextObjectsOf(reads: ReadsState, { context, controlPlanes, infrastructures }: PageKinds): ContextObjects {
   return {
     reads,
     machines: objectsOf(context.machines),
@@ -206,13 +232,22 @@ function contextObjectsOf(reads: ReadsState, { context, controlPlanes }: PageKin
     healthChecks: objectsOf(context.healthChecks),
     clusterClasses: objectsOf(context.clusterClasses),
     operator: context.operator.map((kind) => objectsOf(kind)),
-    controlPlanes: new Map(
-      [...controlPlanes].map(([id, kind]): [string, ControlPlaneObjects] => [
-        id,
-        { ...objectsOf(kind), resolution: kind.resolution },
-      ]),
-    ),
+    controlPlanes: providerObjectsOf(controlPlanes),
+    infrastructures: providerObjectsOf(infrastructures),
   };
+}
+
+// The kinds that the notices of the page name, each once, by its store, as its model names it when it has one; the
+// Clusters apart.
+function noticeKindsOf(kinds: PageKinds, clusterStore: PageStore): (ReadKind & { readonly key: string })[] {
+  const found = new Map<string, ReadKind & { readonly key: string }>();
+
+  for (const kind of kinds.readKinds) {
+    const key = kind.store === undefined || kind.store === clusterStore ? undefined : storeKey(kind.store);
+
+    if (key !== undefined && !found.has(key)) found.set(key, { ...kind, key });
+  }
+  return [...found.values()];
 }
 
 // What the page keeps for its mount: the reads of its stores, the definitions it read, the results of the model, the
@@ -256,6 +291,47 @@ class ListModel {
       this.#index = { reads: objects.reads, versions, index: indexContext(objects) };
     }
     return this.#index.index;
+  }
+}
+
+// The reads of the page, as a view of one Cluster takes them when the page reads the namespace of its Cluster: its
+// details, and the panel in the details of the host while the page is mounted (P16, P31).
+class PageSource implements ClusterSource {
+  readonly #model: ListModel;
+
+  constructor(model: ListModel) {
+    this.#model = model;
+  }
+
+  get reads(): ReadsState {
+    return this.#model.reads.state;
+  }
+
+  get definitions(): DefinitionReads {
+    return this.#model.definitions;
+  }
+
+  #kinds(): PageKinds {
+    return pageKinds(this.#model.items, this.#model.clusterStore, this.#model.definitions);
+  }
+
+  clusters(): KindObjects<ClusterObject> {
+    return objectsOf(clustersKind(this.#model.clusterStore));
+  }
+
+  objects(): ContextObjects {
+    return contextObjectsOf(this.reads, this.#kinds());
+  }
+
+  // The indexes that the list builds, once for each change of what they read, and not again for the details.
+  index(): ContextIndex {
+    return this.#model.indexOf(this.objects());
+  }
+
+  kinds(): (KindDescriptor & { readonly key: string })[] {
+    const clusters = clustersKind(this.#model.clusterStore);
+
+    return [{ ...clusters, key: this.#model.clustersKey }, ...noticeKindsOf(this.#kinds(), this.#model.clusterStore)];
   }
 }
 
@@ -370,15 +446,26 @@ function StatusView({ cell }: { cell: RowCells["status"] }) {
   );
 }
 
+// The parameter of the page that holds the address of the details (P6), as the host gives it.
+type DetailsParam = Renderer.Navigation.PageParam<string>;
+
+interface ClustersListProps {
+  readonly clusterStore: PageStore;
+  readonly details: DetailsParam | undefined;
+  readonly extension: Renderer.LensExtension;
+}
+
 // The list of the Clusters, from the store of the host for Clusters at v1beta2.
-const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) => {
+const ClustersList = observer(({ clusterStore, details, extension }: ClustersListProps) => {
   const [model] = useState(() => new ListModel(clusterStore));
+  const [source] = useState(() => new PageSource(model));
   const [, setTick] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
   const state = model.reads.state;
   const clustersKey = model.clustersKey;
   const items = model.items;
   const kinds = pageKinds(items, clusterStore, model.definitions);
-  const { referenceIds, readKinds, stores } = kinds;
+  const { referenceIds, stores } = kinds;
   // The key of the layout: the set of its stores, each by its identity, so that rows that change their order mount
   // nothing again (P19).
   const layoutKey = storesKey(stores);
@@ -401,19 +488,10 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
   );
   const ranks = versionRanks([...rows.values()].map(({ cells }) => cells.version.first));
   const cellsOf = (cluster: Cluster): RowCells | undefined => rows.get(cluster.getId())?.cells;
-  // The notices name each kind of the context once, by its store, as its model names it when it has one.
-  const noticeKinds = new Map<string, ReadKind & { key: string }>();
-
-  for (const kind of readKinds) {
-    const key = kind.store === undefined || kind.store === clusterStore ? undefined : storeKey(kind.store);
-
-    if (key !== undefined && !noticeKinds.has(key)) noticeKinds.set(key, { ...kind, key });
-  }
-
   const notices = listNotices(
     state,
     { ...clustersKind(clusterStore), key: clustersKey },
-    [...noticeKinds.values()],
+    noticeKindsOf(kinds, clusterStore),
     items.length,
   );
   const ready = isListReady(state, clustersKey, items.length);
@@ -427,8 +505,20 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
     );
   // The store of definitions failing after the mount sends the GETs that it no longer answers (P3).
   const definitionsFailed = Renderer.K8sApi.crdStore.failedLoading;
+  const address = parseDetailsAddress(details?.get());
+  const openDetails = (namespace: string, name: string) => details?.set(detailsAddressOf(namespace, name));
+  const host: ViewHost = { extension, openCluster: openDetails };
+  // The name of a Cluster in the list, which gets the focus back when its details close (P15).
+  const focusName = (value: string) => {
+    const names = root.current?.querySelectorAll<HTMLElement>("[data-capi-cluster]") ?? [];
+
+    [...names].find((name) => name.dataset.capiCluster === value)?.focus();
+  };
 
   useEffect(() => model.reads.followFilter(), [model]);
+
+  // The reads of the page, for the panel in the details of the host, while the page is mounted (P16).
+  useEffect(() => publishPageSource(source), [source]);
 
   // A store that leaves the set of the page loses what it loaded (P19).
   useEffect(() => model.reads.retain(layoutKey.split(" ")), [model, layoutKey]);
@@ -477,7 +567,7 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
   const inPlaceOfRows = ready && items.length === 0 ? notices.inPlaceOfRows : undefined;
 
   return (
-    <div className={styles.page} data-testid="capi-clusters-page">
+    <div className={styles.page} data-testid="capi-clusters-page" ref={root}>
       {notices.overList.length === 0 ? null : (
         <div className={styles.notices}>
           {notices.overList.map((notice) => (
@@ -493,15 +583,15 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
         dependentStores={dependentAdapters}
         items={items}
         isReady={ready}
-        // No selection and no menu in the rows, no remove button of the host whatever its store holds selected, and
-        // no details of the host (SPEC-0001, A7; P19). The menu of each row is an empty cell, as the header always has
-        // one, so that the columns of the rows line up with their heads; with no menu of the host registered, a right
-        // click opens nothing. The own key `onRemove` holds undefined, which the layout spreads over its own.
+        // No selection and no menu in the rows, and no remove button of the host whatever its store holds selected
+        // (SPEC-0001, A7; P19). The menu of each row is an empty cell, as the header always has one, so that the
+        // columns of the rows line up with their heads; with no menu of the host registered, a right click opens
+        // nothing. The own key `onRemove` holds undefined, which the layout spreads over its own. A click on a row
+        // opens the details of the extension, never those of the host (P13, P15).
         isSelectable={false}
         renderItemMenu={() => null}
         addRemoveButtons={{ onRemove: undefined }}
-        hasDetailsView={false}
-        onDetails={() => undefined}
+        onDetails={(cluster: Cluster) => openDetails(cluster.getNs() ?? "", cluster.getName())}
         renderHeaderTitle={PAGE_TITLE}
         customizeHeader={
           header === "count"
@@ -525,8 +615,19 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
           const cells = cellsOf(cluster);
 
           return [
-            <WithTooltip expandable={false} data-testid="capi-cluster-name">
-              {cluster.getName()}
+            // The name is a button, which the keyboard reaches, and a click on it stops at it (P13).
+            <WithTooltip tooltip={cluster.getName()} expandable={false} data-testid="capi-cluster-name">
+              <button
+                type="button"
+                className={styles.nameButton}
+                data-capi-cluster={detailsAddressOf(cluster.getNs() ?? "", cluster.getName())}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openDetails(cluster.getNs() ?? "", cluster.getName());
+                }}
+              >
+                {cluster.getName()}
+              </button>
             </WithTooltip>,
             <NamespaceSelectBadge namespace={cluster.getNs() ?? ""} />,
             cells === undefined ? null : <CountersView cell={cells.controlPlane} testId="capi-cluster-control-plane" />,
@@ -552,24 +653,34 @@ const ClustersList = observer(({ clusterStore }: { clusterStore: PageStore }) =>
           ];
         }}
       />
+      <ClusterDetailsDrawer
+        address={address}
+        page={source}
+        host={host}
+        close={() => details?.clear()}
+        focusName={focusName}
+      />
     </div>
   );
 });
 
-export interface ClustersPageProps {
-  // The extension, from the registration of the page (AGENTS.md, "Renderer Components"); the details of the second
-  // pull request hand it their error boundaries.
+export interface ClustersPageProps extends Common.Types.PageComponentProps {
+  // The extension, from the registration of the page (AGENTS.md, "Renderer Components"), whose error boundaries the
+  // details take.
   readonly extension: Renderer.LensExtension;
 }
 
 // The page of the Clusters: the list once the cluster serves them at v1beta2, else the state that says why not. The
 // list is keyed by the identity of the store of Clusters, so that a store that the host replaces starts a new list.
-export const ClustersPage = observer((_props: ClustersPageProps) => {
+export const ClustersPage = observer(({ params, extension }: ClustersPageProps) => {
   const state = availability();
   const clusterStore = state.state === "list" ? storeOfModel(Cluster) : undefined;
+  const details = params.details as DetailsParam | undefined;
 
   if (state.state !== "list") return <PageState availability={state} />;
   // The host registers the store of an API with the API: until then, it is still checking.
   if (clusterStore === undefined) return <PageState availability={{ state: "checking" }} />;
-  return <ClustersList key={storeKey(clusterStore)} clusterStore={clusterStore} />;
+  return (
+    <ClustersList key={storeKey(clusterStore)} clusterStore={clusterStore} details={details} extension={extension} />
+  );
 });

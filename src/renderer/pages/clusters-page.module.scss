@@ -124,3 +124,28 @@
   white-space: pre-wrap;
   text-align: left;
 }
+
+// The name of a row, a button that opens the details, so that the keyboard reaches them (P13): it reads as the text of
+// the cell, truncated, and shows the focus with an outline of its own (below).
+.nameButton {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+// The focus of the name, which the reset of the host takes away from every element, and which the badge of the cell
+// would cut outside the box of the button: an outline in a token of the theme, drawn inside the box (kit,
+// `docs/design.md`, "Interaction and performance").
+.nameButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}

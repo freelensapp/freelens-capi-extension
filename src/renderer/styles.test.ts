@@ -154,6 +154,32 @@ describe("the cells of the list (P12; kit, Lists)", () => {
   });
 });
 
+describe("the focus of the buttons of the view (kit, Interaction and performance)", () => {
+  const page = readFileSync(join(RENDERER, "pages", "clusters-page.module.scss"), "utf8");
+  const details = readFileSync(join(RENDERER, "details", "cluster-details.module.scss"), "utf8");
+
+  // The host takes the outline away from every element, so each button of the view draws its focus itself, in a token
+  // of the theme and inside its box, which the badge that holds the name would otherwise cut.
+  it.each([
+    ["the name of a row", () => page, ".nameButton:focus-visible"],
+    ["a Cluster named in a message", () => details, ".textButton:focus-visible"],
+  ])("draws the focus of %s with a token of the theme, inside its box", (_name, text, selector) => {
+    const rule = declarationsOf(text(), selector);
+
+    expect(rule).toMatch(/outline: 2px solid var\(--[\w-]+\);/);
+    expect(rule).toMatch(/outline-offset: -2px;/);
+  });
+});
+
+describe("the labels of the conditions in the details", () => {
+  // A long name wraps in the column of the labels of the host, so that the marks of its row stay in line.
+  it("wrap anywhere in a name that the column does not hold", () => {
+    const details = readFileSync(join(RENDERER, "details", "cluster-details.module.scss"), "utf8");
+
+    expect(declarationsOf(details, ".condition > :global(.name)")).toBe("overflow-wrap: anywhere;");
+  });
+});
+
 describe("the columns of the list (P7)", () => {
   const columns = columnsOf(readFileSync(join(RENDERER, "pages", "clusters-page.module.scss"), "utf8"));
   const state = ["activity", "condition", "status"];

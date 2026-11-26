@@ -14,11 +14,7 @@
     // the Vitest alias for @freelensapp/extensions, which knip does not follow
     "test/freelens-extensions.ts",
     // compiled by `type:check:environments` only, with no importer
-    "environment-tests/*.ts",
-    // the one parser that the model does not import: a production entry until
-    // a module reached from another production entry imports it, and the pull
-    // request that brings that import removes its line
-    "src/common/parsers/list-annotation.ts!"
+    "environment-tests/*.ts"
   ],
   "project": [
     "*.{js,mjs,ts}",

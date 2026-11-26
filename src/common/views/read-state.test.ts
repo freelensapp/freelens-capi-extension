@@ -206,6 +206,28 @@ describe("a kind of the context that could not all be read (P25)", () => {
   });
 });
 
+describe("a kind of infrastructure cluster that could not all be read (P25)", () => {
+  it("says that the details show the infrastructure cluster of those Clusters as text, with no health", () => {
+    const DEV_CLUSTERS = "/apis/infrastructure.cluster.x-k8s.io/v1beta2/devclusters";
+    const devClusters: KindDescriptor & { key: string } = {
+      key: DEV_CLUSTERS,
+      kind: "DevCluster",
+      noun: "DevCluster objects",
+      resource: "devclusters",
+      group: "infrastructure.cluster.x-k8s.io",
+      feeds: "infrastructure",
+    };
+    const refused = run([FILTER_AB, ...load(DEV_CLUSTERS, 1, ["a", "b"], [REFUSED_A])]);
+    const [notice] = listNotices(refused, clusters, [devClusters], 2).overList;
+
+    expect(notice.title).toBe("The DevCluster objects could not all be read");
+    expect(notice.lines).toEqual([
+      "Reading them takes get, list and watch on devclusters of infrastructure.cluster.x-k8s.io, in those namespaces or over the whole cluster.",
+      "Until they can be read, the details of the Clusters of those namespaces show their infrastructure cluster as text, with no health.",
+    ]);
+  });
+});
+
 describe("a kind of the context refused in one namespace of its load (P25)", () => {
   const reload: ReadEvent[] = [
     { type: "reload-started", kind: MACHINES },

@@ -206,13 +206,17 @@ and in a theme that is not the default, such as its high contrast theme
   and no remove button of the host, whose details are those of the extension
   (SPEC-0001, A7; SPEC-0004, P19). Its rows keep an empty cell of the menu,
   which lines them up with the header, where the host always renders one
-  (SPEC-0004, "Notes and deviations"). The name of a row is a button that opens the
-  details, so that the keyboard reaches them (SPEC-0004, P13). The search
-  matches the fields that `getSearchFields()` of the host gives, which the page
-  passes to the layout itself, and the words that the columns show (SPEC-0004,
-  P14). The id of a list is a qualified literal, as `clusterApiClustersTable`,
-  since the host keeps the sort of every list by its id in one place that every
-  extension shares (SPEC-0004, P5).
+  (SPEC-0004, "Notes and deviations"). The name of a row is a button that opens
+  the details, so that the keyboard reaches them (SPEC-0004, P13), and it shows
+  its focus, as the button of a Cluster named in a message does, with an outline
+  in the token `--primary` of the theme inside its box, since the host resets
+  the outline of every element (kit, `docs/design.md`, "Interaction and
+  performance"; SPEC-0004, "Notes and deviations"). The search matches the
+  fields that `getSearchFields()` of the host gives, which the page passes to
+  the layout itself, and the words that the columns show (SPEC-0004, P14). The
+  id of a list is a qualified literal, as `clusterApiClustersTable`, since the
+  host keeps the sort of every list by its id in one place that every extension
+  shares (SPEC-0004, P5).
 - **The details of the extension.** The `Drawer` of the host, which the page
   renders over its list: its title, the copy of the name, its width and its
   closing are those of the host. It closes on Escape and on a click outside
@@ -223,8 +227,8 @@ and in a theme that is not the default, such as its high contrast theme
   in the details or on the body, so that a click on another control keeps its
   focus (SPEC-0004, P15). Their metadata are those of the host, with the
   owners as text and the namespace as the namespace badge, which selects it in
-  the filter, since the host would link both to its own details (SPEC-0004,
-  P32).
+  the filter, each where the host puts it, since the host would link both to
+  its own details (SPEC-0004, P32).
 - **An address for the details.** The page of a kind has the parameter
   `details`, `<namespace>/<name>` of the object whose details are open, or its
   `<name>` alone for a kind that has no namespace, as ExtensionConfig
@@ -238,23 +242,24 @@ and in a theme that is not the default, such as its high contrast theme
   that the view reads, and not the one that the host hands it, which follows
   only while a subscription of the host covers its namespace (SPEC-0004, P16,
   P31).
-- **Between the objects of a Cluster.** A link opens the view of the
-  extension for the kind of its target, at its details, when the extension
-  has one; for an object of a provider, the details of the host, over those
-  of the extension, which stay open under them (SPEC-0001, A6; SPEC-0004,
-  P18). Both are a drawer of the host: one Escape closes both, and the close
-  icon of the details of the host closes them alone. The references to the
-  KubeadmControlPlane, the MachineDeployments, the MachinePools and the
-  ClusterClass are plain text, their kind and their name, and open nothing,
-  until SPEC-0005 gives them details of the extension, as the maintainer
-  decided on 2026-11-25; so are the other objects of Cluster API that a view
-  names, a MachineSet or a Machine among the parts or in a message (SPEC-0004,
-  P18), and the owners and the namespace in the metadata (SPEC-0004, P32).
-  Nothing of the extension opens the details of the host, with their menu,
-  for an object of Cluster API or for a Namespace (SPEC-0001, A7). A click on a
-  link stops at the link, so that a row does not open its details as well. The
-  view of one Cluster reads its objects in its namespace, whatever namespaces
-  the filter selects (SPEC-0001, A13; SPEC-0004, P31).
+- **Between the objects of a Cluster.** A link opens the view of the extension
+  for the kind of its target, at its details, when the extension has one; for an
+  object of a provider, the details of the host, over those of the extension,
+  which stay open under them (SPEC-0001, A6; SPEC-0004, P18). Both are a drawer
+  of the host: one Escape closes both, and the close icon of the details of the
+  host closes them alone. The references to the KubeadmControlPlane, the
+  MachineDeployments, the MachinePools and the ClusterClass are plain text,
+  their kind and their name, and open nothing, until SPEC-0005 gives them
+  details of the extension, as the maintainer decided on 2026-11-25; so are the
+  other objects of Cluster API that a view names, a MachineSet or a Machine
+  among the parts or in a message (SPEC-0004, P18), and the owners and the
+  namespace in the metadata (SPEC-0004, P32). A name in a message opens
+  something only when the view read its target (SPEC-0004, P18). Nothing of the
+  extension opens the details of the host, with their menu, for an object of
+  Cluster API or for a Namespace (SPEC-0001, A7). A click on a link stops at the
+  link, so that a row does not open its details as well. The view of one Cluster
+  reads its objects in its namespace, whatever namespaces the filter selects
+  (SPEC-0001, A13; SPEC-0004, P31).
 
 ## Links to the objects of providers
 

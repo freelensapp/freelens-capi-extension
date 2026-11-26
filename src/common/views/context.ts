@@ -3,9 +3,10 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-// The context of the status model for each Cluster of a list (SPEC-0003, "What it takes and returns"; SPEC-0004,
-// "What the view reads", P2, P19), built from the objects of the stores that the page reads, through indexes made
-// once for each change of the stores and never row by row (kit, `docs/design.md`, "Interaction and performance"):
+// The context of the status model for each Cluster of a list or of a view of one Cluster (SPEC-0003, "What it takes and
+// returns"; SPEC-0004, "What the view reads", P2, P17, P19, P31), built from the objects of the stores that the view
+// reads, through indexes made once for each change of the stores and never row by row (kit, `docs/design.md`,
+// "Interaction and performance"):
 //
 // - `machines`: the Machines labelled with the name of the Cluster, in its namespace;
 // - `parts`: the result of `statusOf` for its control plane, found by its reference at the version that the contract
@@ -20,8 +21,14 @@
 //
 // The Machines of a part are those it controls, found by the owner reference and never by a label whose value can
 // be a hash (SPEC-0001, R3.6): those of the MachineSets that a MachineDeployment controls, for a MachineDeployment.
-// The MachineSets and the worker Machines that a Cluster owns itself, which its details show (P17), come with the
-// details of the second pull request of SPEC-0004.
+//
+// The details of a Cluster show its parts, each with what the model computes for it (P17): its control plane, or the
+// control plane Machines of its own when it names none (SPEC-0001, R3.7); its MachineDeployments and MachinePools; the
+// MachineSets and the worker Machines that it owns, which it counts as the project does, by the label of its name and
+// an owner reference to it (core/reconcilers/cluster/cluster_controller.go:584-622;
+// core/reconcilers/cluster/cluster_controller_status.go:259-300); and its infrastructure cluster, found by its
+// reference at the version of its contract, with the role that the reference gives it (SPEC-0003, "Objects of a
+// provider").
 //
 // A store gives the objects of the namespaces that it has loaded alone (P19): an object that it still holds in a
 // namespace that the filter no longer selects, or in one that it has not loaded yet, is not in the context. An input
@@ -63,11 +70,13 @@ export interface KindObjects<T extends KubeObjectData = KubeObjectData> {
   readonly items: readonly T[];
 }
 
-// The objects of a kind of control plane that the references of the Clusters name, with the resolution of those
-// references to the version of their contract (P3).
-export interface ControlPlaneObjects extends KindObjects {
+// The objects of a kind of a provider that the references of the Clusters name, a control plane or an infrastructure
+// cluster, with the resolution of those references to the version of their contract (P3).
+export interface ProviderKindObjects extends KindObjects {
   readonly resolution: ResolvedReference;
 }
+
+export type ControlPlaneObjects = ProviderKindObjects;
 
 export interface ContextObjects {
   readonly reads: ReadsState;
@@ -77,10 +86,14 @@ export interface ContextObjects {
   readonly machinePools: KindObjects<MachinePoolObject>;
   readonly healthChecks: KindObjects<MachineHealthCheckObject>;
   readonly clusterClasses: KindObjects<ClusterClassObject>;
-  // Every kind of the operator; one that the cluster does not serve has no key.
-  readonly operator: readonly KindObjects<OperatorProviderObject>[];
+  // Every kind of the operator; one that the cluster does not serve has no key. A view of one Cluster reads none, and
+  // gives none (SPEC-0004, P31).
+  readonly operator?: readonly KindObjects<OperatorProviderObject>[];
   // The kinds of control plane that the references of the Clusters name, by `group/kind`.
   readonly controlPlanes: ReadonlyMap<string, ControlPlaneObjects>;
+  // The kinds of infrastructure cluster that the references of the Clusters name, by `group/kind`, which the details
+  // read (SPEC-0004, "What the view reads").
+  readonly infrastructures?: ReadonlyMap<string, ProviderKindObjects>;
 }
 
 // How an input of the context of a Cluster was given.
@@ -104,10 +117,16 @@ export interface ClusterContext {
   // The `uid` and `resourceVersion` of the Cluster and of every object of its context, the version of
   // `controllers`, and how each input was given (SPEC-0003, "How a view uses it").
   readonly key: string;
+  // The parts behind `parts` and `machinePools`, with their objects, or how they are not given (P17).
+  readonly parts: {
+    readonly controlPlane: Part | InputState | undefined;
+    readonly machineDeployments: readonly Part[] | InputState;
+    readonly machinePools: readonly Part[] | InputState;
+  };
 }
 
 interface Controllers {
-  readonly state: "given" | "pending" | "held";
+  readonly state: "given" | "pending" | "held" | "not-read";
   readonly record: Readonly<Record<string, ControllerAvailability>>;
   readonly version: string;
 }
@@ -117,11 +136,13 @@ export interface ContextIndex {
   readonly machinesByCluster: ReadonlyMap<string, readonly MachineObject[]>;
   readonly machinesByController: ReadonlyMap<string, readonly MachineObject[]>;
   readonly machineSetsByController: ReadonlyMap<string, readonly MachineSetObject[]>;
+  readonly machineSetsByCluster: ReadonlyMap<string, readonly MachineSetObject[]>;
   readonly deploymentsByCluster: ReadonlyMap<string, readonly MachineDeploymentObject[]>;
   readonly poolsByCluster: ReadonlyMap<string, readonly MachinePoolObject[]>;
   readonly checksByNamespace: ReadonlyMap<string, readonly MachineHealthCheckObject[]>;
   readonly classes: ReadonlyMap<string, ClusterClassObject>;
   readonly controlPlanes: ReadonlyMap<string, ReadonlyMap<string, KubeObjectData>>;
+  readonly infrastructures: ReadonlyMap<string, ReadonlyMap<string, KubeObjectData>>;
   readonly controllers: Controllers;
 }
 
@@ -204,7 +225,8 @@ function availabilityOf(object: OperatorProviderObject): ControllerAvailability 
 // The availability of each controller, from the objects of the operator in the namespaces read. A kind of the operator
 // whose namespaces of the filter are not all loaded yet leaves `controllers` not given yet; one that the page holds
 // back gives nothing, and the model notes the controllers it does not know. Two objects of one provider that disagree
-// leave its availability unknown.
+// leave its availability unknown. With no kind of the operator read, as for a view of one Cluster, `controllers` is
+// not given, and the model notes it as not read (SPEC-0004, P31).
 function controllersOf(objects: ContextObjects): Controllers {
   const { reads, operator } = objects;
   const filter = reads.filter?.namespaces ?? [];
@@ -212,6 +234,7 @@ function controllersOf(objects: ContextObjects): Controllers {
   const versions: string[] = [];
   let state: Controllers["state"] = "given";
 
+  if (operator === undefined) return { state: "not-read", record, version: "not-read" };
   for (const kind of operator) {
     if (kind.key === undefined) continue;
 
@@ -243,20 +266,28 @@ function controllersOf(objects: ContextObjects): Controllers {
   return { state, record, version: versions.sort().join(",") };
 }
 
+// The objects of the kinds of a provider that the references name, by kind and by their namespace and name.
+function byKindAndName(
+  reads: ReadsState,
+  kinds: ReadonlyMap<string, ProviderKindObjects>,
+): Map<string, Map<string, KubeObjectData>> {
+  const index = new Map<string, Map<string, KubeObjectData>>();
+
+  for (const [kind, objects] of kinds) {
+    const byName = new Map<string, KubeObjectData>();
+
+    for (const item of readItems(reads, objects)) byName.set(scoped(namespaceOf(item), nameOf(item) ?? ""), item);
+    index.set(kind, byName);
+  }
+  return index;
+}
+
 // The indexes of the context, built once for each change of the stores that the page reads.
 export function indexContext(objects: ContextObjects): ContextIndex {
   const { reads } = objects;
   const machines = readItems(reads, objects.machines);
-  const controlPlanes = new Map<string, Map<string, KubeObjectData>>();
-
-  for (const [kind, controlPlaneObjects] of objects.controlPlanes) {
-    const byName = new Map<string, KubeObjectData>();
-
-    for (const item of readItems(reads, controlPlaneObjects)) {
-      byName.set(scoped(namespaceOf(item), nameOf(item) ?? ""), item);
-    }
-    controlPlanes.set(kind, byName);
-  }
+  const machineSets = readItems(reads, objects.machineSets);
+  const controlPlanes = byKindAndName(reads, objects.controlPlanes);
 
   const checksByNamespace = new Map<string, MachineHealthCheckObject[]>();
 
@@ -272,21 +303,24 @@ export function indexContext(objects: ContextObjects): ContextIndex {
     objects,
     machinesByCluster: byClusterLabel(machines),
     machinesByController: byController(machines),
-    machineSetsByController: byController(readItems(reads, objects.machineSets)),
+    machineSetsByController: byController(machineSets),
+    machineSetsByCluster: byClusterLabel(machineSets),
     deploymentsByCluster: byClusterLabel(readItems(reads, objects.machineDeployments)),
     poolsByCluster: byClusterLabel(readItems(reads, objects.machinePools)),
     checksByNamespace,
     classes,
     controlPlanes,
+    infrastructures: byKindAndName(reads, objects.infrastructures ?? new Map()),
     controllers: controllersOf(objects),
   };
 }
 
 // What the indexes of the context read of the stores, as one text: the key, the identity and the version of every
-// object of each kind, and how each reference of a control plane resolves. A view builds the indexes again when this
-// text or the state of the reads changes, and for nothing else; the arrays of the stores are no key, since the host
-// changes them in place (AGENTS.md, "Rules That Fail Silently").
+// object of each kind, and how each reference of a control plane or of an infrastructure cluster resolves. A view
+// builds the indexes again when this text or the state of the reads changes, and for nothing else; the arrays of the
+// stores are no key, since the host changes them in place (AGENTS.md, "Rules That Fail Silently").
 export function contextVersions(objects: ContextObjects): string {
+  const infrastructures = objects.infrastructures ?? new Map<string, ProviderKindObjects>();
   const kinds: readonly KindObjects[] = [
     objects.machines,
     objects.machineSets,
@@ -294,10 +328,13 @@ export function contextVersions(objects: ContextObjects): string {
     objects.machinePools,
     objects.healthChecks,
     objects.clusterClasses,
-    ...objects.operator,
+    ...(objects.operator ?? []),
     ...objects.controlPlanes.values(),
+    ...infrastructures.values(),
   ];
-  const resolutions = [...objects.controlPlanes].map(([id, kind]) => `${id}=${JSON.stringify(kind.resolution)}`);
+  const resolutions = [...objects.controlPlanes, ...infrastructures].map(
+    ([id, kind]) => `${id}=${JSON.stringify(kind.resolution)}`,
+  );
 
   return [...kinds.map((kind) => `${kind.key ?? "-"}:${kind.items.map(versionOf).join(",")}`), ...resolutions].join(
     "|",
@@ -427,8 +464,9 @@ class ContextBuilder {
     };
   }
 
-  partStatus(object: KubeObjectData, context: StatusContext): ObjectStatus {
-    const key = [
+  // The key of the result of a part: the versions of the part and of every object of its context.
+  partKey(object: KubeObjectData, context: StatusContext): string {
+    return [
       versionOf(object),
       versionOf(this.cluster),
       ...(context.machines ?? []).map(versionOf),
@@ -439,12 +477,27 @@ class ContextBuilder {
       context.contract ?? "",
       context.provider ?? "",
     ].join("|");
+  }
 
-    return this.memo.status(object, context, key);
+  partStatus(object: KubeObjectData, context: StatusContext): ObjectStatus {
+    return this.memo.status(object, context, this.partKey(object, context));
+  }
+
+  // A part of the Cluster: the object, what the model computes for it, and whether its Machines are still loading.
+  part(object: KubeObjectData, context: StatusContext, machines?: readonly MachineObject[] | InputState): Part {
+    return { object, status: this.partStatus(object, context), pending: machines === "pending" };
   }
 }
 
-function controlPlaneOf(builder: ContextBuilder, base: StatusContext): ObjectStatus | InputState | undefined {
+// A part of a Cluster, as its details show it (P17): the object, what the model computes for it, and whether an input
+// of its model is not loaded yet, which shows the spinner in the place of its marks.
+export interface Part {
+  readonly object: KubeObjectData;
+  readonly status: ObjectStatus;
+  readonly pending: boolean;
+}
+
+function controlPlaneOf(builder: ContextBuilder, base: StatusContext): Part | InputState | undefined {
   const { index, cluster, namespace } = builder;
   const reference = contractReferenceOf(fieldsOf(cluster.spec)?.controlPlaneRef);
 
@@ -475,7 +528,7 @@ function controlPlaneOf(builder: ContextBuilder, base: StatusContext): ObjectSta
   if (machines === "pending") builder.pending = true;
   builder.record([object]);
 
-  return builder.partStatus(
+  return builder.part(
     object,
     builder.partContext(machines, {
       ...base,
@@ -483,10 +536,11 @@ function controlPlaneOf(builder: ContextBuilder, base: StatusContext): ObjectSta
       contract: resolution.contract,
       ...(resolution.provider === undefined ? {} : { provider: resolution.provider }),
     }),
+    machines,
   );
 }
 
-function deploymentsOf(builder: ContextBuilder, base: StatusContext): ObjectStatus[] | InputState {
+function deploymentsOf(builder: ContextBuilder, base: StatusContext): Part[] | InputState {
   const { index, cluster, namespace } = builder;
   const state = stateOf(index.objects.reads, index.objects.machineDeployments.key, namespace);
 
@@ -518,11 +572,11 @@ function deploymentsOf(builder: ContextBuilder, base: StatusContext): ObjectStat
         typeof unread === "string" ? unread : owned.flatMap((entry) => (typeof entry === "string" ? [] : entry));
     }
     if (machines === "pending") builder.pending = true;
-    return builder.partStatus(deployment, builder.partContext(machines, base));
+    return builder.part(deployment, builder.partContext(machines, base), machines);
   });
 }
 
-function poolsOf(builder: ContextBuilder, base: StatusContext): ObjectStatus[] | InputState {
+function poolsOf(builder: ContextBuilder, base: StatusContext): Part[] | InputState {
   const { index, cluster, namespace } = builder;
   const state = stateOf(index.objects.reads, index.objects.machinePools.key, namespace);
 
@@ -536,7 +590,7 @@ function poolsOf(builder: ContextBuilder, base: StatusContext): ObjectStatus[] |
     const machines = builder.machinesOf(pool, "cluster.x-k8s.io");
 
     if (machines === "pending") builder.pending = true;
-    return builder.partStatus(pool, builder.partContext(machines, base));
+    return builder.part(pool, builder.partContext(machines, base), machines);
   });
 }
 
@@ -574,7 +628,7 @@ export function clusterContextOf(
   const controllers = index.controllers;
 
   builder.mark("controllers", controllers.state);
-  if (controllers.state !== "pending") context.controllers = controllers.record;
+  if (controllers.state === "given" || controllers.state === "held") context.controllers = controllers.record;
 
   const checksState = stateOf(reads, index.objects.healthChecks.key, namespace);
 
@@ -615,8 +669,8 @@ export function clusterContextOf(
   if (typeof deployments === "string") builder.mark("parts", deployments);
   if (typeof controlPlane !== "string" && typeof deployments !== "string") {
     context.parts = {
-      ...(controlPlane === undefined ? {} : { controlPlane }),
-      machineDeployments: deployments,
+      ...(controlPlane === undefined ? {} : { controlPlane: controlPlane.status }),
+      machineDeployments: deployments.map((part) => part.status),
     };
     builder.mark("parts", "given");
   }
@@ -626,7 +680,7 @@ export function clusterContextOf(
   if (typeof pools === "string") {
     builder.mark("machinePools", pools);
   } else {
-    context.machinePools = pools;
+    context.machinePools = pools.map((part) => part.status);
     builder.mark("machinePools", "given");
   }
 
@@ -648,6 +702,7 @@ export function clusterContextOf(
     inputs: builder.inputs,
     pending: builder.pending,
     key: [...builder.versions.sort(), `controllers=${controllers.version}`, ...inputs].join("|"),
+    parts: { controlPlane, machineDeployments: deployments, machinePools: pools },
   };
 }
 
@@ -662,8 +717,8 @@ export interface ClusterRow {
   readonly poolsWithoutMachines: number;
 }
 
-export function clusterRowOf(index: ContextIndex, cluster: ClusterObject, now: number, memo: StatusMemo): ClusterRow {
-  const { context, inputs, pending, key } = clusterContextOf(index, cluster, now, memo);
+function rowOf(cluster: ClusterObject, clusterContext: ClusterContext, memo: StatusMemo): ClusterRow {
+  const { context, inputs, pending, key } = clusterContext;
 
   return {
     cluster,
@@ -674,5 +729,174 @@ export function clusterRowOf(index: ContextIndex, cluster: ClusterObject, now: n
     poolsWithoutMachines: (context.machinePools ?? []).filter((pool) =>
       pool.notes.some((note) => note.code === "no-machine"),
     ).length,
+  };
+}
+
+export function clusterRowOf(index: ContextIndex, cluster: ClusterObject, now: number, memo: StatusMemo): ClusterRow {
+  return rowOf(cluster, clusterContextOf(index, cluster, now, memo), memo);
+}
+
+// A worker Machine, with its conditions, whose `Available` the Cluster counts (P17).
+export interface MachinePart extends Part {
+  readonly conditions: ConditionsResult;
+}
+
+// The details of a Cluster (P17): its row, and each of its parts with what the model computes for it, or how it is not
+// given. A part that the Cluster does not name, or that it names and the view cannot read, is told apart by the
+// details, from the references and the reads.
+export interface ClusterParts {
+  readonly row: ClusterRow;
+  // The control plane that its reference names; undefined with no reference.
+  readonly controlPlane: Part | InputState | undefined;
+  // With no reference, the control plane Machines of its own (SPEC-0001, R3.7); undefined with one.
+  readonly controlPlaneMachines: readonly MachinePart[] | InputState | undefined;
+  readonly machineDeployments: readonly Part[] | InputState;
+  readonly machinePools: readonly Part[] | InputState;
+  // The MachineSets and the worker Machines that it owns, which it counts with its workers.
+  readonly machineSets: readonly Part[] | InputState;
+  readonly workerMachines: readonly MachinePart[] | InputState;
+  // The infrastructure cluster that its reference names; undefined with no reference.
+  readonly infrastructure: Part | InputState | undefined;
+}
+
+// The label of the control plane Machines, and that of the Machines of a MachinePool (SPEC-0001, R3.7;
+// api/core/v1beta2/machine_types.go:31, 48).
+const CONTROL_PLANE_LABEL = "cluster.x-k8s.io/control-plane";
+const POOL_NAME_LABEL = "cluster.x-k8s.io/pool-name";
+
+// Whether an object has an owner reference to the Cluster, by group, kind and name, as the project matches it
+// (util/util.go:363-404).
+function ownedBy(object: KubeObjectData, cluster: ClusterObject): boolean {
+  const name = nameOf(cluster);
+
+  return ownersOf(object).some(
+    (owner) => owner.group === "cluster.x-k8s.io" && owner.kind === "Cluster" && owner.name === name,
+  );
+}
+
+function hasLabel(object: KubeObjectData, key: string): boolean {
+  return Object.hasOwn(fieldsOf(fieldsOf(object.metadata)?.labels) ?? {}, key);
+}
+
+// The Machines labelled with the name of the Cluster that the view shows as parts: those of its control plane, or
+// the worker Machines that it owns, which the project counts apart from those of a MachinePool.
+function clusterMachinesOf(
+  builder: ContextBuilder,
+  base: StatusContext,
+  which: "control-plane" | "workers",
+): MachinePart[] | InputState {
+  const { index, cluster, namespace } = builder;
+  const state = stateOf(index.objects.reads, index.objects.machines.key, namespace);
+
+  if (state === "not-served") return [];
+  if (state !== "given") return state;
+
+  const labelled = index.machinesByCluster.get(scoped(namespace, nameOf(cluster) ?? "")) ?? [];
+  const machines =
+    which === "control-plane"
+      ? labelled.filter((machine) => hasLabel(machine, CONTROL_PLANE_LABEL))
+      : labelled.filter(
+          (machine) =>
+            !hasLabel(machine, CONTROL_PLANE_LABEL) && !hasLabel(machine, POOL_NAME_LABEL) && ownedBy(machine, cluster),
+        );
+
+  return machines.map((machine) => {
+    const context = { ...base, cluster };
+    const key = builder.partKey(machine, context);
+
+    return {
+      object: machine,
+      status: builder.memo.status(machine, context, key),
+      conditions: builder.memo.conditions(machine, context, key),
+      pending: false,
+    };
+  });
+}
+
+// The MachineSets that the Cluster owns, apart from those of its MachineDeployments.
+function ownedSetsOf(builder: ContextBuilder, base: StatusContext): Part[] | InputState {
+  const { index, cluster, namespace } = builder;
+  const state = stateOf(index.objects.reads, index.objects.machineSets.key, namespace);
+
+  if (state === "not-served") return [];
+  if (state !== "given") return state;
+
+  const sets = (index.machineSetsByCluster.get(scoped(namespace, nameOf(cluster) ?? "")) ?? []).filter((set) =>
+    ownedBy(set, cluster),
+  );
+
+  return sets.map((set) => {
+    const machines = builder.machinesOf(set, "cluster.x-k8s.io");
+
+    return builder.part(set, builder.partContext(machines, base), machines);
+  });
+}
+
+// The infrastructure cluster that the reference names, at the version of its contract, with its role (SPEC-0003,
+// "Objects of a provider"). One that the view cannot resolve or that does not exist is not read.
+function infrastructureOf(builder: ContextBuilder, base: StatusContext): Part | InputState | undefined {
+  const { index, cluster, namespace } = builder;
+  const reference = contractReferenceOf(fieldsOf(cluster.spec)?.infrastructureRef);
+
+  if (reference === undefined) return undefined;
+
+  const id = `${reference.apiGroup}/${reference.kind}`;
+  const objects = index.objects.infrastructures?.get(id);
+  const resolution = objects?.resolution;
+
+  if (objects === undefined || resolution === undefined || resolution.state === "pending") return "pending";
+  if (resolution.state === "unresolved") return "not-read";
+
+  const state = stateOf(index.objects.reads, objects.key, namespace);
+
+  if (state === "not-served") return "not-read";
+  if (state !== "given") return state;
+
+  const object = index.infrastructures.get(id)?.get(scoped(namespace, reference.name));
+
+  if (object === undefined) return "not-read";
+  return builder.part(object, {
+    ...base,
+    cluster,
+    role: "infrastructure-cluster",
+    contract: resolution.contract,
+    ...(resolution.provider === undefined ? {} : { provider: resolution.provider }),
+  });
+}
+
+export function clusterPartsOf(
+  index: ContextIndex,
+  cluster: ClusterObject,
+  now: number,
+  memo: StatusMemo,
+): ClusterParts {
+  const clusterContext = clusterContextOf(index, cluster, now, memo);
+  const { context, parts } = clusterContext;
+  const builder = new ContextBuilder(index, cluster, now, memo);
+  const base: StatusContext = {
+    now,
+    ...(context.healthChecks === undefined ? {} : { healthChecks: context.healthChecks }),
+    ...(context.controllers === undefined ? {} : { controllers: context.controllers }),
+  };
+  const named = contractReferenceOf(fieldsOf(cluster.spec)?.controlPlaneRef) !== undefined;
+  // Every part takes the MachineHealthChecks and the controllers that the Cluster takes: while they load, the marks of
+  // every part show the spinner.
+  const { inputs } = clusterContext;
+  const shared = inputs.healthChecks === "pending" || inputs.controllers === "pending";
+  const one = <T extends Part>(part: T): T => (shared && !part.pending ? { ...part, pending: true } : part);
+  const each = <T extends Part>(found: readonly T[] | InputState) =>
+    typeof found === "string" ? found : found.map(one);
+  const single = <T extends Part>(found: T | InputState | undefined) =>
+    found === undefined || typeof found === "string" ? found : one(found);
+
+  return {
+    row: rowOf(cluster, clusterContext, memo),
+    controlPlane: single(parts.controlPlane),
+    controlPlaneMachines: named ? undefined : each(clusterMachinesOf(builder, base, "control-plane")),
+    machineDeployments: each(parts.machineDeployments),
+    machinePools: each(parts.machinePools),
+    machineSets: each(ownedSetsOf(builder, base)),
+    workerMachines: each(clusterMachinesOf(builder, base, "workers")),
+    infrastructure: single(infrastructureOf(builder, base)),
   };
 }

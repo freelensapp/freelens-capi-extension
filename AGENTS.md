@@ -253,15 +253,19 @@ src/
   renderer/api/                  # The models: Cluster at v1beta2 (cluster/), the kinds that the view of Clusters
                                  #   reads as the context of the status model (context/), and their shared types
   renderer/pages/                # The page of the Clusters and its list (SPEC-0004)
-  renderer/reads/                # How a page reads the stores of the host: the adapter of each store, the reads of a
-                                 #   mount, the stores of the page, the definitions, and the context of the frame
+  renderer/details/              # The details of a Cluster (SPEC-0004): the drawer that the page opens over its list,
+                                 #   the view of one Cluster and the panel in the details of the host
+  renderer/reads/                # How a view reads the stores of the host: the adapter of each store, the reads of a
+                                 #   mount, the stores of the page, the definitions, the context of the frame, and the
+                                 #   stores of its own that the view of one Cluster reads outside the page
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage, the marks of state, notices
   renderer/icons/                # The icon of the root entry of the sidebar
   common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
   common/status/                 # The status model (SPEC-0003): statusOf and conditionsOf in index.ts, the rules
                                  #   of each family of kinds, freshness, activity and tone, each with its unit test
   common/views/                  # The pure functions of the views: the context of the model, the state of the reads,
-                                 #   the references, the availability of a kind and the cells of a list, each tested
+                                 #   the references, the availability of a kind, the cells of a list, and the address,
+                                 #   the state and the sections of the details, each tested
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
 test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their files for the unit tests of the views
@@ -278,7 +282,8 @@ e2e/scripts/                     # The scripts of the test environment, run by N
 ```
 
 The extension registers the page of the Clusters of SPEC-0004, with its
-sidebar entry; each feature adds its files with its spec.
+sidebar entry, and the panel of the Clusters in the details of the host; each
+feature adds its files with its spec.
 
 Build output goes to `dist/`: `main.js`, `renderer.js` and `renderer.css`, with
 source maps. `main` and `renderer` in `package.json` point at the two entries.
@@ -353,20 +358,34 @@ The file also exports a `KubeApi` and a `KubeObjectStore` subclass. The list
 page uses the `KubeApi` type for `KubeObjectListLayout`, and the store that it
 reads comes from the host, through `Cluster.getStore()`. The `KubeApi`
 subclass is never instantiated: built, it would register an API of its own.
-The `KubeObjectStore` subclass is not either, with one exception: the page of
+The `KubeObjectStore` subclass is not either, with two exceptions. The page of
 the Clusters builds one `ClusterStore`, once in the frame of a cluster, with
 the API of Clusters that the host registered, and never loads, registers or
 subscribes it; of it, the page reads the public getter `context` alone, the one
 way in which the extension API tells whether the host follows a list that it
-reads over the whole cluster (SPEC-0004, P34).
+reads over the whole cluster (SPEC-0004, P34). The view of one Cluster whose
+namespace the page does not read, or reads over the whole cluster with no watch
+(P34), in the details of the page or in the panel in the details of the host,
+builds one store of the model's class for each kind that it reads, the Cluster
+included, and one `ProviderObjectStore` for each kind of a provider that the
+Cluster names, each with the API that the host registered for its kind; it loads
+each on the namespace of the Cluster alone, under an `AbortController` of its
+own, subscribes it once that load has ended, stops the stores built on the APIs
+that the host registers again, ends every subscription when it closes, and never
+registers them with the API manager of the host, whose own views would then read
+them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
 
 `src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
 and its sidebar entries (`clusterPageMenus`). The details panel and the menu
 items of a kind are registered (`kubeObjectDetailItems`,
 `kubeObjectMenuItems`) with `Renderer.K8sApi.detailsFor` and
 `Renderer.K8sApi.menuItemFor`, which take `kind` and `crd.apiVersions` from the
-model class; the details of Clusters come with the second pull request of
-SPEC-0004.
+model class: the panel of the Clusters, `ClusterPanel`, at priority 250, so
+that it comes after the metadata of the host and before its custom resource
+section and its events (SPEC-0004, P16). The details of the extension are not a
+registration: the page renders them over its list while its parameter
+`details`, which its registration declares in `params`, names a Cluster (P6,
+P15).
 The page of a kind of the template is made by `createAvailableVersionPage`
 from the list pages of its versions, newest first: it renders the first one
 whose store the host has, and a "not available" message when the cluster
@@ -476,7 +495,7 @@ menu items work, and the resource is gone from the Custom Resources tree.
 ## Renderer Components
 
 The examples of this section name the classes and files of the first view, the
-list of Clusters of SPEC-0004.
+Clusters of SPEC-0004, with their list and their details.
 
 - Pages and details panels are `observer` components from `mobx-react`, which the build maps to the host's copy.
 - Every page, panel, menu item and preference the extension registers renders inside an `ErrorBoundary` from
@@ -554,9 +573,18 @@ list of Clusters of SPEC-0004.
   passes. A menu item does not extend `Renderer.Component.KubeObjectMenuProps`, the props of the host's whole
   `KubeObjectMenu` (`id`, `editable`, `removable`, `onMenuReady` and more). That compiles, because both require only
   `object`, and the item then promises props the host never passes.
-- The host renders a cluster page with `params` only. A page gets the extension from the registration
-  (`Page: () => <ClustersPage extension={this} />`), with the page component created once, outside the registration,
-  as `ClustersPage` is; the error boundaries inside a page take it.
+- The details of the extension are the host's `Drawer`, which the page renders over its list
+  (`src/renderer/details/cluster-details-drawer.tsx`), with its content inside an `ErrorBoundary` keyed by the address
+  of the Cluster, and each section of the details inside one of its own keyed by the Cluster. The panel in the details
+  of the host, `ClusterPanel`, is the same view without the metadata, which the host renders there (SPEC-0004, P16,
+  P32). A reference to an object of a provider is a `Renderer.Component.MaybeLink` to
+  `Renderer.Navigation.getDetailsUrl(selfLink)`, which opens the details of the host over the page; a Cluster named in
+  a message opens the details of the extension through the parameter of the page, which the page sets itself and the
+  panel sets with `navigate` of the extension (P6, P18).
+- The host renders a cluster page with `params` only. A page gets the extension from the registration, which passes
+  the `params` of the host on
+  (`Page: (props: Common.Types.PageComponentProps) => <ClustersPage {...props} extension={this} />`), with the page
+  component created once, outside the registration, as `ClustersPage` is; the error boundaries inside a page take it.
   `PageComponents.Page` is typed with the props the host passes, `Common.Types.PageComponentProps`, so the type check
   rejects a page that requires another prop. It does not reject one that declares another prop as optional next to
   `params`; that prop is `undefined`.
@@ -1026,22 +1054,20 @@ modules are devDependencies, for their types, and are ignored.
 A file is unused when no entry reaches it: a leftover module, a barrel that
 nothing imports. The production pass starts from the `!` entries only, so it
 also reports a module that only tests import. The fix is to remove the file,
-not to ignore it. The one exception is the parser of SPEC-0003 that no module
-of the bundles imports yet, `src/common/parsers/list-annotation.ts`: it is a
-production entry of its own, as the next paragraph says. The page of the
-Clusters imports the entry points of the status model, which reach every module
-of `src/common/status/` and the four other parsers. The check does not include
+not to ignore it. The page of the Clusters imports the entry points of the
+status model, which reach every module of `src/common/status/` and four of the
+parsers, and the details of a Cluster import the fifth, the parser of the list
+annotation, for the pending hooks of the topology. The check does not include
 unused exports and types: on this tree they are mostly the exported spec and
 status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. It also lists `src/common/parsers/list-annotation.ts`,
-the one parser that the model does not import, as a production entry, until a
-module reached from another production entry imports it; the pull request that
-brings that import removes the line (SPEC-0003, "Notes and deviations"). The
-entry of `src/common/status/index.ts` went with the first view of SPEC-0004,
-whose page imports the model.
+`environment-tests/`. The entry of `src/common/status/index.ts` went with the
+list of the Clusters of SPEC-0004, whose page imports the model, and that of
+`src/common/parsers/list-annotation.ts`, the one parser that the model does not
+import, with their details, which import it (SPEC-0003, "Notes and
+deviations").
 Its Vite plugin is off: it adds the renderer entry of `vite.config.mjs` as a
 development entry, which displaces `src/renderer/index.tsx!`, and the
 production pass then skips the renderer.
@@ -1153,22 +1179,39 @@ logged by either process:
   status; that a title of the head that its column does not hold is cut by its
   badge, with an ellipsis, and whole in its tooltip; and that the note of a
   cell stands at the middle of its line, as its marks do. It checks that the
-  list has no checkbox, no menu of the host and no details of the host, its
-  rows an empty cell of the menu that lines them up with the header
-  (SPEC-0001, A7); that no remove button shows on its page while a Cluster is
-  selected in the list of the host, before and after a click on its row (the
-  half of S5 that concerns the page); that a label which it sets with kubectl
-  reaches the search of the list with no reload, also in a namespace that the
-  filter adds; and that the Custom Resources tree of the host has no entry for
-  the Clusters. It records the requests of the renderer, and fails when one to
-  the groups that the view reads is not a GET, or when an object of the
-  fixtures has another version after the session than before, or than the one
-  that the answer to its own write of a label gave it. It writes a label with
-  a merge patch, whose answer is the object that the write made, since
-  `kubectl label` prints the object as it was before the write, and fails at
-  once when the version that it records is the one before the write. With
-  `TEST_PLANT_WRITE` set it patches a label from the frame of the cluster, and
-  both checks fail. Its end removes its labels, disconnects the cluster and
+  list has no checkbox and no menu of the host, its rows an empty cell of the
+  menu that lines them up with the header (SPEC-0001, A7), and that a click on
+  a row opens the details of the extension, never those of the host, with the
+  address of the Cluster in the parameter `details` of the page: a click on
+  another row shows that Cluster, a click on the title of the page and Escape
+  close them with the focus back on the name, and Tab and Enter open them from
+  a name (SPEC-0004, P6, P13, P15). It checks that no remove button shows on
+  its page while a Cluster is selected in the list of the host, before and
+  after a click on its row (the half of S5 that concerns the page); that the
+  details of the host of a Cluster show the panel of the extension after their
+  metadata and before their custom resource section and their events, and that
+  the annotation `cluster.x-k8s.io/paused`, which it sets with kubectl, reaches
+  the panel with no reload while the host keeps the Cluster as it first read it
+  (P16, P31); that the infrastructure cluster opens the details of the host of
+  its object over those of the extension, which the close icon of the host shows
+  again and one Escape closes with them, while the other references are text,
+  and the namespace the badge of the host, which selects it alone in the filter
+  (P18, P32); that the details of the states that have sections of their own
+  show them; that a label which it sets with kubectl reaches the search of the
+  list and the details of a Cluster whose namespace the page does not read,
+  with no reload, also in a namespace that the filter adds; and that the Custom
+  Resources tree of the host has no entry for the Clusters. It records the
+  requests of the renderer, and fails when one to the groups that the view
+  reads is not a GET, or when an object of the fixtures has another version
+  after the session than before, or than the one that the answer to the last
+  write of the session gave it. It writes its labels and its annotation with a
+  merge patch, whose answer is the object that the write made, since
+  `kubectl label` and `kubectl annotate` print the object as it was before the
+  write, and fails at once when the version that it records is the one before
+  the write. With `TEST_PLANT_WRITE` set it patches a label from the frame of
+  the cluster, and both checks fail. The step of the annotation removes it at
+  its end, also when a check failed; the end of the session removes its labels,
+  and the annotation when that removal failed, disconnects the cluster and
   closes the connection whatever failed before, and then throws one error that
   lists every check that failed, so that a planted write shows both.
 
@@ -1251,6 +1294,15 @@ fails. Any other repeated key counts, those of the extension's own views
 included, and so does one that a details panel logs over a list. `errors()`
 and the teardown wait until no decision is pending, those that start meanwhile
 included.
+
+The list layout of the host gives each cell of a row the class of the head of
+its column. The lists of the host name that class after the column, so
+`.TableCell.name` finds the cell of the name in a list of the host, as
+`hostLists` does. The cells of the list of the extension carry instead the class
+that the CSS module of its page exports for the column, whose name the build
+makes, such as `_name_` and a hash: a session finds a cell of the page by what
+it holds, the cell of the name by the test id of the name, never by the id of
+its column, which matches nothing there.
 
 The workflow sets `TURBO_LOG_ORDER=stream` for `pnpm dev`: in GitHub Actions
 turbo otherwise groups the output of a task until it ends, and the persistent

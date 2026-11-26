@@ -4,14 +4,18 @@
  */
 
 import { Renderer } from "@freelensapp/extensions";
+import { detailsAddressOf } from "../common/views/details-address";
 import { Cluster } from "./api/cluster/cluster-v1beta2";
 import {
   withDetailsErrorBoundary,
   withMenuItemErrorBoundary,
   withPageErrorBoundary,
 } from "./components/error-boundary";
+import { ClusterPanel } from "./details/cluster-details-v1beta2";
 import { ClusterApiIcon } from "./icons/cluster-api";
 import { ClustersPage } from "./pages/clusters-page-v1beta2";
+
+import type { Common } from "@freelensapp/extensions";
 
 // The page of the Clusters, its id in the address of the page and the target of its sidebar entries.
 export const CLUSTERS_PAGE = "clusters";
@@ -24,18 +28,25 @@ export const ROOT_MENU = "cluster-api";
 // "Renderer Components" of AGENTS.md). Each registration field is mapped through its wrapper, so an entry added to it
 // is wrapped too.
 export default class CapiRenderer extends Renderer.LensExtension {
-  kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [].map((registration) =>
-    withDetailsErrorBoundary(this, registration),
-  );
+  // The details of a Cluster at v1beta2 in the details of the host, after its metadata and before its custom resource
+  // section and its events: priority 250, so order 50 (SPEC-0004, P16). The panel opens the details of another
+  // Cluster through the parameter of the page (P6).
+  kubeObjectDetailItems: Renderer.LensExtension["kubeObjectDetailItems"] = [
+    Renderer.K8sApi.detailsFor(Cluster, {
+      priority: 250,
+      Details: (props) => <ClusterPanel {...props} extension={this} openCluster={this.openCluster} />,
+    }),
+  ].map((registration) => withDetailsErrorBoundary(this, registration));
 
   // The page of the Clusters (SPEC-0004, "The page and its sidebar entry"), its component made once, here, and given
   // the extension from the registration, since the host passes a page its parameters alone (AGENTS.md, "Renderer
-  // Components").
+  // Components"), with the parameter `details`, the address of the Cluster whose details are open (P6).
   clusterPages: Renderer.LensExtension["clusterPages"] = [
     {
       id: CLUSTERS_PAGE,
+      params: { details: "" },
       components: {
-        Page: () => <ClustersPage extension={this} />,
+        Page: (props: Common.Types.PageComponentProps) => <ClustersPage {...props} extension={this} />,
       },
     },
   ].map((registration) => withPageErrorBoundary(this, registration));
@@ -69,4 +80,9 @@ export default class CapiRenderer extends Renderer.LensExtension {
   kubeObjectMenuItems: Renderer.LensExtension["kubeObjectMenuItems"] = [].map((registration) =>
     withMenuItemErrorBoundary(this, registration),
   );
+
+  // Opens the details of a Cluster, from a view that is not on the page of the Clusters (P6).
+  readonly openCluster = (namespace: string, name: string): void => {
+    void this.navigate(CLUSTERS_PAGE, { details: detailsAddressOf(namespace, name) });
+  };
 }

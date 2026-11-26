@@ -5,13 +5,14 @@
 
 // The stores that the page of the Clusters reads (SPEC-0004, "What the view reads", P1 to P3, P19): the store of the
 // host for the Clusters, those of the kinds of the context that the cluster serves, those of the operator included
-// (P2), each reached through its model, and those of the kinds of control plane that the references of the Clusters
-// name, at the version that the contract of their definition gives (P3), found by kind and version among the APIs
-// that the host registers. A kind that the cluster does not serve has no API, which the page tells with no request.
-// Each store of the host comes once, however many kinds or references name it.
+// (P2), each reached through its model, and those of the kinds of control plane and of infrastructure cluster that the
+// references of the Clusters name, at the version that the contract of their definition gives (P3), found by kind and
+// version among the APIs that the host registers; the details show the infrastructure cluster. A kind that the
+// cluster does not serve has no API, which the page tells with no request. Each store of the host comes once, however
+// many kinds or references name it.
 
 import { Renderer } from "@freelensapp/extensions";
-import { resolveReference } from "../../common/views/references";
+import { contractReferenceOf, resolveReference } from "../../common/views/references";
 import { Cluster } from "../api/cluster/cluster-v1beta2";
 import {
   ClusterClass,
@@ -130,8 +131,9 @@ export function contextKinds(): ContextKinds {
   };
 }
 
-// A kind of control plane that the references of the Clusters name, resolved through its definition.
-export interface ControlPlaneKind extends ReadKind {
+// A kind of a provider that the references of the Clusters name, resolved through its definition: a kind of control
+// plane, or of infrastructure cluster.
+export interface ProviderKind extends ReadKind {
   readonly resolution: ResolvedReference;
 }
 
@@ -140,8 +142,25 @@ export interface ControlPlaneKind extends ReadKind {
 export function controlPlaneKinds(
   references: readonly ContractReference[],
   definitions: DefinitionReads,
-): Map<string, ControlPlaneKind> {
-  const kinds = new Map<string, ControlPlaneKind>();
+): Map<string, ProviderKind> {
+  return providerKinds(references, definitions, "parts");
+}
+
+// The kinds of infrastructure cluster that the Clusters name, which their details show (SPEC-0004, "What the view
+// reads"), found as those of control plane are.
+export function infrastructureKinds(
+  references: readonly ContractReference[],
+  definitions: DefinitionReads,
+): Map<string, ProviderKind> {
+  return providerKinds(references, definitions, "infrastructure");
+}
+
+function providerKinds(
+  references: readonly ContractReference[],
+  definitions: DefinitionReads,
+  feeds: KindFeeds,
+): Map<string, ProviderKind> {
+  const kinds = new Map<string, ProviderKind>();
 
   for (const reference of references) {
     const id = `${reference.apiGroup}/${reference.kind}`;
@@ -161,7 +180,7 @@ export function controlPlaneKinds(
         store,
         reference.kind,
         `${reference.kind} objects`,
-        "parts",
+        feeds,
         reference.apiGroup,
         resolution.state === "resolved" ? resolution.plural : reference.kind.toLowerCase(),
       ),
@@ -174,4 +193,20 @@ export function controlPlaneKinds(
 // Each store of the host once, in the order in which the page names them.
 export function uniqueStores(kinds: readonly ReadKind[]): AnyStore[] {
   return [...new Set(kinds.map((kind) => kind.store).filter((store): store is AnyStore => store !== undefined))];
+}
+
+// The references of a field of the spec of the Clusters, each kind once, by `group/kind`.
+export function referencesOf(
+  clusters: readonly { readonly spec?: unknown }[],
+  field: "controlPlaneRef" | "infrastructureRef",
+): Map<string, ContractReference> {
+  const references = new Map<string, ContractReference>();
+
+  for (const cluster of clusters) {
+    const fields = cluster.spec as Readonly<Record<string, unknown>> | undefined;
+    const reference = contractReferenceOf(fields?.[field]);
+
+    if (reference !== undefined) references.set(`${reference.apiGroup}/${reference.kind}`, reference);
+  }
+  return references;
 }
