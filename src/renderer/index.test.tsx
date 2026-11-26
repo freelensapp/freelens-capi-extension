@@ -9,6 +9,23 @@ import CapiRenderer, { CLUSTERS_PAGE, ROOT_MENU } from "./index";
 
 import type { Renderer } from "@freelensapp/extensions";
 
+import type * as PageModule from "./pages/clusters-page-v1beta2";
+
+// The props that the registration gives the page of the Clusters, recorded around the page itself.
+const pageProps = vi.hoisted(() => [] as unknown[]);
+
+vi.mock("./pages/clusters-page-v1beta2", async (importOriginal) => {
+  const actual = await importOriginal<typeof PageModule>();
+
+  return {
+    ...actual,
+    ClustersPage: (props: PageModule.ClustersPageProps) => {
+      pageProps.push(props);
+      return <actual.ClustersPage {...props} />;
+    },
+  };
+});
+
 // The cases of SPEC-0004, "Tests", "Unit", `index.test.tsx`, for the registrations of the first pull request: the page
 // of the Clusters inside the error boundary of the template, the root entry of the sidebar with its icon and its one
 // child of text (P4), `customResources` with the model of Cluster alone (SPEC-0001, A7), and no API registered by the
@@ -30,11 +47,18 @@ afterEach(() => {
 });
 
 describe("the registrations of the renderer", () => {
-  it("register one page, the page of the Clusters", () => {
+  it("register one page, the page of the Clusters, given the extension from the registration", () => {
     const renderer = extension();
+    const { Page } = renderer.clusterPages[0].components;
 
     expect(renderer.clusterPages.map((page) => page.id)).toEqual([CLUSTERS_PAGE]);
     expect(CLUSTERS_PAGE).toBe("clusters");
+
+    pageProps.length = 0;
+    render(<Page params={{}} />);
+
+    expect(pageProps).toEqual([{ extension: renderer }]);
+    expect((pageProps[0] as PageModule.ClustersPageProps).extension).toBe(renderer);
   });
 
   it("register the root entry, Cluster API, with its icon and the page as its target, and one child of text", () => {

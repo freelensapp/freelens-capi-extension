@@ -4,9 +4,8 @@
  */
 
 // The context of the status model for each Cluster of a list (SPEC-0003, "What it takes and returns"; SPEC-0004,
-// "What the view reads", P2, P17, P19), built from the objects of the stores that the page reads, through indexes
-// made once for each change of the stores and never row by row (kit, `docs/design.md`, "Interaction and
-// performance"):
+// "What the view reads", P2, P19), built from the objects of the stores that the page reads, through indexes made
+// once for each change of the stores and never row by row (kit, `docs/design.md`, "Interaction and performance"):
 //
 // - `machines`: the Machines labelled with the name of the Cluster, in its namespace;
 // - `parts`: the result of `statusOf` for its control plane, found by its reference at the version that the contract
@@ -21,6 +20,8 @@
 //
 // The Machines of a part are those it controls, found by the owner reference and never by a label whose value can
 // be a hash (SPEC-0001, R3.6): those of the MachineSets that a MachineDeployment controls, for a MachineDeployment.
+// The MachineSets and the worker Machines that a Cluster owns itself, which its details show (P17), come with the
+// details of the second pull request of SPEC-0004.
 //
 // A store gives the objects of the namespaces that it has loaded alone (P19): an object that it still holds in a
 // namespace that the filter no longer selects, or in one that it has not loaded yet, is not in the context. An input
@@ -279,6 +280,28 @@ export function indexContext(objects: ContextObjects): ContextIndex {
     controlPlanes,
     controllers: controllersOf(objects),
   };
+}
+
+// What the indexes of the context read of the stores, as one text: the key, the identity and the version of every
+// object of each kind, and how each reference of a control plane resolves. A view builds the indexes again when this
+// text or the state of the reads changes, and for nothing else; the arrays of the stores are no key, since the host
+// changes them in place (AGENTS.md, "Rules That Fail Silently").
+export function contextVersions(objects: ContextObjects): string {
+  const kinds: readonly KindObjects[] = [
+    objects.machines,
+    objects.machineSets,
+    objects.machineDeployments,
+    objects.machinePools,
+    objects.healthChecks,
+    objects.clusterClasses,
+    ...objects.operator,
+    ...objects.controlPlanes.values(),
+  ];
+  const resolutions = [...objects.controlPlanes].map(([id, kind]) => `${id}=${JSON.stringify(kind.resolution)}`);
+
+  return [...kinds.map((kind) => `${kind.key ?? "-"}:${kind.items.map(versionOf).join(",")}`), ...resolutions].join(
+    "|",
+  );
 }
 
 // The results of the model for the objects of a list, kept while the key of each and the time that it names hold: a

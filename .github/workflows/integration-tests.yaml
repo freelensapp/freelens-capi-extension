@@ -81,10 +81,11 @@ jobs:
 
       # The kind cluster of the sessions is the cluster of the definitions of
       # the scripts of the test environment (docs/development/TESTING.md),
-      # which write only to a cluster that they created: they create it, then
-      # apply the definitions of Cluster API to it, then the fixtures of every
-      # state, each in a namespace of its own, which the sessions of the views
-      # read at once. Their private state stays outside the checkout.
+      # which write only to a cluster that they created: they create it and
+      # apply the definitions of Cluster API to it here, and the fixtures of
+      # every state, each in a namespace of its own, which the sessions of the
+      # views read at once, just before the tests. Their private state stays
+      # outside the checkout.
       - name: Set the state folder of the scripts
         run: echo "XDG_STATE_HOME=${RUNNER_TEMP}/test-environment" >> "${GITHUB_ENV}"
 
@@ -96,9 +97,6 @@ jobs:
 
       - name: Create the cluster of the definitions
         run: pnpm e2e:cluster:up:definitions
-
-      - name: Apply the fixtures of every state
-        run: pnpm e2e:fixtures:up all
 
       # The tests install this checkout in place, so Freelens loads the
       # extension from dist/.
@@ -318,6 +316,13 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+
+      # The times of the fixtures move to the moment of the apply, and the
+      # session of the list of Clusters checks the marks that they give within
+      # 25 minutes of it (SPEC-0004, "Notes and deviations"), so the fixtures
+      # are applied last, once Freelens dev answers.
+      - name: Apply the fixtures of every state
+        run: pnpm e2e:fixtures:up all
 
       # The tests run their sessions against the one app: the install test;
       # the session of the fixtures, which opens the kind cluster named by

@@ -11,10 +11,15 @@
 // The details, the panel in the details of the host and the references come with the second pull request.
 //
 // The session writes to the cluster of the tests alone, a label on two Clusters of the fixtures, which it removes at
-// its end, also when a check failed, and records the version that each of its writes gave, so that the check of
-// "Safety" can tell them from a write of the frame. With TEST_PLANT_WRITE set, it patches a label of a fixture from
-// the frame of the cluster, through the API of the host, and both checks of "Safety" fail: the run that shows them
-// failing once.
+// its end, also when a check failed, and records the version that the answer to each of its writes gives, so that
+// the check of "Safety" can tell them from a write of the frame; it fails at once when a version that it records is
+// the one before the write, which a write always changes. With TEST_PLANT_WRITE set, it patches a label of a fixture
+// from the frame of the cluster, through the API of the host, and both checks of "Safety" fail: the run that shows
+// them failing once.
+//
+// Step 1 holds while the fixtures are young: the first change of the words of a row of the fixtures comes 28 minutes
+// after their times, when three states end their Provisioning (SPEC-0004, "Notes and deviations"). The session fails
+// at its start, saying so, when the Clusters of the fixtures were created more than 25 minutes before it.
 
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -79,6 +84,22 @@ interface ExpectedRow {
 }
 
 const IN_FLIGHT = ["info", "warning"];
+
+// The minutes after the apply of the fixtures within which step 1 holds.
+const WINDOW_MINUTES = 25;
+
+// The tones of each activity of the fixtures, every one Progressing: one in flight in the tone of progress within its
+// threshold and of a warning past it, Deleting in that of a deletion within its threshold (SPEC-0003, P31).
+const ACTIVITY_TONES: Record<string, string[]> = {
+  Idle: ["info"],
+  Unknown: ["vague"],
+  Paused: ["terminated"],
+  Deleting: ["terminated", "warning"],
+};
+
+function activityTones(word: string): string[] {
+  return ACTIVITY_TONES[word] ?? IN_FLIGHT;
+}
 
 const EXPECTED: ExpectedRow[] = [
   {
@@ -173,6 +194,26 @@ type Fields = Record<string, unknown>;
 const fields = (value: unknown): Fields | undefined =>
   typeof value === "object" && value !== null ? (value as Fields) : undefined;
 
+// The headline of a message (P11): its first line; when that line is a subject with no words of its own, such as
+// `* WorkersAvailable:`, the subject and the first line under it with words, each without its indentation and bullet.
+function headlineOf(message: string): string {
+  const [first, ...rest] = message.split("\n");
+  const bare = (line: string) => line.trim().replace(/^\* /, "");
+
+  if (!/^\* \S+:$/.test(first)) return first;
+
+  const under: string[] = [];
+
+  for (const line of rest) {
+    if (!line.startsWith(" ")) break;
+    under.push(line);
+  }
+
+  const worded = under.map(bare).find((text) => text !== "" && !text.endsWith(":"));
+
+  return worded === undefined ? first : `${bare(first)} ${worded}`;
+}
+
 // The cells of the domain and the status, as the fixture writes them: the available of the desired Machines (P8), the
 // version of the topology, else those of the control plane (P9), the class (R3.12), and the headline of the message of
 // `Available`, else its reason (P11).
@@ -191,7 +232,7 @@ function cellsOf(cluster: KubeObject) {
   const available = ((status?.conditions as Fields[] | undefined) ?? []).find(
     (condition) => condition.type === "Available",
   );
-  const headline = typeof available?.message === "string" ? available.message.split("\n")[0] : "";
+  const headline = typeof available?.message === "string" ? headlineOf(available.message) : "";
   const versions = ((fields(status?.controlPlane)?.versions as Fields[] | undefined) ?? []).map(
     (entry) => entry.version,
   );
@@ -228,15 +269,56 @@ function readsAGroupOfTheView(request: SentRequest): boolean {
 
 // The version of every object of the fixtures, by kind, namespace and name.
 async function versionsOfFixtures(): Promise<Map<string, string>> {
-  const listed = JSON.parse(
-    await kubectl(["get", FIXTURE_RESOURCES.join(","), "--all-namespaces", "--output", "json"]),
-  ) as { items: { kind: string; metadata: { namespace?: string; name: string; resourceVersion: string } }[] };
+  // Only the four fields that the check needs, one object a line: the objects of every state as JSON are more than
+  // the default buffer of a child process holds.
+  const listed = await kubectl([
+    "get",
+    FIXTURE_RESOURCES.join(","),
+    "--all-namespaces",
+    "--output",
+    'jsonpath={range .items[*]}{.kind}{"\\t"}{.metadata.namespace}{"\\t"}{.metadata.name}{"\\t"}{.metadata.resourceVersion}{"\\n"}{end}',
+  ]);
 
   return new Map(
-    listed.items
-      .filter((item) => namespaces.includes(item.metadata.namespace ?? ""))
-      .map((item) => [`${item.kind}/${item.metadata.namespace}/${item.metadata.name}`, item.metadata.resourceVersion]),
+    listed
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => line.split("\t"))
+      .filter(([, namespace]) => namespaces.includes(namespace ?? ""))
+      .map(([kind, namespace, name, version]) => [`${kind}/${namespace}/${name}`, version ?? ""]),
   );
+}
+
+// The version of a Cluster of the fixtures.
+async function versionOf(namespace: string, name: string): Promise<string> {
+  return kubectl([
+    "get",
+    "clusters.v1beta2.cluster.x-k8s.io",
+    name,
+    "--namespace",
+    namespace,
+    "--output",
+    "jsonpath={.metadata.resourceVersion}",
+  ]);
+}
+
+// Sets or removes a label of a Cluster of the fixtures, and gives the version that the answer to the write gives it.
+// `kubectl label` prints the object as it read it before the write, so the session writes with a merge patch, whose
+// answer is the object that the write made.
+async function patchLabel(namespace: string, name: string, key: string, value: string | null): Promise<string> {
+  return kubectl([
+    "patch",
+    "clusters.v1beta2.cluster.x-k8s.io",
+    name,
+    "--namespace",
+    namespace,
+    "--type",
+    "merge",
+    "--patch",
+    JSON.stringify({ metadata: { labels: { [key]: value } } }),
+    "--output",
+    "jsonpath={.metadata.resourceVersion}",
+  ]);
 }
 
 describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))("the list of Clusters", () => {
@@ -251,19 +333,19 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
   async function label(state: string, key: string, value: string) {
     const { namespace, name } = clusterOf(state);
-    const version = await kubectl([
-      "label",
-      "clusters.v1beta2.cluster.x-k8s.io",
-      name,
-      "--namespace",
-      namespace,
-      `${key}=${value}`,
-      "--overwrite",
-      "--output",
-      "jsonpath={.metadata.resourceVersion}",
-    ]);
+    const before = await versionOf(namespace, name);
 
     labelled.push({ namespace, name, key });
+
+    const version = await patchLabel(namespace, name, key, value);
+
+    // A write always changes the version: one recorded as it was before would make the check of "Safety" take the
+    // write of the session for one of the frame.
+    if (version === "" || version === before) {
+      throw new Error(
+        `The label of ${namespace}/${name} gave the version ${version || "(none)"}, which it had before the write: the session cannot record its own write`,
+      );
+    }
     ownWrites.set(`Cluster/${namespace}/${name}`, version);
   }
 
@@ -291,15 +373,36 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   async function rowOf(page: Locator, name: string): Promise<Locator> {
     await page.locator('input[placeholder^="Search"]').fill(name);
 
+    // The locator inside a row starts from the frame: one that starts from the page, an ancestor of the rows, finds
+    // nothing inside a row.
     const row = page
       .locator(".TableRow")
-      .filter({ has: page.getByTestId("capi-cluster-name").getByText(name, { exact: true }) });
+      .filter({ has: opened().getByTestId("capi-cluster-name").getByText(name, { exact: true }) });
 
     await row.getByTestId("capi-cluster-health").waitFor(viewTimeout);
     return row;
   }
 
   beforeAll(async () => {
+    const { namespace, name } = clusterOf("healthy");
+    const created = Date.parse(
+      await kubectl([
+        "get",
+        "clusters.v1beta2.cluster.x-k8s.io",
+        name,
+        "--namespace",
+        namespace,
+        "--output",
+        "jsonpath={.metadata.creationTimestamp}",
+      ]),
+    );
+    const minutes = (Date.now() - created) / 60000;
+
+    if (!(minutes <= WINDOW_MINUTES)) {
+      throw new Error(
+        `The fixtures were applied ${Math.round(minutes)} minutes ago: step 1 holds for ${WINDOW_MINUTES} minutes after the apply. Apply them again with pnpm e2e:fixtures:up all`,
+      );
+    }
     before = await versionsOfFixtures();
     session = await connectApp();
     recorder = recordRequests(session.window);
@@ -308,29 +411,47 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   }, 240 * 1000);
 
   afterAll(async () => {
+    // Every step of the end runs whatever failed before it: the labels go, the cluster is disconnected and the
+    // connection closed; what failed is thrown once the end is done.
+    const failures: unknown[] = [];
+    const attempt = async <T>(step: () => Promise<T>, otherwise: T): Promise<T> => {
+      try {
+        return await step();
+      } catch (error) {
+        failures.push(error);
+        return otherwise;
+      }
+    };
+
     // The errors stop being collected before the cluster is disconnected: what the app logs while it disconnects says
     // nothing about the extension.
-    const errors = (await session?.stopCollecting()) ?? [];
+    const errors = await attempt(async () => (await session?.stopCollecting()) ?? [], [] as string[]);
     const requests = recorder?.requests() ?? [];
 
     recorder?.stop();
 
     // The versions are read before the session removes its labels, so that a write of the frame after one of the
     // session shows.
-    const after = await versionsOfFixtures();
-    const changed = [...(before ?? new Map<string, string>())]
-      .filter(([key, version]) => after.get(key) !== (ownWrites.get(key) ?? version))
-      .map(([key]) => key);
+    const after = await attempt(versionsOfFixtures, undefined);
+    const changed =
+      after === undefined
+        ? []
+        : [...(before ?? new Map<string, string>())]
+            .filter(([key, version]) => after.get(key) !== (ownWrites.get(key) ?? version))
+            .map(([key]) => key);
 
-    // The labels go, also when a check failed.
     for (const { namespace, name, key } of labelled) {
-      await kubectl(["label", "clusters.v1beta2.cluster.x-k8s.io", name, "--namespace", namespace, `${key}-`]);
+      await attempt(() => patchLabel(namespace, name, key, null), "");
     }
 
     if (session) {
-      await disconnectKindCluster(session);
-      await session.close();
+      const opened = session;
+
+      await attempt(() => disconnectKindCluster(opened), undefined);
+      await attempt(() => opened.close(), undefined);
     }
+
+    if (failures.length > 0) throw new AggregateError(failures, "The end of the session failed");
 
     expect(errors).toEqual([]);
     // The check of "Safety": every request of the frame to the groups that the view reads is a GET, and every object
@@ -348,17 +469,27 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       const { name, cluster } = clusterOf(expected.state);
       const row = await rowOf(page, name);
       const health = row.getByTestId("capi-cluster-health");
-      const activities = await row.getByTestId("capi-cluster-activity").allTextContents();
+      const activities = await row.getByTestId("capi-cluster-activity").evaluateAll((marks) =>
+        marks.map((mark) => ({
+          word: mark.getAttribute("data-word"),
+          state: mark.getAttribute("data-state"),
+          tone: mark.getAttribute("data-tone"),
+        })),
+      );
       const cells = cellsOf(cluster);
 
       expect((await health.textContent())?.trim(), expected.state).toBe(expected.health);
       if (expected.tones.length) {
         expect(expected.tones, expected.state).toContain(await health.getAttribute("data-tone"));
       }
-      expect(activities.length, expected.state).toBe(expected.activities.length);
-      expected.activities.forEach((activity, index) => {
-        expect(activities[index]?.startsWith(activity), `${expected.state}: ${activities[index]}`).toBe(true);
-      });
+      // Every activity of the fixtures is Progressing, which the mark leaves unsaid: its state is empty.
+      expect(
+        activities.map(({ word, state }) => [word, state]),
+        expected.state,
+      ).toEqual(expected.activities.map((word) => [word, ""]));
+      for (const { word, tone } of activities) {
+        expect(activityTones(word ?? ""), `${expected.state}: ${word}`).toContain(tone);
+      }
       expect(await row.getByTestId("capi-cluster-stale").count(), expected.state).toBe(expected.stale ? 1 : 0);
       expect(await row.getByText(/MachinePools? of unknown health/).count(), expected.state).toBe(
         expected.poolsUnknown ? 1 : 0,
@@ -389,8 +520,11 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     const frames = () =>
       cluster.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
+    // The rows keep the cell of the menu that the header always has, empty, so that the columns line up.
     expect(await page.locator(".TableCell.checkbox").count()).toBe(0);
-    expect(await page.locator(".TableRow .TableCell.menu").count()).toBe(0);
+    expect(await page.locator(".TableRow .TableCell.menu").count()).toBe(await page.locator(".TableRow").count());
+    expect(await row.locator(".TableCell.menu").textContent()).toBe("");
+    expect(await row.locator(".TableCell.menu button, .TableCell.menu .Icon").count()).toBe(0);
     expect(await page.locator(".TableHead .TableCell.menu").count()).toBe(1);
 
     await row.click({ button: "right" });
@@ -423,6 +557,7 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
     expect(await cluster.locator(".AddRemoveButtons .remove-button").count()).toBe(0);
     await row.click();
+    await cluster.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     expect(await cluster.locator(".AddRemoveButtons .remove-button").count()).toBe(0);
     expect(await session?.errors()).toEqual([]);
   });

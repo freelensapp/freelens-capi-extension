@@ -3,8 +3,9 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The cases of SPEC-0004, "Tests", "Unit", `styles.test.ts`: the stylesheets of the view author no color, only the
-// tokens of the theme and `transparent` (P21; kit, `docs/design.md`, "Theme"), and the columns of state keep their
-// room in a narrow window while those of the domain give theirs, the class and the version first (P7).
+// tokens of the theme and `transparent` (P21; kit, `docs/design.md`, "Theme"); the columns of state keep their room in
+// a narrow window while those of the domain give theirs, the class and the version first and the name last (P7); and
+// no cell of the list holds more than one line (kit, `docs/design.md`, "Lists"; P12).
 
 const RENDERER = join(process.cwd(), "src", "renderer");
 
@@ -93,6 +94,56 @@ describe("the stylesheets of the view", () => {
   });
 });
 
+// The declarations of a rule, before the first rule nested in it.
+function declarationsOf(text: string, selector: string): string {
+  const start = text.indexOf(`${selector} {`);
+
+  if (start === -1) return "";
+
+  const body = text.slice(start + selector.length + 2);
+  const end = body.search(/[{}]/);
+
+  return body
+    .slice(0, end)
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("&"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+describe("the cells of the list (P12; kit, Lists)", () => {
+  const page = readFileSync(join(RENDERER, "pages", "clusters-page.module.scss"), "utf8");
+  const marks = readFileSync(join(RENDERER, "components", "marks.module.scss"), "utf8");
+
+  it("hold one line: the cells of the list do not wrap and cut what overflows", () => {
+    const cells = declarationsOf(page, ":global(.Table) :global(.TableCell)");
+
+    expect(cells).toMatch(/white-space: nowrap;/);
+    expect(cells).toMatch(/overflow: hidden;/);
+  });
+
+  it("hold their marks on one line, cut with an ellipsis", () => {
+    const cell = declarationsOf(marks, ".cell");
+
+    expect(cell).toMatch(/white-space: nowrap;/);
+    expect(cell).toMatch(/overflow: hidden;/);
+    expect(cell).toMatch(/text-overflow: ellipsis;/);
+  });
+
+  it.each([
+    ["pages/clusters-page.module.scss", () => page],
+    ["components/marks.module.scss", () => marks],
+  ])("%s lets nothing wrap, but in a tooltip", (_name, text) => {
+    const outsideTooltips = text().replace(/\.tooltip \{[^}]*\}/g, "");
+
+    expect(outsideTooltips).not.toMatch(/flex-wrap:\s*wrap/);
+    expect(outsideTooltips.match(/white-space:\s*[\w-]+/g)?.filter((value) => !/nowrap$/.test(value)) ?? []).toEqual(
+      [],
+    );
+  });
+});
+
 describe("the columns of the list (P7)", () => {
   const columns = columnsOf(readFileSync(join(RENDERER, "pages", "clusters-page.module.scss"), "utf8"));
   const state = ["activity", "condition", "status"];
@@ -113,6 +164,12 @@ describe("the columns of the list (P7)", () => {
     for (const name of others) {
       expect(columns.get("version")?.shrink).toBeGreaterThan(columns.get(name)?.shrink ?? 0);
       expect(columns.get("clusterClass")?.shrink).toBeGreaterThan(columns.get(name)?.shrink ?? 0);
+    }
+  });
+
+  it("of the domain give their room before the name, the identity of the row, which shrinks the least", () => {
+    for (const name of domain.filter((column) => column !== "name")) {
+      expect(columns.get("name")?.shrink, name).toBeLessThan(columns.get(name)?.shrink ?? 0);
     }
   });
 });

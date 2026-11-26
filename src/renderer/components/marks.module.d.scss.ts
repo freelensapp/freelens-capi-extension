@@ -6,7 +6,8 @@ declare const classNames: {
   readonly terminated: "terminated";
   readonly vague: "vague";
   readonly mark: "mark";
-  readonly marks: "marks";
+  readonly cell: "cell";
   readonly note: "note";
+  readonly tooltip: "tooltip";
 };
 export = classNames;
