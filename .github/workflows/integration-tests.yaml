@@ -27,6 +27,8 @@ jobs:
           - freelens_version: v2.0.0
           - freelens_version: v2.1.0
 
+    # Limits from the durations of the runs (SPEC-0004, "Notes and deviations"):
+    # the job took 5 minutes in CI, its step of the tests 3.3.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
@@ -275,15 +277,22 @@ jobs:
       # FREELENS_INTEGRATION_TESTING_DIR gives Freelens dev a fresh profile; the
       # app accepts it only under the system's temporary directory. A dev
       # profile syncs no kubeconfig by default, so the profile is seeded with
-      # one sync entry: a copy of the kubeconfig of the scripts, which holds the
-      # cluster of the definitions alone. The catalog then lists that cluster
-      # and nothing else.
+      # two sync entries: a copy of the kubeconfig of the scripts, which holds
+      # the cluster of the definitions alone, and the folder of the restricted
+      # session, empty and readable by the runner user alone, where that session
+      # writes the kubeconfig of its second identity, with its token, and
+      # deletes it at its end (SPEC-0004, P23). The app watches a folder only
+      # when it exists as it starts. The catalog then lists the cluster of the
+      # definitions, and the cluster of that identity while its file is there.
       - name: Seed the Freelens dev profile
         run: |
           kubeconfig="${RUNNER_TEMP}/freelens-capi-definitions.kubeconfig"
+          restricted="${RUNNER_TEMP}/freelens-capi-restricted"
           cp "${XDG_STATE_HOME}/freelens-capi-extension/freelens-capi-definitions/kubeconfig" "$kubeconfig"
+          mkdir -m 700 "$restricted"
           mkdir -p "${FREELENS_INTEGRATION_TESTING_DIR}/FreelensDev"
-          KUBECONFIG_FILE="$kubeconfig" yq -n -o json '.preferences.syncKubeconfigEntries = [{"filePath": strenv(KUBECONFIG_FILE)}]' \
+          KUBECONFIG_FILE="$kubeconfig" RESTRICTED_FOLDER="$restricted" \
+            yq -n -o json '.preferences.syncKubeconfigEntries = [{"filePath": strenv(KUBECONFIG_FILE)}, {"filePath": strenv(RESTRICTED_FOLDER)}]' \
             > "${FREELENS_INTEGRATION_TESTING_DIR}/FreelensDev/lens-user-store.json"
           cat "${FREELENS_INTEGRATION_TESTING_DIR}/FreelensDev/lens-user-store.json"
         env:
@@ -329,16 +338,22 @@ jobs:
       # TEST_KIND_CLUSTER_NAME, with the fixtures of TEST_FIXTURE_STATE among
       # those that the steps above applied, and reads it through the
       # kubeconfig of the profile; and the sessions of the views, which read
-      # the fixtures of every state.
+      # the fixtures of every state, the restricted one as a second identity
+      # whose kubeconfig it writes in TEST_RESTRICTED_KUBECONFIG_FOLDER.
       #
       # The tests are deterministic, so a failure is not retried. A failing view
-      # costs one view timeout.
+      # costs one view timeout. The step took 3.3 minutes in CI, with a case
+      # that waited its 60 seconds. A step that reaches its limit fails, as a
+      # case that reaches its own does, and loses the report of the sessions
+      # after it, which a run of one file gives again (SPEC-0004, "Notes and
+      # deviations").
       - name: Run integration tests
-        run: timeout 600 pnpm --color=always test:integration --reporter=verbose --reporter=github-actions --includeTaskLocation
+        run: timeout 1500 pnpm --color=always test:integration --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:
           FREELENS_MAIN_LOG: ${{ runner.temp }}/freelens-dev.log
           TEST_KIND_CLUSTER_NAME: freelens-capi-definitions
           TEST_FIXTURE_STATE: healthy
+          TEST_RESTRICTED_KUBECONFIG_FOLDER: ${{ runner.temp }}/freelens-capi-restricted
           KUBECONFIG: ${{ runner.temp }}/freelens-capi-definitions.kubeconfig
 
       - name: Show Freelens dev output

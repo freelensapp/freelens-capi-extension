@@ -206,7 +206,7 @@
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
     {
-      "description": "The versions of the projects that the scripts of the test environment download, in e2e/environment/pins.json: each object names its datasource, its depName and its version, in this order. cert-manager names none: it is the version that the pinned clusterctl installs, and changes with Cluster API.",
+      "description": "The versions of the projects that the scripts of the test environment download, in e2e/environment/pins.json: each object names its datasource, its depName and its version, in this order. cert-manager names none: it is the version that the pinned clusterctl installs, and changes with Cluster API. The pins of S6, the Sveltos extension and the chart of Sveltos, name none either: they are the releases that the specs read, and change with them.",
       "customType": "regex",
       "managerFilePatterns": ["/^e2e/environment/pins\\.json$/"],
       "matchStrings": [

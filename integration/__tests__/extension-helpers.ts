@@ -14,8 +14,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
+import { API_KUBE_PREFIX, isExpectedRefusal, isExpectedThrottling } from "./expected-refusals";
 
-import type { Browser, ConsoleMessage, Frame, Locator, Page } from "playwright";
+import type { Browser, ConsoleMessage, Frame, Locator, Page, Request } from "playwright";
+
+import type { ExpectedRefusal, ExpectedThrottling, FailedResponse } from "./expected-refusals";
 
 export const extensionName = "@freelensapp/capi-extension";
 
@@ -89,6 +92,13 @@ const hostListPattern = /^\/crd\/([^/]+)\/([^/]+)$/;
 /** The path of a URL, without its query, as the dev file route logs it. */
 const urlPath = (url: string) => (URL.canParse(url) ? new URL(url).pathname : url.replace(/[?#].*$/, ""));
 
+// Chromium logs every response that is not a success as "Failed to load resource", with its status and with the
+// address of the request as the location of the message.
+const failedResourcePattern = /^Failed to load resource: the server responded with a status of (\d{3})\b/;
+
+/** An address in one form, so that the location of a message and the address of its request compare. */
+const sameAddress = (url: string) => (URL.canParse(url) ? new URL(url).href : url);
+
 /**
  * A connection to Freelens dev, with the errors that either process logs.
  */
@@ -100,6 +110,18 @@ export interface AppSession {
   errors(): Promise<string[]>;
   /** The paths of the requests that the dev file route failed so far, in order, one entry per failure. */
   devFileRouteFailures(): string[];
+  /**
+   * Leaves out of the errors the refusals that a step of a session expects, from now until the returned function is
+   * called (`expected-refusals.ts`); each refusal left out is kept, which `refusalsLeftOut` gives.
+   */
+  expectRefusals(refusals: readonly ExpectedRefusal[]): () => void;
+  /**
+   * Leaves out of the errors the throttling of the requests of another extension that a session expects, from now
+   * until the returned function is called (`expected-refusals.ts`).
+   */
+  expectThrottling(throttling: readonly ExpectedThrottling[]): () => void;
+  /** The refusals and the throttling left out so far, each as its status and its address. */
+  refusalsLeftOut(): string[];
   /** Stops collecting errors; returns every error logged until then. */
   stopCollecting(): Promise<string[]>;
   /** Stops collecting errors, unless stopped already, and closes the connection; returns every error collected. */
@@ -209,7 +231,43 @@ function collectErrors(window: Page) {
   const badGatewayErrors: { path: string; text: string }[] = [];
   // The paths of the requests that the dev file route failed.
   const devFileRouteFailures: string[] = [];
+  // The refusals and the throttling that a step of the session expects, while it runs, and those left out.
+  const expectedRefusals = new Set<readonly ExpectedRefusal[]>();
+  const expectedThrottling = new Set<readonly ExpectedThrottling[]>();
+  const refusalsLeftOut: string[] = [];
+  // The methods of the requests that the renderer sent to each address of the API of a cluster: Playwright reports a
+  // request before the answer to it, and so before the message of a refusal.
+  const methodsByAddress = new Map<string, string[]>();
   let mainLogOffset = mainLogFile && fs.existsSync(mainLogFile) ? fs.statSync(mainLogFile).size : 0;
+
+  const onRequest = (request: Request) => {
+    const address = sameAddress(request.url());
+
+    if (URL.canParse(address) && new URL(address).pathname.startsWith(`${API_KUBE_PREFIX}/`)) {
+      methodsByAddress.set(address, [...(methodsByAddress.get(address) ?? []), request.method()]);
+    }
+  };
+
+  // Whether a request that the server refused or throttled is one that a step expects (`isExpectedRefusal`,
+  // `isExpectedThrottling`): by its status and its address, by the methods of the requests sent there, GETs alone, and
+  // by the frame that sent it, found by the host of the address, with the page that this frame shows, as Playwright
+  // last saw its address.
+  const isExpected = (status: string, url: string) => {
+    const address = sameAddress(url);
+    const host = URL.canParse(address) ? new URL(address).host : undefined;
+    const frame = window.frames().find((item) => URL.canParse(item.url()) && new URL(item.url()).host === host);
+    const response: FailedResponse = {
+      status,
+      url: address,
+      methods: methodsByAddress.get(address) ?? [],
+      page: frame === undefined ? undefined : new URL(frame.url()).pathname,
+    };
+
+    return (
+      isExpectedRefusal([...expectedRefusals].flat(), response) ||
+      isExpectedThrottling([...expectedThrottling].flat(), response)
+    );
+  };
 
   // Chromium logs every response that is not a success as "Failed to load
   // resource", whose text has no URL, so the location of the message is added.
@@ -226,6 +284,14 @@ function collectErrors(window: Page) {
 
       if (url && badGatewayPattern.test(text)) {
         badGatewayErrors.push({ path: urlPath(url), text: `[renderer] ${text}${location}` });
+
+        return;
+      }
+
+      const failedResource = failedResourcePattern.exec(text);
+
+      if (url && failedResource && isExpected(failedResource[1], url)) {
+        refusalsLeftOut.push(`${failedResource[1]} ${url}`);
 
         return;
       }
@@ -353,6 +419,7 @@ function collectErrors(window: Page) {
     }
   };
 
+  window.on("request", onRequest);
   window.on("console", onConsole);
   window.on("pageerror", onPageError);
 
@@ -375,6 +442,25 @@ function collectErrors(window: Page) {
 
       return [...devFileRouteFailures];
     },
+    expectRefusals: (refusals: readonly ExpectedRefusal[]) => {
+      const entry = [...refusals];
+
+      expectedRefusals.add(entry);
+
+      return () => {
+        expectedRefusals.delete(entry);
+      };
+    },
+    expectThrottling: (throttling: readonly ExpectedThrottling[]) => {
+      const entry = [...throttling];
+
+      expectedThrottling.add(entry);
+
+      return () => {
+        expectedThrottling.delete(entry);
+      };
+    },
+    refusalsLeftOut: () => [...refusalsLeftOut],
     // Waits until no description and no decision is pending, those that start
     // while it waits included.
     settle: async () => {
@@ -383,6 +469,7 @@ function collectErrors(window: Page) {
       }
     },
     stop: () => {
+      window.off("request", onRequest);
       window.off("console", onConsole);
       window.off("pageerror", onPageError);
     },
@@ -425,6 +512,9 @@ export async function connectApp(): Promise<AppSession> {
         return collector.errors();
       },
       devFileRouteFailures: collector.devFileRouteFailures,
+      expectRefusals: collector.expectRefusals,
+      expectThrottling: collector.expectThrottling,
+      refusalsLeftOut: collector.refusalsLeftOut,
       stopCollecting,
       close: async () => {
         try {
@@ -511,12 +601,12 @@ async function dismissNotifications(window: Page) {
 }
 
 /**
- * Uninstalls the extension from the Extensions page, from wherever it was
- * installed. An extension installed in place is forgotten, its directory
- * stays.
+ * Uninstalls an extension, this one unless another is named, from the
+ * Extensions page, from wherever it was installed. An extension installed in
+ * place is forgotten, its directory stays.
  */
-async function uninstallExtension(window: Page, row: Locator) {
-  console.log(`uninstall ${extensionName}`);
+async function uninstallExtension(window: Page, row: Locator, name = extensionName) {
+  console.log(`uninstall ${name}`);
   await row.locator('[id^="menu-actions-for-installed-extensions-for-"]').click();
   await window.locator(".MenuActions .MenuItem").getByText("Uninstall", { exact: true }).click();
   await window.getByTestId("confirmation-dialog").getByTestId("confirm").click();
@@ -572,16 +662,113 @@ export async function installExtension({ window }: AppSession, { reinstall = fal
 }
 
 /**
- * Opens the kind cluster of the sessions: finds its entity in the catalog of
- * the root frame by its name, `kind-<name>`, navigates to it, and waits until
+ * The row of an extension in the table of the Extensions page, by its name,
+ * once the page shows the table, or the notice of no extension in its place.
+ */
+async function extensionRow(window: Page, name: string): Promise<Locator> {
+  await navigate(window, "/extensions");
+
+  const table = window.getByTestId("extensions-table");
+
+  await table.or(window.getByText("There are no extensions installed.", { exact: true })).waitFor(viewTimeout);
+
+  return table.locator("tbody tr", { hasText: name });
+}
+
+/**
+ * Installs an extension from a tarball on the disk, as the Extensions page
+ * installs a release tarball, and waits until it is enabled: the host checks
+ * the tarball against the `.sha256` beside it and enables a build that it
+ * verified (freelens:packages/core/src/renderer/components/extensions/attempt-install/install-from-file.injectable.tsx).
+ * Any installation of that extension is uninstalled first.
+ */
+export async function installExtensionFile({ window }: AppSession, file: string, name: string) {
+  const row = await extensionRow(window, name);
+
+  if (await row.count()) {
+    await uninstallExtension(window, row, name);
+  }
+
+  await dismissNotifications(window);
+
+  console.log(`install ${file}`);
+  await window.getByPlaceholder("Name, URL, or path to a package or directory").fill(file);
+  await window.getByRole("button", { name: "Install", exact: true }).click();
+  await row.locator("td").nth(2).getByText("Enabled", { exact: true }).waitFor(viewTimeout);
+  await dismissNotifications(window);
+}
+
+/**
+ * Whether the Extensions page lists an extension as enabled.
+ */
+export async function extensionEnabled({ window }: AppSession, name: string): Promise<boolean> {
+  const row = await extensionRow(window, name);
+
+  return (await row.locator("td").nth(2).getByText("Enabled", { exact: true }).count()) > 0;
+}
+
+/**
+ * Uninstalls an extension by its name from the Extensions page, when the page
+ * lists it.
+ */
+export async function uninstallExtensionNamed({ window }: AppSession, name: string) {
+  const row = await extensionRow(window, name);
+
+  if (await row.count()) {
+    await uninstallExtension(window, row, name);
+  }
+}
+
+/**
+ * Records the watches of a group of the API that the renderer says have
+ * failed: the client of the host logs a watch that the server answered with
+ * an error, or whose stream broke, as a warning, and one that threw as an
+ * error, each with the path of the watch in the API of the cluster, the same
+ * on both releases
+ * (freelens:packages/utility-features/kube-api/src/kube-api.ts:854, 981, 990;
+ * freelens@v2.0.0:packages/utility-features/kube-api/src/kube-api.ts:846, 971, 980).
+ */
+export function recordWatchFailures(window: Page, group: string): { failures(): string[]; stop(): void } {
+  const failures: string[] = [];
+  const pattern = /\bwatch \(\S+\) (?:error response|stream error|threw) (\/\S+)/;
+  const onConsole = (msg: ConsoleMessage) => {
+    if (msg.type() !== "warning" && msg.type() !== "error") {
+      return;
+    }
+
+    const watch = pattern.exec(msg.text().replaceAll(ansiEscapePattern, ""));
+
+    if (watch?.[1].startsWith(`/apis/${group}/`)) {
+      failures.push(watch[0]);
+    }
+  };
+
+  window.on("console", onConsole);
+
+  return {
+    failures: () => [...failures],
+    stop: () => window.off("console", onConsole),
+  };
+}
+
+/**
+ * Opens the kind cluster of the sessions, by its name in the catalog,
+ * `kind-<name>` (see `openCluster`).
+ */
+export async function openKindCluster(session: AppSession): Promise<Frame> {
+  return openCluster(session, `kind-${kindClusterName}`);
+}
+
+/**
+ * Opens a cluster of the catalog: finds its entity in the catalog of the root
+ * frame by its name, the name of its context, navigates to it, and waits until
  * its frame shows its sidebar. The catalog lists the cluster once the
  * kubeconfig sync of the profile has read the file that holds it. A frame that
  * did not render, after the dev file route of Freelens dev failed a request,
  * is loaded again once.
  */
-export async function openKindCluster(session: AppSession): Promise<Frame> {
+export async function openCluster(session: AppSession, name: string): Promise<Frame> {
   const { window } = session;
-  const name = `kind-${kindClusterName}`;
   const failuresBefore = session.devFileRouteFailures().length;
   const found = await window.waitForFunction(
     (name) =>
@@ -622,14 +809,70 @@ export async function openKindCluster(session: AppSession): Promise<Frame> {
  * Disconnects the kind cluster of the sessions with the `disconnect()` of
  * its entity in the catalog.
  */
-export async function disconnectKindCluster({ window }: AppSession) {
+export async function disconnectKindCluster(session: AppSession) {
+  await disconnectCluster(session, `kind-${kindClusterName}`);
+}
+
+/**
+ * Disconnects a cluster of the catalog, by its name, with the `disconnect()`
+ * of its entity.
+ */
+export async function disconnectCluster({ window }: AppSession, name: string) {
   await window.evaluate(async (name) => {
     const entity = globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
       .getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster")
       .find((item) => item.getName() === name) as { disconnect?: () => Promise<void> } | undefined;
 
     await entity?.disconnect?.();
-  }, `kind-${kindClusterName}`);
+  }, name);
+}
+
+/**
+ * Whether the catalog of the root frame lists a cluster of that name: the
+ * kubeconfig sync of the profile lists the clusters of a file that it reads,
+ * and drops them when the file goes.
+ */
+export async function catalogLists({ window }: AppSession, name: string): Promise<boolean> {
+  return window.evaluate(
+    (name) =>
+      globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
+        .getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster")
+        .some((entity) => entity.getName() === name) ?? false,
+    name,
+  );
+}
+
+/**
+ * Loads the frame of a cluster again, as a reload of its page does, and waits
+ * until the new document shows the sidebar: the frame starts again, its stores
+ * and the APIs of the host with them, while the cluster stays connected. The
+ * old document is marked, so that the sidebar it still shows is not taken for
+ * the new one. A frame that did not render, after the dev file route of
+ * Freelens dev failed a request, is loaded again once, as `openCluster` does.
+ * The frame shows what the host makes of its address as it starts, which may be
+ * its start page: a session opens the page that it reads itself.
+ */
+export async function reloadClusterFrame(session: AppSession, frame: Frame) {
+  const failuresBefore = session.devFileRouteFailures().length;
+  const reload = async () => {
+    await frame.evaluate(() => {
+      document.documentElement.dataset.capiReloading = "";
+      setTimeout(() => globalThis.location.reload(), 0);
+    });
+    await frame.waitForSelector("html:not([data-capi-reloading]) [data-testid=cluster-sidebar]", clusterTimeout);
+  };
+
+  console.log("load the frame of the cluster again");
+  try {
+    await reload();
+  } catch (error) {
+    if (session.devFileRouteFailures().length === failuresBefore) {
+      throw error;
+    }
+
+    console.log("the frame did not render after a failed request of the dev file route: loading it again");
+    await reload();
+  }
 }
 
 /**
@@ -862,12 +1105,23 @@ export async function kubectl(args: readonly string[]): Promise<string> {
 }
 
 /**
- * Opens a page of the extension in the cluster frame by its address,
- * `/extension/<name>/<pageId>`, with the `@` of the name dropped and its `/`
- * turned into `--`, as the host makes it.
+ * The address of a page of an extension in the cluster frame,
+ * `/extension/<name>/<pageId>`, with the `@` of the name of the extension
+ * dropped and its `/` turned into `--`, as the host makes it
+ * (freelens:packages/core/src/renderer/routes/for-extension.ts:11-15;
+ * freelens:packages/core/src/extensions/lens-extension.ts:125-127, the same at
+ * `v2.0.0`).
  */
-export async function openExtensionPage(frame: Frame, pageId: string) {
-  await navigateCluster(frame, `/extension/${extensionName.replace("@", "").replace("/", "--")}/${pageId}`);
+export function extensionPageAddress(pageId: string, extension = extensionName): string {
+  return `/extension/${extension.replace("@", "").replace("/", "--")}/${pageId}`;
+}
+
+/**
+ * Opens a page of an extension in the cluster frame by its address: a page of
+ * this extension, unless another is named.
+ */
+export async function openExtensionPage(frame: Frame, pageId: string, extension = extensionName) {
+  await navigateCluster(frame, extensionPageAddress(pageId, extension));
 }
 
 /**
@@ -895,10 +1149,12 @@ export async function selectNamespaces(frame: Frame, namespaces: readonly string
   );
 }
 
-/** A request that the renderer sent, by its method and its address. */
+/** A request that the renderer sent, by its method and its address, and when the session saw it go. */
 export interface SentRequest {
   method: string;
   url: string;
+  /** The time at which Playwright reported it, in milliseconds since the epoch. */
+  at: number;
 }
 
 /**
@@ -908,7 +1164,7 @@ export interface SentRequest {
 export function recordRequests(window: Page): { requests(): SentRequest[]; stop(): void } {
   const sent: SentRequest[] = [];
   const onRequest = (request: { method(): string; url(): string }) => {
-    sent.push({ method: request.method(), url: request.url() });
+    sent.push({ method: request.method(), url: request.url(), at: Date.now() });
   };
 
   window.on("request", onRequest);

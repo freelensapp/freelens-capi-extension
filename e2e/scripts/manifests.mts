@@ -33,6 +33,36 @@ export function customResourceDefinitions(text: string): string[] {
     });
 }
 
+// The definitions of a chart, from the files of the folder `crds` that its archive holds, unchanged, since helm does
+// not template that folder, the files in the order of their paths: what the CI of the Sveltos extension applies of the
+// chart of Sveltos (SPEC-0004, P29). A chart with no definition there is refused.
+export function chartDefinitions(files: ReadonlyMap<string, Uint8Array>, chart: string): string[] {
+  const folder = `${chart}/crds/`;
+  const definitions = [...files.keys()]
+    .filter((path) => path.startsWith(folder) && /\.ya?ml$/.test(path))
+    .sort()
+    .flatMap((path) => customResourceDefinitions(Buffer.from(files.get(path) ?? []).toString("utf8")));
+
+  ensure(definitions.length, `The chart ${chart} has no definition in its folder crds`);
+  return definitions;
+}
+
+// The name of a definition, from its text: the `name` of its `metadata`, `<plural>.<group>`, the name that kubectl
+// applies and deletes it by. The keys of `metadata` are those at the indentation of its first line, two spaces or
+// four, as the chart of Sveltos writes them. A session takes the names before it applies the definitions, so that its
+// end deletes them also when the apply failed half way.
+export function definitionName(definition: string): string {
+  const metadata = /^metadata:[ \t]*\n((?:(?:[ \t]+[^\n]*|[ \t]*)\n)*)/m.exec(definition)?.[1] ?? "";
+  const indent = /^( +)\S/m.exec(metadata)?.[1];
+  const name =
+    indent === undefined
+      ? undefined
+      : new RegExp(`^${indent}name:[ \\t]*["']?([a-z0-9][a-z0-9.-]*)["']?[ \\t]*$`, "m").exec(metadata)?.[1];
+
+  ensure(name, "A definition has no name in its metadata");
+  return name;
+}
+
 // The CIDRs of the pods of the workload clusters, those of the configuration of the tests of Cluster API for
 // the development provider (`test/e2e/config/docker.yaml` at the tag): the IPv4 one is the default of the
 // templates of the release, and kindnet routes both.

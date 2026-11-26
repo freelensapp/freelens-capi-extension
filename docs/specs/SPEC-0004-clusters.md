@@ -2063,12 +2063,20 @@ list has the limits of the lists of the host, and no others:
   keeps no copy of what it had (P26).
 - The page cannot tell which namespace a reload covered: the store names none
   in its failure and none in its run of `isLoading`. A reload never reads a
-  namespace whose list failed, which has no resource version to watch from
+  namespace whose list failed and that the frame never listed, which has no
+  resource version to watch from
   (freelens:packages/utility-features/kube-api/src/kube-api.ts:584-585;
   kube-object.store.ts:571-572, 586-589), so it never releases the hold of a
-  load that failed; but a reload that reports no failure releases the hold of
-  a refresh that failed, even when it read another namespace than the one
-  that failed, until that namespace fails again.
+  load that failed there; but a reload that reports no failure releases the
+  hold of a refresh that failed, even when it read another namespace than the
+  one that failed, until that namespace fails again. Corrected after the first
+  review of the third part: the API of the host keeps the version of the last
+  list that succeeded in each namespace, and a list that fails leaves it
+  (kube-api.ts:499-501, 584-585 at `v2.1.0`; 492-494, 577-578 at `v2.0.0`), so
+  in a namespace that the frame listed before, a list that fails still leaves a
+  version, from which the store starts a watch, which the server refuses, and
+  starts it again (kube-object.store.ts:634-641 at `v2.1.0`, 567-575 at
+  `v2.0.0`), and from which a reload after a 410 reads that namespace again.
 - The mark of a cluster that cannot be reached carries no time and says its
   words in a tooltip, on 2.1.0; 2.0.0 has none (P26).
 - In the details of the host, the object that its metadata and its custom
@@ -2629,3 +2637,298 @@ No question is open.
   MachineSet, so it still counts the one worker of its topology (the README of
   the fixture), and the model gives it Healthy and Idle. The session expects
   what the model gives on the fixture.
+- Decided while implementing the third part, where P23 is silent on how the
+  restricted session goes from one case to the next: the ServiceAccount stays,
+  and each step of a case grants an access, through ClusterRoles that grant
+  `get`, `list` and `watch` at most and their bindings: a RoleBinding in
+  `default` and in each namespace of the fixtures, to a role of every kind that
+  the page reads but those that the step refuses there, or one
+  ClusterRoleBinding over the whole cluster for case 4; the definitions that an
+  access names are granted by a `get` of their names alone. A binding is named
+  as its role, since the role that a binding names cannot change, and the
+  objects of the step before that the next does not have are deleted once the
+  next is applied. The session then asks the cluster every permission that the
+  access decides, the list of each kind in each of those namespaces and over the
+  whole cluster, the list of the definitions and the get of each one that a view
+  reads by its name, in one batch of SubjectAccessReviews with the user and the
+  groups of a token of the ServiceAccount, which store nothing, until the
+  cluster answers each as the access does. Between two steps the filter selects
+  `default` alone, where every access lets the identity read every kind, so that
+  no load of a step runs under the access of the next, and the next step starts
+  its loads with its change of the filter. The identity reads the infrastructure
+  cluster of the fixtures, `devclusters` of `infrastructure.cluster.x-k8s.io`,
+  with the kinds of the page, since the page reads it for the references of its
+  Clusters (P3). The pure part, the accesses, the objects, the reviews, the
+  refusals that a step expects and the kubeconfig, is
+  `integration/__tests__/restricted-access.ts`, with its unit test in
+  `test/restricted-access.test.ts`, which also checks that the kinds of the
+  identity are those of the models of the page, each under its group.
+- Seen in the first run of the third part in CI, on both releases, and changed:
+  the restricted session failed in the hook that grants the first access, since
+  Vitest refuses `expect.poll` outside a test, and skipped its cases. It waits
+  for the answers of the reviews, and for the catalog to list its cluster, with
+  `vi.waitFor`, which runs in a hook too. After the first review of the third
+  part: kubectl prints the objects of a list that it creates one after the
+  other, and never as a List, so the session reads the answers of the reviews
+  with `printedObjects` of the scripts, which already reads that form, and the
+  unit test feeds them so.
+- Decided while implementing the third part, where P23 is silent, and corrected
+  after its first review: the restricted session runs its cases in the order 1,
+  2, 4, 3. A step that refuses a kind in a namespace that the frame read before
+  loads the frame again, once the cluster answers as its access says: the API
+  of the host keeps the version of the last list that succeeded in that
+  namespace, so the store would start from it a watch that the server refuses,
+  again and again (the correction above, in "What the host gives"). In a
+  frame loaded again no API keeps a version, so the refused namespace is
+  listed, refused, and never watched, and the collector of the errors still
+  never leaves out the refusal of a watch. The second step of case 1, both
+  steps of case 2 and case 3 load the frame again; the first step of case 1
+  needs no load, since the frame read no Cluster before it, and case 4 none,
+  since its access refuses nothing. Case 3 runs last, in a frame that starts
+  with an access that may not list the definitions: the host lists them once,
+  as the frame starts, with no `onLoadFailure`, and keeps what that list gave
+  (freelens:packages/core/src/renderer/components/custom-resource-definitions/definitions.injectable.ts:35-40,
+  the same at `v2.0.0`). The frame is loaded again, and the cluster is not
+  disconnected: a disconnect starts a refresh of the reviews of access of the
+  host, whose failures can reach the main log (AGENTS.md, "Workflows"). A frame
+  that starts renders before it has loaded the extensions, which it does not
+  wait for, and the layout of the host takes the address of a page of an
+  extension, which it does not know yet, to its start page
+  (freelens:packages/technical-features/application/application/src/start-application/start-application.injectable.ts:20-24;
+  freelens:packages/core/src/renderer/frames/cluster-frame/init-cluster-frame/init-cluster-frame.ts:46-54;
+  freelens:packages/core/src/renderer/frames/cluster-frame/cluster-frame-layout-child-component.injectable.tsx:41-42;
+  freelens:packages/routing/src/route.tsx:194-198, the same at `v2.0.0`), so
+  after a load the session opens the page itself. Within case 3 the details are
+  opened by their address, on a namespace that the page does not read, so that
+  the view of one Cluster reads the definitions by their names with reads of
+  its own (P31), and reads them again once the access refuses that of the
+  infrastructure cluster.
+- Decided while implementing the third part, and corrected after its first
+  review: the restricted session leaves out the refusals that a case expects
+  from the start of the case to its end, once the filter selects `default`
+  again, and not step by step: a new mount of the layout within a step, as a
+  store of a provider joins the set once the Clusters are read, loads the
+  namespaces of the step again, and its refusals arrive after the marks that
+  the step waits for. A refusal is left out only with the status 403, at the
+  path of a list or of a get, never of a watch, under the prefix with which the
+  frame of a cluster sends the requests of its API, `/api-kube`
+  (freelens:packages/core/src/common/vars.ts:16), to an address to which the
+  renderer sent GETs alone, which the collector of the errors records as
+  Playwright reports the requests, before their answers, from the frame of the
+  cluster of the identity, found by the host of the address, while that frame
+  shows the page of the Clusters. The one exception is the list of the
+  definitions, which the host sends as the frame starts, whatever page the
+  frame shows then: case 3 expects its refusal from that frame on any page. The
+  collector of the errors of the app gains `expectRefusals` for it, and the
+  decision is the pure function `isExpectedRefusal` of
+  `integration/__tests__/expected-refusals.ts`, with its unit test in
+  `test/expected-refusals.test.ts`. Each case checks at its end that the
+  refusals that it waits for arrived, with `refusalsLeftOut`, so that a refusal
+  that a case expects is never one that the frame no longer sends, and ends its
+  expectations in a `finally` of its own.
+- Decided while implementing the third part, where P23 is silent on the folder of
+  its kubeconfig: `TEST_RESTRICTED_KUBECONFIG_FOLDER` names it, in CI
+  `RUNNER_TEMP/freelens-capi-restricted`, which the workflow creates empty, with
+  the mode 700, before Freelens starts: the host watches a folder only when it
+  exists as the sync starts, and skips it otherwise
+  (freelens:packages/core/src/main/catalog-sources/kubeconfig-sync/watch-file-changes.injectable.ts:108, 180,
+  the same at `v2.0.0`). The session refuses a folder inside the repository, as
+  `isInside` of the scripts tells it, writes the file with the mode 600, and
+  waits until the catalog lists the cluster of the identity, saying, when it
+  does not, that the folder is not in Kubeconfig Syncs. It reaches the cluster
+  of the definitions through the scripts, with `openDefinitions` of
+  `e2e/scripts/commands.mts`, under the lock of the state folder, with the
+  target checked before every request, as `openRealProject` does for the real
+  project, and with `impersonate`, kubectl as the identity, whose answer it
+  reads whether it succeeded or not.
+- Decided while implementing the third part: the restricted session checks the
+  message of each answer that a notice shows against the message that the
+  cluster gives the identity for the same request, which it reads with
+  `kubectl get --raw <path> --as <user>`, so that the session holds no text of
+  Kubernetes of its own.
+- Seen while implementing the third part, on the fixtures: with the Machines
+  refused, the model gives the note of the Machines not given to the parts of
+  each Cluster, its control plane and its MachineDeployments, and not to the
+  Cluster, whose activities read Unknown through them; and the Cluster of
+  `paused` keeps its activity Paused, which reads no Machine. So case 2 checks
+  the activities of `healthy` as Unknown and of `paused` as Paused and Unknown,
+  never Idle, the notice, which names the Machines and says that the model
+  notes them, and, in the details of the Cluster of `healthy`, the read of the
+  Machines that failed, with the permission. The details show no note of a
+  part (P17).
+- Decided after the first review of the third part: case 4 fills the search
+  with a label that no Cluster has before it sets it, waits until the list
+  shows no row, then sets the label and waits for the row, with no reload: the
+  namespace of `healthy` holds one Cluster, and the search of the host filters
+  250 ms after its input changes, so a check that filled the search after the
+  label could pass on the row that the list showed before.
+- Decided while implementing the third part: the sessions of the real tier in
+  Freelens, `integration/__tests__/clusters-real.tests.ts` and
+  `integration/__tests__/clusters-sveltos.tests.ts`, run with a configuration of
+  their own, `vitest.integration-real-project.config.ts`, through
+  `pnpm test:integration:real-project`, and `vitest.integration.config.ts`
+  leaves them out, so that the integration workflow, on the cluster of the
+  definitions, does not run them. Both reach the real project with
+  `openRealProject`, which gains `describeCluster`, `clusterctl describe cluster`
+  with the pinned clusterctl and the configuration that the scripts write, as
+  `up` and a capture write it, and `sveltos`, the files of S6 checked against
+  their pins; its `apply` gives the names of the objects applied. Both
+  integration configurations set the pool `forks`, as that of the tests of the
+  real tier does, since the scripts set a private umask, which a worker thread
+  cannot. After the first review of the third part, clusterctl and its
+  configuration are kept once they were set up, and set up again at the next
+  describe when that failed (`onceItSucceeds`), and the session against
+  clusterctl sets them up in its hook, so that a setup that fails fails there,
+  at once, and not each wait for its whole time.
+- Decided while implementing the third part, where "With the real project" is
+  silent on how the session reads the tool: the row of a Cluster is read from
+  what `clusterctl describe cluster` prints, by its name, `Cluster
+  <namespace>/<name>` and the version of its topology, and by cells at least two
+  spaces apart, and never by the columns of its header, whose cells the table
+  pads with one space and those of its rows with two
+  (`internal/util/tree/tree.go:69-93`). A row with a cell that the tool has not
+  written yet, which it leaves empty with no mark, is not taken: the cells after
+  it move to the left, and the cell of the status holds no longer True, False or
+  Unknown (R4.22, `internal/util/tree/tree.go:646-656`). The counters of the
+  details, those of the control plane and of the workers, are summed as the tool
+  sums them, a counter not written counting as zero (R4.22). The status, the
+  reason and the counters are compared for `freelens-capi-md`, and the health of
+  `freelens-capi-mp` read once the tool gives its `Available` as `True`, each
+  side read again until they agree, five minutes at most; the topology of both
+  is read once. The pure part is `integration/__tests__/real-project-checks.ts`,
+  with its unit test in `test/real-project-checks.test.ts`, whose rows and sums
+  give every counter a value of its own, so that two counters read in each
+  other's place fail.
+- Seen in the first run of the third part in CI, on both releases, and changed:
+  the comparison with clusterctl failed on "replicas: the view gives 3/0,
+  clusterctl 3/3", and the view was right. The session read the counters from
+  the text of the whole item of the drawer, its name next to its value with
+  nothing between them, "Machines1 desired, ..." (drawer-item.tsx:47-48, at
+  `v2.0.0` and `v2.1.0`), and lost the first count. It reads the value of the item alone,
+  and `countersOf` refuses a part that is not a count with its label, which its
+  unit test checks on the text of the whole item.
+- Decided while implementing the third part, for P29: the package of the Sveltos
+  extension is the file that the npm registry publishes for
+  `@freelensapp/sveltos-extension` `2.1.0`, and the definitions are the files of
+  the folder `crds` of the chart `projectsveltos` `1.16.1`, as its release on
+  GitHub, `projectsveltos-1.16.1` of `projectsveltos/helm-charts`, publishes the
+  chart; the scripts read them from the archive, with no helm, in
+  `e2e/scripts/archives.mts`. The session applies every definition of that
+  folder, 29, as the CI of that extension applies every definition of the
+  chart, SveltosCluster among them, and deletes them at its end. The pins hold
+  them as `sveltos.extension` and `sveltos.chart`, each with its version as its
+  project numbers it, with no leading v, and its SHA-256; Renovate does not
+  follow them. The session writes the package, with a `.sha256` of the format
+  of `sha256sum` beside it, into a folder of its own outside the repository,
+  which it removes at its end: the host installs a tarball with no checksum
+  beside it disabled at `v2.1.0`, and enables a build that it verified, at
+  `v2.0.0` too
+  (freelens:packages/core/src/renderer/components/extensions/attempt-install/install-from-file.injectable.tsx:41-74;
+  freelens:packages/core/src/renderer/components/extensions/attempt-install/unpack-extension.injectable.tsx:143;
+  freelens@v2.0.0:packages/core/src/renderer/components/extensions/attempt-install/unpack-extension.injectable.tsx:120, 157).
+  The digest of the chart was not compared with the one that the index of the
+  repository of the chart records, which the scripts do not read. After the
+  first review of the third part, the session takes the names of the
+  definitions from their manifests before it applies them, with
+  `definitionName` of the scripts, which reads the `name` of their metadata at
+  the indentation of its first key, four spaces in the chart, and its end
+  deletes those names with `--ignore-not-found`, so that an apply that failed
+  half way leaves nothing; and every mark that its end reads, as that of the
+  label, is set before the write that it marks.
+- Seen in the first run of the third part in CI, on both releases, and changed:
+  the page of the Clusters of the Sveltos extension never opened, since the
+  session opened it at the address of a page of this extension. The address of
+  a page is that of its own extension, `/extension/<name>/<page>`
+  (freelens:packages/core/src/renderer/routes/for-extension.ts:11-15;
+  freelens:packages/core/src/extensions/lens-extension.ts:125-127, the same at
+  `v2.0.0`), and `openExtensionPage` takes the name of the extension, this one
+  unless another is named.
+- Seen in the second run of the third part in CI, on both releases, and decided
+  after it: the API server answered three GETs of the Sveltos extension to the
+  group of its own kinds, `config.projectsveltos.io`, at `clusterconfigurations`
+  and `clustersummaries`, with a 429, and Chromium logged them, so S6 failed on
+  errors that are not of this view, from its second case on. S6 judges the two
+  views by their rows and by the failed watches of `cluster.x-k8s.io`, so it
+  leaves out, from the start of its cases, a 429 of a GET, a list or a watch, to
+  a group whose name ends with `.projectsveltos.io`, from the frame of the
+  cluster of the real project alone, and never one to a group that this view
+  reads, `cluster.x-k8s.io` and its subgroups or `apiextensions.k8s.io`,
+  whatever a session expects (`isExpectedThrottling` of
+  `integration/__tests__/expected-refusals.ts`, with its unit test). Every other
+  429 counts.
+- Seen in the second run of the third part in CI, on both releases, and changed:
+  in case 3 of the restricted session, Escape left open the details that the
+  session had opened at their address in a frame loaded again. The drawer of
+  the host closes on the keys that the window of its frame receives
+  (drawer.tsx:93, 138-145 at `v2.1.0`; 94, 139-146 at `v2.0.0`), and no click in
+  that frame had given it the keyboard. The session closes those details by the
+  close icon of their drawer, as a person would; case 2, which opens the details
+  with a click on the name, closes them with Escape.
+- Decided while implementing the third part, for S6, and corrected after its
+  first review: a failed watch of `cluster.x-k8s.io` is told from the console of
+  the renderer, where the client of the host logs a watch that the server
+  answered with an error, or whose stream broke, as a warning, and one that
+  threw as an error, with the path of the watch
+  (freelens:packages/utility-features/kube-api/src/kube-api.ts:854, 981, 990;
+  freelens@v2.0.0:packages/utility-features/kube-api/src/kube-api.ts:846, 971,
+  980). The session records them from its start, with `recordWatchFailures`,
+  and fails on any. A watch that the server ends with an `ERROR` event in its
+  stream is not logged: the host starts it again, or reloads the namespace
+  after a 410, with no word (kube-api.ts:926-929 and kube-object.store.ts:642-655
+  at `v2.1.0`; kube-api.ts:916-919 and kube-object.store.ts:576-589 at
+  `v2.0.0`), so the session does not see it; the
+  steps that follow a write see what it costs, an update that does not come.
+- Decided after the first review of the third part, for S6: step 4 is in an
+  order where every check can fail. This page closes with the label removed and
+  shows it set when it opens, and closes with it set and shows it removed when
+  it opens, while the host keeps the objects of a store after its subscription
+  ends (kube-object.store.ts:545-583 at `v2.1.0`, 500-538 at `v2.0.0`). The page of the
+  Sveltos extension reloads its lists every 30 seconds
+  (freelens-sveltos-extension: src/renderer/api/subscribe-stores.ts:4, 54-62),
+  so an update that it shows counts as one that its watch brought only when the
+  session recorded no list of the Clusters at `v1beta1` without a watch from
+  two seconds before the write, whose answer could come after it, to the
+  update (`clusterListsBetween` of `real-project-checks.ts`); when one fell in
+  that window, the step undoes its write and makes it again, three times at
+  most, and says so. A page that follows a write through its watch shows it
+  within 20 seconds.
+- Decided under the delegation for M1, after the second run of the third part
+  in CI, where the first review had asked the limits of time to hold the sum of
+  every wait at its maximum: the limits of the jobs and of their steps of the
+  tests are set from the durations of the runs. Measured in CI on 2026-11-26:
+  the integration job took 5 minutes, and its step of the tests 3.3, with a case
+  that waited its 60 seconds; the job of the real project took 8 to 10 minutes
+  with sessions that settled at once, the real project up in 2.5 and the tests
+  of the real tier, S7 among them, in 4.5, and 22 when its sessions waited their
+  polls of 10 minutes. So the integration job has 60 minutes, with its step of
+  the tests under `timeout 1500`, and the job of the real project 120, as P33
+  says, with the step of the sessions of the real tier under `timeout 2400`, and
+  that of S7 at the 15 minutes that the pull request of the cases of SPEC-0003
+  gave it. A step that reaches its limit fails, as a case that reaches its own
+  does; the job then loses the report of the sessions after it, which a run of
+  that one file gives again. The waits of the session against clusterctl stay
+  at five minutes each. S7 runs in each job of the matrix, where that pull
+  request put it, and the steps of Freelens dev come after it.
+- Decided while implementing the third part, and widened after its first
+  review: the paths that start the workflow of the test environment on a pull
+  request are those of P33, `src/main/**`, `src/common/**` and the two
+  sessions, with the modules that the sessions import and that no other path
+  covers, `integration/__tests__/extension-helpers.ts`,
+  `integration/__tests__/expected-refusals.ts` and
+  `integration/__tests__/real-project-checks.ts`, and the configurations that run
+  them, `vitest.integration.config.ts`, which the other imports, and
+  `vitest.integration-real-project.config.ts`; and also the view, which these
+  sessions test as built, `src/renderer/**` without its unit tests, and the
+  build, `vite.config.mjs` and `build/**`, so that a pull request that changes
+  the view alone runs them too, and not only once merged or at night.
+- Decided while implementing the third part: the README says what the view does,
+  the Cluster at `v1beta2` in "Supported APIs", with the commands of the test
+  environment and TRY-IT.md in the place of `examples/` (P30), and in
+  "Permissions" every read of the view with its permission, the get of a
+  definition by its name, and what the host follows; and that the extension
+  writes nothing. TRY-IT.md installs the extension from the checkout, which has
+  no release yet, walks through the page, the details, the details of the host
+  and the tool of the project on the demo, which it runs with no check for a
+  newer clusterctl, as the scripts do (SPEC-0001, R4.9), and through every state
+  on the cluster of the definitions; the pass before a review stays with
+  SPEC-0007.

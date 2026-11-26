@@ -75,6 +75,19 @@ export interface Pins {
   };
   clusterApiOperator: Release<(typeof OPERATOR_ASSETS)[number]>;
   certManager: Release<(typeof CERT_MANAGER_ASSETS)[number]>;
+  // What the session of S6 of SPEC-0001 installs next to the extension, on the cluster of the real project
+  // (SPEC-0004, P29): the package of the Sveltos extension for Freelens, at the release that SPEC-0001 read, and the
+  // chart of Sveltos whose definitions the CI of that extension applies at that release. Each is one file, with its
+  // version as the project numbers it, with no leading v, and its SHA-256.
+  sveltos: {
+    extension: PinnedPackage;
+    chart: PinnedPackage;
+  };
+}
+
+export interface PinnedPackage {
+  version: string;
+  sha256: string;
 }
 
 export interface WorkflowPins {
@@ -193,6 +206,28 @@ function managementKubernetes(value: unknown): Pins["managementKubernetes"] {
   return { version, supported: { from, to } };
 }
 
+// A package of one file, with its version, as a registry numbers it, and its SHA-256.
+function pinnedPackage(value: unknown, where: string): PinnedPackage {
+  const object = fields(value, where);
+
+  exactKeys(object, ["version", "sha256"], where);
+  return {
+    version: matching(object.version, WORKFLOW_VERSION, `${where}.version`, "a version, such as 1.2.3"),
+    sha256: matching(object.sha256, SHA256, `${where}.sha256`, "a SHA-256 digest, 64 lowercase hexadecimal characters"),
+  };
+}
+
+// The pins of S6, the Sveltos extension and the chart of Sveltos.
+function sveltos(value: unknown): Pins["sveltos"] {
+  const object = fields(value, "sveltos");
+
+  exactKeys(object, ["extension", "chart"], "sveltos");
+  return {
+    extension: pinnedPackage(object.extension, "sveltos.extension"),
+    chart: pinnedPackage(object.chart, "sveltos.chart"),
+  };
+}
+
 // The pins, from the text of e2e/environment/pins.json.
 export function parsePins(text: string): Pins {
   let value: unknown;
@@ -207,7 +242,7 @@ export function parsePins(text: string): Pins {
 
   exactKeys(
     root,
-    ["description", "clusterApi", "managementKubernetes", "clusterApiOperator", "certManager"],
+    ["description", "clusterApi", "managementKubernetes", "clusterApiOperator", "certManager", "sveltos"],
     PINS_FILE,
   );
   ensure(
@@ -258,6 +293,7 @@ export function parsePins(text: string): Pins {
       depName: "kubernetes-sigs/cluster-api-operator",
     }).release,
     certManager: release(root.certManager, "certManager", CERT_MANAGER_ASSETS).release,
+    sveltos: sveltos(root.sveltos),
   };
 }
 
