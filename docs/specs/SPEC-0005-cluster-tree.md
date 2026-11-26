@@ -2908,10 +2908,12 @@ the contract label of the definition for a control plane of a provider; and
   `followedObjectsOf` of `src/common/views/references.ts`, gives the reads
   those objects, and one, `followedReferencesOf`, says what each object names,
   for the reads and for the tree, which `test/tree-sources.ts` calls as the
-  read does; a case of the read and a case of the tree see each call it, and a
-  case builds the tree of every state of the fixtures from the read of that
-  state, with no row of a kind that the read never tried. A reference to a kind
-  that a model of the view reads is found in the store of that model, with no
+  read does; a case of the read and a case of the tree see each call it, a case
+  builds the tree of every state of the fixtures from the read of that state,
+  with no row of a kind that the read never tried, and a case of the read sees
+  it read the machine template of a kind that only the control plane of a
+  provider names, whose row is then an object. A reference to a kind that a
+  model of the view reads is found in the store of that model, with no
   definition read; the two references of the Cluster keep the resolution of
   SPEC-0004, P3. A template reference of a MachineDeployment or of a MachineSet
   to a kind whose name does not end in `Template` is not followed, as P7 tells

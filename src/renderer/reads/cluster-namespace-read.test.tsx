@@ -12,6 +12,7 @@ import {
   DEFINITIONS,
   DEV_CLUSTERS,
   DEV_DEFINITIONS,
+  definition,
   hostObject,
   serve,
   TREE_APIS,
@@ -873,6 +874,100 @@ describe("the references that the read of the tree follows, those by which the t
     expect([...(read.objects().tree?.providers.keys() ?? [])]).not.toContain(
       "infrastructure.cluster.x-k8s.io/DevMachinePool",
     );
+    stop();
+  });
+
+  it("follow the machine template of the control plane of a provider that the Cluster names, of a kind that only it names", async () => {
+    // healthy with its control plane served by a provider of its own: the Cluster names an ExampleControlPlane, whose
+    // machine template is an ExampleMachineTemplate, a kind that no other object names, and its Machine is owned by it.
+    const objects = structuredClone(fixtureSet("healthy")) as unknown as Record<string, any>[];
+    const cluster = objects.find((object) => object.kind === "Cluster") as Record<string, any>;
+    const machine = objects.find(
+      (object) => object.kind === "Machine" && object.metadata.name === "freelens-capi-healthy-d2lgq-zqlcx",
+    ) as Record<string, any>;
+    const contract = { "cluster.x-k8s.io/v1beta2": "v1beta2", "cluster.x-k8s.io/provider": "control-plane-example" };
+    const apiOf = (kind: string, group: string, plural: string) => ({
+      kind,
+      apiVersionWithGroup: `${group}/v1beta2`,
+      apiBase: `/apis/${group}/v1beta2/${plural}`,
+      isNamespaced: true,
+    });
+    const controlPlanes = apiOf("ExampleControlPlane", "controlplane.example.test", "examplecontrolplanes");
+    const templates = apiOf("ExampleMachineTemplate", "infrastructure.example.test", "examplemachinetemplates");
+
+    cluster.spec.controlPlaneRef = {
+      apiGroup: "controlplane.example.test",
+      kind: "ExampleControlPlane",
+      name: "example",
+    };
+    machine.metadata.ownerReferences = [
+      {
+        apiVersion: "controlplane.example.test/v1beta2",
+        kind: "ExampleControlPlane",
+        name: "example",
+        controller: true,
+      },
+    ];
+
+    const served = hostObjects([
+      ...objects.filter((object) => object.kind !== "KubeadmControlPlane"),
+      {
+        apiVersion: "controlplane.example.test/v1beta2",
+        kind: "ExampleControlPlane",
+        metadata: { name: "example", namespace: NAMESPACE, labels: { "cluster.x-k8s.io/cluster-name": NAME } },
+        spec: {
+          machineTemplate: {
+            spec: {
+              infrastructureRef: {
+                apiGroup: "infrastructure.example.test",
+                kind: "ExampleMachineTemplate",
+                name: "example-control-plane",
+              },
+            },
+          },
+        },
+      },
+      {
+        apiVersion: "infrastructure.example.test/v1beta2",
+        kind: "ExampleMachineTemplate",
+        metadata: { name: "example-control-plane", namespace: NAMESPACE },
+        spec: {},
+      },
+    ] as unknown as KubeObject[]);
+
+    serve(undefined, [
+      ...DEFINITIONS,
+      DEV_CLUSTERS,
+      ...DEV_DEFINITIONS,
+      definition(
+        "examplecontrolplanes.controlplane.example.test",
+        "controlplane.example.test",
+        "ExampleControlPlane",
+        contract,
+      ),
+      definition(
+        "examplemachinetemplates.infrastructure.example.test",
+        "infrastructure.example.test",
+        "ExampleMachineTemplate",
+        contract,
+      ),
+    ]);
+    for (const api of [...Object.values(TREE_APIS), controlPlanes, templates]) host.registerApi(api);
+    for (const api of [...Object.values(APIS), ...Object.values(TREE_APIS), controlPlanes, templates]) {
+      host.cluster.set(api.apiBase, { items: served.filter((object) => object.kind === api.kind), failures: [] });
+    }
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect(byKind(read).get("ExampleMachineTemplate")?.api).toBe(templates);
+    expect(
+      readOfNode(
+        treeOfRead(read).nodes.get("infrastructure.example.test/ExampleMachineTemplate/example-control-plane"),
+      ),
+    ).toBe("object");
     stop();
   });
 
