@@ -3045,24 +3045,33 @@ the contract label of the definition for a control plane of a provider; and
 - Decided while implementing: until the page imports them, `knip.jsonc` lists
   `cluster-tree.ts`, `tree-rows.ts` and `variable-names.ts` as production
   entries, since only their tests reach them; the page removes the entries.
-- Decided while implementing: the check of Safety matches the names
-  `variables`, `overrides` and `patches` wherever they are read or declared,
-  as the check of R3.36 matches its names, in every module of the view but
-  `variable-names.ts`, which reads them for their names, so that a read by a
-  member, an index or any destructuring, with a new name, a default or a
-  pattern of its own, is found; it departs from "Safety", which matched reads
-  and left the declarations of the model of the Cluster out. So no model types
-  them: the model of the Cluster leaves out the variables of its topology and
-  of its parts, which the test of its types reads in the fixtures as left out
-  on purpose, a departure from the types that SPEC-0004, "What the view reads",
-  gives its topology; and the model of the ClusterClass types neither its
-  variables nor its patches, a departure from P6, whose names
-  `variableNamesOf` reads from the object, untyped. `variableNamesOf` returns
-  the names as `variableNames` and `patchNames`, which the check does not take
-  for those names; in `variable-names.ts` it finds `value` and every member of
-  a patch but its name, in the code, the comments left out. The check of the
-  annotation of P20 comes with the details of a node, whose function reads it,
-  in the second part.
+- Decided while implementing, for the names of the variables and of the patches,
+  in place of what P6, P20, "Tests", "Unit" and "Safety" say of them, whose
+  rules stay as they were approved, since a change to an approved spec is made
+  in its notes (kit, `docs/specs.md`, "Evidence"): the check of Safety matches
+  the names `variables`, `overrides` and `patches` wherever they are read or
+  declared, as the check of R3.36 matches its names, in every module of the view
+  but `variable-names.ts`, which reads them for their names, so that a read by a
+  member, an index or any destructuring, with a new name, a default or a pattern
+  of its own, is found. So no model types them. This note supersedes, in P20,
+  "the `value` that the model of the Cluster types for each variable", which no
+  model types; in "Tests", "Unit", the line of `context-models.test.ts` by which
+  "the ClusterClass types the names of its variables and of its patches and no
+  value", since it types neither, as that test asserts; in "Safety", "the value
+  of a variable, which the model of the Cluster types", and that the check
+  "matches reads, not names" while `variables`, `overrides` and `patches` "are
+  only declared, by the model of the Cluster", since the check matches the names
+  and no model declares them; in P6, the names of the variables and of the
+  patches among the fields that the model of a ClusterClass types, which
+  `variableNamesOf` reads from the object, untyped; and, in SPEC-0004, the types
+  that "What the view reads" gives the topology of a Cluster, whose model leaves
+  out the variables of its topology and of its parts, which the test of its
+  types reads in the fixtures as left out on purpose (SPEC-0004, "Notes and
+  deviations"). `variableNamesOf` returns the names as `variableNames` and
+  `patchNames`, which the check does not take for those names; in
+  `variable-names.ts` it finds `value` and every member of a patch but its name,
+  in the code, the comments left out. The check of the annotation of P20 comes
+  with the details of a node, whose function reads it, in the second part.
 - The large Cluster of P22 comes with its generator,
   `integration/__tests__/large-cluster.ts`, and its unit test in the third
   part, with the session that applies it. Until the capture of P21 in the third

@@ -2943,11 +2943,11 @@ No question is open.
 - From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
   deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of
   this spec says of 2.0.0 stays a fact of the host, as probed then.
-- From the first part of SPEC-0005 (its "Notes and deviations", the check of
-  Safety of P20): the model of the Cluster no longer types the variables of
-  its topology and of its parts, which "What the view reads" lists as typed and
-  not read. What a variable is set to can hold the fields of SPEC-0001, A3 and
-  whatever a user writes there, so no model types it, and the check of Safety
-  finds the names `variables`, `overrides` and `patches` wherever they are read
-  or declared, in every module of the views but the one that reads their names.
-  This view reads none of them.
+- From the first part of SPEC-0005 (its "Notes and deviations", the names of
+  the variables and of the patches): the model of the Cluster no longer types
+  the variables of its topology and of its parts, which "What the view reads"
+  lists as typed and not read. What a variable is set to can hold the fields of
+  SPEC-0001, A3 and whatever a user writes there, so no model types it, and the
+  check of Safety finds the names `variables`, `overrides` and `patches`
+  wherever they are read or declared, in every module of the views but the one
+  that reads their names. This view reads none of them.

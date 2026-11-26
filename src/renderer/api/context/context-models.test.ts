@@ -298,7 +298,7 @@ describe("the models of the tree (SPEC-0005, P6)", () => {
     expect(reference).toBe(true);
   });
 
-  it("type neither the variables nor the patches of a ClusterClass, whose names one function of the views reads (SPEC-0005, P20)", () => {
+  it("type neither the variables nor the patches of a ClusterClass, whose names one function of the views reads (SPEC-0005, the note on their names)", () => {
     // @ts-expect-error: the variables of a class, whose schemas a value follows, are not typed
     const variables: ClusterClass["spec"]["variables"] = undefined;
     // @ts-expect-error: nor are its patches, which write values into its templates

@@ -455,7 +455,8 @@ A new kind, or a new version of a kind, takes the same set of files as
      Cluster included: the variables of a topology and of its parts, and the
      variables and the patches of a ClusterClass, whose names one function of
      `src/common/views/` reads, and whose names the check of Safety finds
-     nowhere else, read or declared (SPEC-0005, P20).
+     nowhere else, read or declared (SPEC-0005, "Notes and deviations", the
+     names of the variables and of the patches).
    - A field is optional in the interface when the CRD does not require it.
      `controller-gen` decides that from the markers, not from the `json` tag:
      `+required` (or `+kubebuilder:validation:Required`) makes the field

@@ -12,7 +12,8 @@
 // The variables of a topology and of its parts are the one exception: the types leave them out, `variables` and the
 // `overrides` of a part, since what a variable is set to can carry the fields that SPEC-0001, A3 never shows and
 // whatever a user writes there; one function of the views reads them, for their names alone, and the check of Safety
-// finds their names in no other module of the view (SPEC-0005, P20, "Safety").
+// finds their names in no other module of the view, read or declared (SPEC-0005, "Notes and deviations", the names of
+// the variables and of the patches).
 //
 // The host hands the extension objects of its own store, instances of its `KubeObject`, so the class has no method of
 // its own (AGENTS.md, "CRD KubeObject Pattern"). The status of a Cluster is the status model's (SPEC-0003): the views

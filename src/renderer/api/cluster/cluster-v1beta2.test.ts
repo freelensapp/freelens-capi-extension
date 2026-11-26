@@ -72,9 +72,9 @@ describe("the model of a Cluster at v1beta2", () => {
 
 // The shape of an interface, checked against it by the type check: every key of the interface, each required as the
 // interface makes it, and the kind of its value, and the keys of the schema that the interface leaves out on purpose,
-// the variables of a topology and of its parts (SPEC-0005, P20). The test reads the Clusters of the fixtures against
-// it: a field that the interface does not declare, and that it does not leave out, a required one missing, or a value
-// of another kind fails it.
+// the variables of a topology and of its parts (SPEC-0005, "Notes and deviations", the names of the variables and of
+// the patches). The test reads the Clusters of the fixtures against it: a field that the interface does not declare,
+// and that it does not leave out, a required one missing, or a value of another kind fails it.
 type Shape =
   | "string"
   | "number"
@@ -463,7 +463,7 @@ describe("the types of a Cluster", () => {
     ]);
   });
 
-  it("type neither the variables of a topology nor those of its parts, which hold what a variable is set to (SPEC-0005, P20)", () => {
+  it("type neither the variables of a topology nor those of its parts, which hold what a variable is set to (SPEC-0005, the note on the names of the variables)", () => {
     // @ts-expect-error: the variables of a topology are not typed
     const variables: Topology["variables"] = undefined;
     // @ts-expect-error: nor are those of its control plane

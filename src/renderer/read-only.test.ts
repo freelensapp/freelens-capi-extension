@@ -57,10 +57,11 @@ const SECRET_FIELD = new RegExp(
 );
 
 // The variables of a Cluster and of the parts of its topology, the overrides of a part and the patches of a
-// ClusterClass can carry the fields of R3.36, and whatever a user writes, in what they set and write (SPEC-0005, P20,
-// "Safety"): one module of the view reads them, `variable-names.ts`, for their names, and no other names them, matched
-// wherever they are read or declared, as the fields of R3.36 are, so that a read by a member, an index or any
-// destructuring, with a new name, a default or a pattern of its own, finds them. The models type none of them.
+// ClusterClass can carry the fields of R3.36, and whatever a user writes, in what they set and write (SPEC-0005, P20):
+// one module of the view reads them, `variable-names.ts`, for their names, and no other names them, matched wherever
+// they are read or declared, as the fields of R3.36 are, so that a read by a member, an index or any destructuring,
+// with a new name, a default or a pattern of its own, finds them; the models type none of them (SPEC-0005, "Notes and
+// deviations", the names of the variables and of the patches).
 const VARIABLE_NAMES = "variables|overrides|patches";
 const VARIABLE_FIELD = new RegExp(
   [
@@ -106,7 +107,7 @@ describe("the view only reads (SPEC-0004, Safety)", () => {
   });
 });
 
-describe("the variables and the patches, read for their names alone (SPEC-0005, P20, Safety)", () => {
+describe("the variables and the patches, read for their names alone (SPEC-0005, P20, and its note on their names)", () => {
   const modules = FOLDERS.flatMap(modulesOf);
 
   it("are named by variable-names.ts alone, which reads them, and declared by no model", () => {

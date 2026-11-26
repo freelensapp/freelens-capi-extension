@@ -227,8 +227,9 @@ export class MachineHealthCheckStore extends Renderer.K8sApi.KubeObjectStore<
 
 // A ClusterClass types the fields that its rule of SPEC-0003 reads alone: neither its variables nor its patches, whose
 // schemas and definitions can carry the fields that SPEC-0001, A3 never shows; one function of the views reads them,
-// for their names alone, and the check of Safety finds their names in no other module of the view (SPEC-0005, P20,
-// "Safety"; api/core/v1beta2/clusterclass_types.go:128, 137).
+// for their names alone, and the check of Safety finds their names in no other module of the view, read or declared
+// (SPEC-0005, "Notes and deviations", the names of the variables and of the patches;
+// api/core/v1beta2/clusterclass_types.go:128, 137).
 export class ClusterClass extends Renderer.K8sApi.LensExtensionKubeObject<
   Metadata,
   StatusOf<ClusterClassObject>,
