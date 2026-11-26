@@ -32,7 +32,7 @@ an empty list.
 
 ## Requirements
 
-- Freelens >= 2.0.0
+- Freelens >= 2.1.0
 - Cluster API that serves `cluster.x-k8s.io/v1beta2`, from v1.11; the
   extension follows the release v1.14.4
 

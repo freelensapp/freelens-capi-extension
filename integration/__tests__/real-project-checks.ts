@@ -55,8 +55,8 @@ export function describedCluster(output: string, namespace: string, name: string
 // The counters of the control plane or of the workers, from the value of their item in the details of the extension:
 // each count with its label, such as `3 desired`, or `N/A up to date` for one not written, separated by commas. A
 // part that is not a count with its label is refused: the text of the whole item of the drawer is its name and its
-// value with nothing between them, `Machines1 desired, ...`, as the host renders it (drawer-item.tsx:47-48, at `v2.0.0`
-// and `v2.1.0`), and its first count would otherwise be lost.
+// value with nothing between them, `Machines1 desired, ...`, as the host renders it (drawer-item.tsx:47-48, at
+// `v2.1.0`), and its first count would otherwise be lost.
 export function countersOf(text: string): Map<string, number | undefined> {
   const counters = new Map<string, number | undefined>();
 

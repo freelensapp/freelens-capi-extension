@@ -440,7 +440,7 @@ extension that the profile of Freelens dev has, and leaves none.
   both of its jobs, the fixtures too. Its job of the fixtures runs
   `pnpm e2e:fixtures:check` on the cluster of the definitions. Its job of the
   real project is a matrix of the releases of Freelens of the integration
-  tests, `v2.0.0` and `v2.1.0`, each job with a real project of its own: it
+  tests, `v2.1.0` alone, each job with a real project of its own: it
   runs `pnpm e2e:cluster:up`, checks that `freelens-capi-md` reports
   `Available` `True`, runs `pnpm e2e:cluster:up` again, which resumes, then the
   tests of the real tier, `pnpm test:real-project`, within a quarter of an hour
@@ -459,11 +459,11 @@ extension that the profile of Freelens dev has, and leaves none.
   gives again. A step of the tests cut by its limit leaves their
   workload clusters to `pnpm e2e:cluster:down`, which deletes them with the
   others. A new push to a pull request cancels the jobs of the real project
-  that still run for it, each release in a group of its own, so that the two
-  jobs of a run do not cancel each other; the runs of `main` and of the night
-  are never cancelled. The job of `v2.1.0` alone saves the cache of pnpm, which
-  the others restore under the same key, and the caches that the steps taken
-  from `integration-tests.yaml` keep name the runner of this job.
+  that still run for it, each release in a group of its own, so that the jobs
+  of a run do not cancel each other; the runs of `main` and of the night are
+  never cancelled. The job of the real project saves the cache of pnpm, which
+  the job of the fixtures restores under the same key, and the caches that the
+  steps taken from `integration-tests.yaml` keep name the runner of this job.
 - `e2e-pins-check.yaml`, on every change to the pins or to the scripts:
   `pnpm e2e:pins:check`.
 

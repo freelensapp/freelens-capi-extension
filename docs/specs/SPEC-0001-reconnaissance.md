@@ -3670,7 +3670,8 @@ the kubeadm kinds, all missing from the bases (R4.109 to R4.111).
 - **A8. `engines.freelens`.** It becomes `^2.1.0` in the first pull request
   that uses a member added in Freelens 2.1.0, and that pull request removes
   Freelens 2.0.0 from the integration tests. Until then it stays `^2.0.0`, as
-  in the template (R7).
+  in the template (R7). The maintainer amended it on 2026-11-26 ("Notes and
+  deviations").
 - **A9. The Sveltos extension.** It reads `Cluster` at `v1beta1` through the
   host, and this extension reads `v1beta2`: the host keeps one store for each
   version, with no shared state (R7). It counts a Cluster ready from its
@@ -3907,3 +3908,8 @@ healthy and rolling out, or unhealthy and provisioning.
   later, with the reason and the message that the mirror then copied; the
   `InfrastructureReady` of the first Cluster, which turned `True`, took the
   time of the `Ready` of its infrastructure cluster.
+- Decided by the maintainer on 2026-11-26, amending A8: from the pull request
+  that records this decision, `engines.freelens` is `^2.1.0` and the jobs of
+  CI run Freelens 2.1.0 alone, without waiting for a pull request that uses a
+  member added in 2.1.0. The extension follows the latest release of Freelens,
+  and it has no release yet.

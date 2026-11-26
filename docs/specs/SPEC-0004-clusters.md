@@ -2940,3 +2940,6 @@ No question is open.
   project against `clusterctl`, and next to the Sveltos extension. The check
   of the themes is recorded with the screenshots of #16 and #19. The spec has
   no other manual check.
+- From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
+  deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of
+  this spec says of 2.0.0 stays a fact of the host, as probed then.

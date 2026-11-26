@@ -3090,3 +3090,7 @@ the contract label of the definition for a control plane of a provider; and
   after a 410, that fails again with an answer that the hold of its refresh
   already holds keeps one entry for that answer, the latest, and the hold the
   time of the latest.
+
+From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
+deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
+spec says of 2.0.0 stays a fact of the host, as probed then.
