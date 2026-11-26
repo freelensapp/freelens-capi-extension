@@ -881,3 +881,82 @@ describe("the refresh of the tree (SPEC-0005, P23)", () => {
     stop();
   });
 });
+
+describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
+  it("stay ended once they have ended, through a refresh that asks again for a definition that was refused", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+    runInAction(() => {
+      host.crdStore.items = [];
+      host.crdStore.failedLoading = true;
+    });
+
+    const definitions = new Map(
+      [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS].map((definition) => [definition.metadata?.name, definition]),
+    );
+    let answer: "refuse" | "wait" = "refuse";
+
+    host.crdGet.mockImplementation(async (name) => {
+      if (name !== "devmachines.infrastructure.cluster.x-k8s.io") return definitions.get(name) ?? null;
+      if (answer === "wait") return new Promise(() => undefined);
+      throw new Error("Failed to get", { cause: { kind: "Status", code: 403, message: "forbidden" } });
+    });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+
+    answer = "wait";
+    act(() => read.refresh());
+    await settle();
+
+    // The definition is asked again and has not answered: no first load of the tree.
+    expect(read.definitions.readOf("infrastructure.cluster.x-k8s.io", "DevMachine").state).toBe("pending");
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
+  it("stay ended once they have ended, through a change of the namespace that the class reference names, while the new store loads", async () => {
+    const objects = structuredClone(fixtureSet("healthy")) as KubeObject[];
+    const clusterClass = objects.find((object) => object.kind === "ClusterClass") as KubeObject;
+
+    serveTree(
+      hostObjects([
+        ...objects,
+        { ...clusterClass, metadata: { ...clusterClass.metadata, namespace: "freelens-capi-classes" } },
+      ] as KubeObject[]),
+    );
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+
+    const release = host.deferLoads();
+    const clusters = byKind(read).get("Cluster") as unknown as {
+      items: { replace(items: unknown[]): void } & HostObject[];
+    };
+
+    act(() => {
+      const [current] = [...clusters.items];
+      const moved = structuredClone({ ...current }) as unknown as Record<string, unknown> & {
+        spec: { topology: { classRef: { namespace?: string } } };
+      };
+
+      moved.spec.topology.classRef.namespace = "freelens-capi-classes";
+      runInAction(() =>
+        clusters.items.replace([hostObject({ ...moved, metadata: { ...current.metadata, resourceVersion: "2" } })]),
+      );
+    });
+    await settle();
+
+    // The store of the new namespace loads: no first load of the tree.
+    expect(read.reads.filter?.namespaces).toEqual([NAMESPACE, "freelens-capi-classes"]);
+    expect(read.firstLoadsEnded()).toBe(true);
+    release();
+    await settle();
+    stop();
+  });
+});

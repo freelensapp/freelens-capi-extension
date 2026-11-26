@@ -297,6 +297,8 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
   #index: { readonly reads: ReadsState; readonly versions: string; readonly index: ContextIndex } | undefined;
   // What a refresh does while the effect runs.
   #restart: (() => void) | undefined;
+  // The first loads of the view have all ended once, which they stay for the life of the read (SPEC-0005, P13).
+  #firstLoadsEnded = false;
 
   constructor(
     namespace: string,
@@ -547,15 +549,18 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
   }
 
   // Whether the first load of every store that the view reads has ended, loaded or failed, and every reference to a
-  // kind of a provider has been resolved, or cannot be (SPEC-0005, P13): the tree shows no row before.
+  // kind of a provider has been resolved, or cannot be (SPEC-0005, P13): the tree shows no row before. Once they have
+  // all ended, they stay so for the life of the read: a load that starts later, of a kind that a reference names later,
+  // of the namespace that the class reference names now, or of a definition that a refresh asks again, is no first load
+  // of the tree, which stays shown, and its nodes show their own loading (P6, P19, P23).
   firstLoadsEnded(): boolean {
-    return (
+    this.#firstLoadsEnded ||=
       this.#allProviders().every(({ resolution }) => resolution.state !== "pending") &&
       firstLoadsEnded(
         this.reads,
         this.#stores.map((built) => storeKey(built.store)),
-      )
-    );
+      );
+    return this.#firstLoadsEnded;
   }
 
   // The stores that the view needs: those of its models, each on its namespace, then those of the kinds of a provider
