@@ -1,6 +1,6 @@
 # SPEC-0004: Clusters, list and details
 
-- **Status:** Approved
+- **Status:** Verified
 - **Milestone:** `M1` (see [ROADMAP.md](../development/ROADMAP.md))
 - **Reviewed project:** Cluster API `v1.14.4`, commit
   `4356c154f4a76b8939748ef7ebc2d0793ffe47e8`, and the Cluster API Operator
@@ -2932,3 +2932,11 @@ No question is open.
   newer clusterctl, as the scripts do (SPEC-0001, R4.9), and through every state
   on the cluster of the definitions; the pass before a review stays with
   SPEC-0007.
+- Verified on 2026-11-26: the three pull requests of the spec, the list
+  (#16), the details (#19) and the sessions with a restricted identity and on
+  the real project (#20), are merged, and every job of CI ran green on `main`
+  after them, the sessions of the view on Freelens 2.0.0 and 2.1.0 included:
+  on the fixtures of every state, with the second identity, on the real
+  project against `clusterctl`, and next to the Sveltos extension. The check
+  of the themes is recorded with the screenshots of #16 and #19. The spec has
+  no other manual check.
