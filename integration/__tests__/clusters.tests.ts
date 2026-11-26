@@ -410,12 +410,17 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
   // The tooltip that a hover of an element shows, once it is visible. The pointer leaves the frame first, so that the
   // tooltip of a hover before it is gone.
-  async function tooltipOf(target: Locator): Promise<Locator> {
+  // The tooltip of a target, once the pointer is on it: at its start when the host lays something over the rest of it,
+  // as the sort icon of a head cell, which shows only under the pointer, lies over a title that its column cuts.
+  async function tooltipOf(target: Locator, { atStart = false } = {}): Promise<Locator> {
     const cluster = opened();
 
     await session?.window.mouse.move(5, 5);
     await expect.poll(() => cluster.locator('[role="tooltip"]').count(), viewTimeout).toBe(0);
-    await target.hover();
+
+    const box = atStart ? await target.boundingBox() : null;
+
+    await target.hover(box === null ? undefined : { position: { x: Math.min(4, box.width / 2), y: box.height / 2 } });
 
     const tooltip = cluster.locator('[role="tooltip"].visible');
 
@@ -647,7 +652,9 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
 
     // A title that its badge cuts is whole in its tooltip.
     for (const { title } of titles.filter(({ cut }) => cut)) {
-      expect(await (await tooltipOf(heads.filter({ hasText: new RegExp(`^${title}$`) }))).textContent()).toBe(title);
+      expect(
+        await (await tooltipOf(heads.filter({ hasText: new RegExp(`^${title}$`) }), { atStart: true })).textContent(),
+      ).toBe(title);
     }
 
     // The note of the MachinePools of unknown health stands at the middle of the line of its cell, as the marks do.

@@ -2232,7 +2232,10 @@ No question is open.
   (P7). The host puts the title of a head cell in a box of its own, an item of
   the flex cell that is never narrower than its title (table-cell.tsx:110), so
   the stylesheet of the page gives that box no minimum width, and the badge
-  cuts the title. The stylesheet says so.
+  cuts the title. The stylesheet says so. Seen in the third run: the sort
+  icon of a head cell, which shows only under the pointer, lies over the
+  middle of a title that its column cuts, so the pointer finds the tooltip of
+  that title at its start, where the session hovers it.
 - Seen while implementing, in the second run in Freelens: the note of the
   MachinePools of unknown health sat lower than the marks before it in the cell
   of the condition. A mark is a box of the line that cuts what overflows, and
