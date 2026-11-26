@@ -636,7 +636,7 @@ export async function disconnectKindCluster({ window }: AppSession) {
  * Goes to an address of the cluster frame, as a link of the host would: the
  * frame follows its history only on a `popstate` event.
  */
-async function navigateCluster(frame: Frame, address: string) {
+export async function navigateCluster(frame: Frame, address: string) {
   console.log(`navigate the cluster frame to ${address}`);
   await frame.evaluate((target) => {
     window.history.pushState({}, "", target);
@@ -844,4 +844,75 @@ export async function hostLists(frame: Frame, resource: HostList, namespace: str
       .first()
       .waitFor({ state: "visible", ...viewTimeout });
   }
+}
+
+/**
+ * Runs kubectl on the kind cluster of the sessions, by its context, and gives
+ * its output. A run never acts on the current context.
+ */
+export async function kubectl(args: readonly string[]): Promise<string> {
+  const { stdout } = await execFileAsync("kubectl", ["--context", `kind-${kindClusterName}`, ...args], {
+    encoding: "utf8",
+    timeout: viewTimeout.timeout,
+  });
+
+  return stdout;
+}
+
+/**
+ * Opens a page of the extension in the cluster frame by its address,
+ * `/extension/<name>/<pageId>`, with the `@` of the name dropped and its `/`
+ * turned into `--`, as the host makes it.
+ */
+export async function openExtensionPage(frame: Frame, pageId: string) {
+  await navigateCluster(frame, `/extension/${extensionName.replace("@", "").replace("/", "--")}/${pageId}`);
+}
+
+/**
+ * Selects namespaces in the filter of the host, through the store of
+ * namespaces that the extension API gives the frame: every namespace of the
+ * cluster with none given, which the host then reads over the whole cluster.
+ */
+export async function selectNamespaces(frame: Frame, namespaces: readonly string[]) {
+  console.log(`select the namespaces ${namespaces.length ? namespaces.join(", ") : "of the whole cluster"}`);
+  await frame.evaluate(
+    (names: string[]) => {
+      const store = globalThis.FreelensExtensionApi.Renderer?.K8sApi.namespaceStore;
+
+      if (!store) {
+        throw new Error("The frame has no store of namespaces");
+      }
+
+      if (names.length) {
+        store.selectNamespaces(names);
+      } else {
+        store.selectAll();
+      }
+    },
+    [...namespaces],
+  );
+}
+
+/** A request that the renderer sent, by its method and its address. */
+export interface SentRequest {
+  method: string;
+  url: string;
+}
+
+/**
+ * Records the requests that the renderer sends, those of the frame of a cluster
+ * included, which Playwright reports on the page of the root frame.
+ */
+export function recordRequests(window: Page): { requests(): SentRequest[]; stop(): void } {
+  const sent: SentRequest[] = [];
+  const onRequest = (request: { method(): string; url(): string }) => {
+    sent.push({ method: request.method(), url: request.url() });
+  };
+
+  window.on("request", onRequest);
+
+  return {
+    requests: () => [...sent],
+    stop: () => window.off("request", onRequest),
+  };
 }

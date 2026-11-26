@@ -29,7 +29,8 @@ the fixtures: the shift of their times, the cleaning of a captured object,
 their apply, their YAML, their states and the sets of the repository.
 SPEC-0002 lists its cases. `pnpm test:integration` runs the integration tests,
 described in `AGENTS.md`: the session of the template, which installs the
-extension, and the session of the fixtures ("Continuous integration").
+extension, the session of the fixtures, and the session of the list of Clusters
+of SPEC-0004 ("Continuous integration").
 
 ## The test environment
 
@@ -277,12 +278,16 @@ included, so a fixture that does not pass it fails there; no schema is changed.
 - `integration-tests.yaml`, on every pull request and push to `main`: the kind
   cluster of its sessions is the cluster of the definitions, which the workflow
   creates with `pnpm e2e:cluster:up:definitions`, and to which it applies the
-  fixtures of `healthy`, before it starts Freelens dev with a profile that syncs
-  the kubeconfig of the scripts alone. The session of the fixtures,
-  `integration/__tests__/fixtures.tests.ts`, opens that cluster and checks that
-  the host imports the extension in the frame of the cluster with no error in
-  either process, and that it lists every object of the set, in the list of
-  its kind, by the cell of its name; `TEST_FIXTURE_STATE` names another state.
+  fixtures of every state, `pnpm e2e:fixtures:up all`, each in the namespace of
+  its state, before it starts Freelens dev with a profile that syncs the
+  kubeconfig of the scripts alone (SPEC-0004, P33). The session of the
+  fixtures, `integration/__tests__/fixtures.tests.ts`, opens that cluster and
+  checks that the host imports the extension in the frame of the cluster with
+  no error in either process, and that it lists every object of the set of
+  `healthy`, in the list of its kind, by the cell of its name;
+  `TEST_FIXTURE_STATE` names another state. The session of the list of
+  Clusters, `integration/__tests__/clusters.tests.ts`, reads the fixtures of
+  every state at once in the page of the extension (`AGENTS.md`).
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in

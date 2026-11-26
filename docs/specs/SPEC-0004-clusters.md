@@ -2108,3 +2108,117 @@ decision of the maintainer recorded in P18, and the answer to finding 1 of the
 second is P34.
 
 No question is open.
+
+The spec is implemented in three pull requests: the first has the models of
+the kinds that the view reads, the reads, the page with its sidebar entry and
+its list, and their states, with the session of the list in Freelens on the
+fixtures of every state and the part of P33 that applies them; the second the
+details, the links between the objects, the panel in the details of the host
+and the reads of one Cluster outside the namespaces of the page (P6, P13, P15,
+P16, P18, P31, P32); the third the sessions with restricted identities and
+with the real project, the rest of the changes to the jobs of CI (P23, P29,
+P33), and the documents that only the whole view completes, the README,
+TRY-IT.md and ARCHITECTURE.md.
+
+- Decided while implementing the first part: until the second, a row opens
+  nothing. The layout gets `hasDetailsView={false}` and an `onDetails` that
+  does nothing, so that a click opens no details of the host (A7); the name is
+  text, whole in its tooltip, and becomes the button of P13 with the details;
+  the page has no parameter yet, and `kubeObjectDetailItems` and
+  `kubeObjectMenuItems` are empty.
+- Decided while implementing: the reads of the page are events. The adapter of
+  each store (P19) tells the page the start of each load with its namespaces,
+  each failure of it, its end or its abort by the host, each failure of a
+  subscription, and each run of `isLoading` while the store is subscribed; the
+  page folds them, with each change of the filter, into one state, kept by a
+  pure function of `src/common/views/read-state.ts`, from which it takes the
+  namespaces loaded, the readiness of the list, its outcome and its notices.
+  The cases of `read-state.test.ts` that concern when the page reads the
+  context of the frame, and the runs of `isLoading`, are in
+  `src/renderer/reads/page-reads.test.ts`, which drives the adapters, since
+  the state receives both as events; the case of P26 that no row is kept is in
+  `clusters-page-v1beta2.test.tsx`, since the rows are the items of the store
+  of the host, of which the state keeps none.
+- Decided while implementing: the answer of `isLoadingAll` that the page reads
+  as a load starts travels with that load, which the adapter hands back at its
+  end, and the page reads `isGlobalWatchEnabled()` as the load ends (P34); a
+  load that the host aborts gives neither. Its module keeps the `ClusterStore`
+  of P34, built at the first mount of the page in the frame, with the API of
+  Clusters that the host registered.
+- Decided while implementing: a run of `isLoading` while no load of the layout
+  runs is a reload that the store started itself, and one during a load of the
+  layout is that load (P25). A load that fails holds its kind back in every
+  namespace of the load, since the store names no namespace in a failure, and
+  a refresh that fails holds back those of the last load; both end with the
+  next load of that kind that ends with no failure, or with a reload that
+  reports none.
+- Decided while implementing: "not counted" takes the place of the first child
+  of the `info` that the layout hands `customizeHeader`, the count, and keeps
+  the others, the marks of the host, as `kube-object-list-layout.tsx` builds
+  it at `v2.0.0` and at `v2.1.0`; an `info` of another shape is replaced whole
+  (P25).
+- Decided while implementing, where P3 is silent: the GET of a definition by
+  its name needs its plural, which a reference does not carry. When the store
+  of definitions failed, the page takes it from the API that the host
+  registered for that kind from the discovery of the cluster,
+  `/apis/<group>/<version>/<plural>`, and a kind with no such API is one that
+  the cluster does not serve. The GET runs once for each definition in a mount
+  of the page, from an effect.
+- Decided while implementing, where P20 is silent: with the definition of
+  Clusters in the store of definitions and no API of Clusters registered yet,
+  the page is still checking, since the host registers the APIs of a
+  definition as its store holds it; and an API of Clusters at a version other
+  than `v1beta1`, with none at `v1beta2`, takes the state of an older Cluster
+  API, whose words name the versions served and say that the extension reads
+  `v1beta2` alone.
+- Decided while implementing, where P8 and P28 are silent: a cell of counters
+  with one of its two counters written shows N/A for the other, `N/A/2`, and
+  N/A alone when neither is; N/A sorts after every value in the columns of the
+  domain, and a row whose marks of state still show the spinner sorts after
+  every other in Activity and Condition.
+- Decided while implementing: the background of a mark mixes 20% of the token
+  of its tone with `transparent` (P21).
+- Decided while implementing: the page evaluates the model with the time of
+  each render, and again, through a timer, at the earliest time that a result
+  of its rows names. It keeps each result under the key of SPEC-0003 ("How a
+  view uses it") until that time, and drops at each render those of the
+  Clusters that it no longer lists.
+- Decided while implementing: `engines.freelens` stays `^2.0.0`. The renderer
+  and the integration tests check with no error against the declarations of
+  `@freelensapp/extensions` `2.0.0`: the props of the list layout, the store
+  class and its getter `context`, and every other member that the view uses are
+  there.
+- Decided while implementing: the unit tests of the page render it against the
+  stub of the extension API, `test/freelens-extensions.ts`, whose list layout
+  records its props and renders the parts where the host calls back into the
+  page, among them the remove button, decided as `content.tsx` decides it. The
+  subscription is the host's, which the stub does not run, so the tests drive
+  the loads through the adapters, as the host would.
+- Decided while implementing: the session of the list in Freelens,
+  `integration/__tests__/clusters.tests.ts`, runs, of the steps of "In
+  Freelens": step 1; step 2 but the details of the extension, with a click that
+  opens no details of the host and leaves their parameter out of the address;
+  the part of step 3 on the remove button; step 6 but the details of
+  `upgrading`; step 7; and step 8, whose check reads every request of the frame
+  to the groups that the view reads, each a GET, and the version of every
+  object of the fixtures before and after the session, but the versions that
+  its own labels gave. A write that the session plants from the frame when
+  `TEST_PLANT_WRITE` is set makes both fail. The rest of steps 2, 3 and 6, and
+  steps 4 and 5, come with the second part.
+- Decided while implementing: in step 1, the session allows a row in flight the
+  tone of progress or that of a warning. It runs minutes after the workflow
+  applied the fixtures, whose times move to the moment of the apply
+  (TESTING.md, "On the first tier"), so a threshold of SPEC-0003 may have
+  passed by then.
+- Seen while implementing: in 5 of the 15 states of the fixtures, the first line
+  of the message of `Available` is a subject with no words of its own, such as
+  `* WorkersAvailable:`, whose words are on the lines below it. The cell of the
+  status shows that line, as P11 says, and its tooltip the whole message.
+- Seen while implementing: the table of SPEC-0003, "The fixtures of SPEC-0002
+  give these results", gives the Cluster of `machine-without-node` Unhealthy,
+  with its `Available` `False` through `WorkersAvailable`. In the fixture its
+  `Available`, `WorkersAvailable` and `WorkerMachinesReady` are `True`: the
+  Cluster reconciles on a change of its MachineDeployments and not of a
+  MachineSet, so it still counts the one worker of its topology (the README of
+  the fixture), and the model gives it Healthy and Idle. The session expects
+  what the model gives on the fixture.

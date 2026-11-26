@@ -1,0 +1,51 @@
+// The marks of state (SPEC-0004, P21; SPEC-0003, P31): the `Badge` of the host, its word in the color of the text
+// of the theme, on a background that `color-mix` takes from the token of its tone, with a border of that token. A
+// mark of the tone of Unknown keeps the background that the host gives every badge, which is that token itself. The
+// view authors no color: the tokens of the theme do, and nothing tells a dark theme from a light one.
+
+.ok {
+  --markToken: var(--colorOk);
+}
+
+.info {
+  --markToken: var(--colorInfo);
+}
+
+.warning {
+  --markToken: var(--colorWarning);
+}
+
+.error {
+  --markToken: var(--colorError);
+}
+
+.terminated {
+  --markToken: var(--colorTerminated);
+}
+
+.vague {
+  --markToken: var(--colorVague);
+}
+
+// Two classes and the attribute of a mark outweigh the rule of the host that gives every badge its background,
+// whatever the order in which the stylesheets load.
+.mark.mark[data-tone] {
+  border: 1px solid var(--markToken);
+  background: color-mix(in srgb, var(--markToken) 20%, transparent);
+}
+
+.mark.mark[data-tone="vague"] {
+  background: var(--colorVague);
+}
+
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em;
+  align-items: center;
+  min-width: 0;
+}
+
+.note {
+  white-space: nowrap;
+}

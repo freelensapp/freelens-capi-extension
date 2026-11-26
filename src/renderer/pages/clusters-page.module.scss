@@ -1,0 +1,79 @@
+// The page of the Clusters (SPEC-0004, "The page and its sidebar entry", "The list"). The view authors no color.
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+// The notices over the list, above the layout (P25, P34).
+.notices {
+  flex: 0 0 auto;
+  padding: 0.5em 1em 0;
+}
+
+.list {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  // The columns (P7). The layout of the host copies the class of each head cell to the cells of its column. The
+  // columns of state keep a minimum width and never shrink, so that the state of every row stays in view; those of
+  // the domain shrink in a narrow window, the class and the version first. Two classes of the host and two of the
+  // page outweigh the rule of the host that gives every cell its flex.
+  :global(.Table) :global(.TableCell) {
+    &.name {
+      flex: 2 1 10em;
+    }
+
+    &.namespace {
+      flex: 1.5 1 8em;
+    }
+
+    &.controlPlane,
+    &.workers {
+      flex: 0.8 1 5em;
+    }
+
+    &.version {
+      flex: 1 3 6em;
+    }
+
+    &.clusterClass {
+      flex: 1 3 7em;
+    }
+
+    &.activity {
+      flex: 2 0 13em;
+      min-width: 13em;
+    }
+
+    &.condition {
+      flex: 1.5 0 10em;
+      min-width: 10em;
+    }
+
+    &.status {
+      flex: 2.5 0 12em;
+      min-width: 12em;
+    }
+
+    &.age {
+      flex: 0.6 1 4em;
+    }
+  }
+}
+
+// A state before the list, under the title of the page (P20).
+.state {
+  padding: 1em;
+}
+
+.title {
+  padding: 1em 1em 0;
+}
+
+.tooltip {
+  white-space: pre-wrap;
+  text-align: left;
+}
