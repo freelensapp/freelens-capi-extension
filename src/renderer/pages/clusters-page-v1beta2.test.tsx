@@ -161,6 +161,28 @@ describe("the list layout of the page (P5, P19; SPEC-0001, A7)", () => {
     expect(props.renderTableHeader).toBe(COLUMNS);
   });
 
+  it("gets a title for each column in a flat badge of the host that never expands, whose tooltip carries it whole", () => {
+    const titles = [
+      "Name",
+      "Namespace",
+      "Control plane",
+      "Workers",
+      "Version",
+      "ClusterClass",
+      "Activity",
+      "Condition",
+      "Status",
+      "Age",
+    ];
+
+    expect(COLUMNS.map(({ title }) => [title.type, title.props])).toEqual(
+      titles.map((title) => [
+        Renderer.Component.WithTooltip,
+        { expandable: false, "data-testid": "capi-clusters-head", children: title },
+      ]),
+    );
+  });
+
   it("gets addRemoveButtons with an own key onRemove that holds undefined, which the layout spreads over its own", () => {
     serve();
     render(<ClustersPage extension={EXTENSION} />);
@@ -311,6 +333,14 @@ describe("the rows of the list (P7 to P12)", () => {
     expect(tooltip(rowOf("freelens-capi-pool-without-machines"), "capi-cluster-condition")).toBe(
       "Degraded1 MachinePool of unknown health",
     );
+
+    // The marks and the note are boxes of the line of the cell, which its stylesheet lines up at the middle.
+    const condition = within(rowOf("freelens-capi-pool-without-machines")).getByTestId("capi-cluster-condition");
+
+    expect([...condition.children].map((child) => child.className.split(" ")[0])).toEqual([
+      markStyles.mark,
+      markStyles.note,
+    ]);
   });
 
   it("sort the counters by the available then the desired, the class by name then namespace, and the age as the host", async () => {

@@ -59,6 +59,14 @@
   white-space: nowrap;
 }
 
+// The marks of a cell and its note stand at the middle of its line, where their words line up. A mark is a box of
+// the line that cuts what overflows, and such a box stands on the baseline of the line by the bottom edge of its
+// margin, not by its words (CSS 2.1, 10.8.1): on the baseline, the words of a mark rise above those of the note.
+.cell > .mark,
+.cell > .note {
+  vertical-align: middle;
+}
+
 // The whole content of a cell, one line for each mark and each cause.
 .tooltip {
   white-space: normal;

@@ -58,18 +58,28 @@ export const TABLE_ID = "clusterApiClustersTable";
 
 export const PAGE_TITLE = Cluster.crd.title;
 
+// The title of a column, in a flat badge of the host that never expands, as the content of a cell is: a title that its
+// column does not hold is cut by the badge with an ellipsis, and the tooltip of the badge carries it whole.
+function head(title: string) {
+  return (
+    <WithTooltip expandable={false} data-testid="capi-clusters-head">
+      {title}
+    </WithTooltip>
+  );
+}
+
 // The columns, in this order (P7): those of the domain, then those of state.
 export const COLUMNS = [
-  { title: "Name", id: "name", sortBy: "name", className: styles.name },
-  { title: "Namespace", id: "namespace", sortBy: "namespace", className: styles.namespace },
-  { title: "Control plane", id: "control-plane", sortBy: "controlPlane", className: styles.controlPlane },
-  { title: "Workers", id: "workers", sortBy: "workers", className: styles.workers },
-  { title: "Version", id: "version", sortBy: "version", className: styles.version },
-  { title: "ClusterClass", id: "cluster-class", sortBy: "clusterClass", className: styles.clusterClass },
-  { title: "Activity", id: "activity", sortBy: "activity", className: styles.activity },
-  { title: "Condition", id: "condition", sortBy: "condition", className: styles.condition },
-  { title: "Status", id: "status", sortBy: "status", className: styles.status },
-  { title: "Age", id: "age", sortBy: "age", className: styles.age },
+  { title: head("Name"), id: "name", sortBy: "name", className: styles.name },
+  { title: head("Namespace"), id: "namespace", sortBy: "namespace", className: styles.namespace },
+  { title: head("Control plane"), id: "control-plane", sortBy: "controlPlane", className: styles.controlPlane },
+  { title: head("Workers"), id: "workers", sortBy: "workers", className: styles.workers },
+  { title: head("Version"), id: "version", sortBy: "version", className: styles.version },
+  { title: head("ClusterClass"), id: "cluster-class", sortBy: "clusterClass", className: styles.clusterClass },
+  { title: head("Activity"), id: "activity", sortBy: "activity", className: styles.activity },
+  { title: head("Condition"), id: "condition", sortBy: "condition", className: styles.condition },
+  { title: head("Status"), id: "status", sortBy: "status", className: styles.status },
+  { title: head("Age"), id: "age", sortBy: "age", className: styles.age },
 ];
 
 // A row whose marks of state show the spinner sorts after every other (P28).
