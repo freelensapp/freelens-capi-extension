@@ -135,11 +135,13 @@ afterEach(() => {
 });
 
 describe("the details of a node (P17)", () => {
-  it("render every node of the trees of the fixtures, each section where its details hold it, every fact in its form, with no error", () => {
-    let count = 0;
-
-    for (const state of Object.keys(TREE_CLUSTERS)) {
+  // One case for each state of the fixtures, so that no case renders the details of the hundreds of nodes of every
+  // state at once, which came near the default timeout on a loaded machine.
+  it.each(Object.keys(TREE_CLUSTERS))(
+    "render every node of the tree of %s, each section where its details hold it, every fact in its form, with no error",
+    (state) => {
       const view = stateView(state);
+      let count = 0;
 
       for (const node of view.tree.nodes.values()) {
         if (node.form !== "object" && node.form !== "reference") continue;
@@ -184,10 +186,18 @@ describe("the details of a node (P17)", () => {
         unmount();
         count++;
       }
-    }
 
-    expect(count).toBeGreaterThan(200);
-    expect(Common.logger.error).not.toHaveBeenCalled();
+      expect(count).toBeGreaterThan(0);
+      expect(Common.logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it("cover in those cases more than 200 nodes of objects, read or not, in the trees of the fixtures", () => {
+    const nodes = Object.keys(TREE_CLUSTERS).flatMap((state) =>
+      [...stateView(state).tree.nodes.values()].filter((node) => node.form === "object" || node.form === "reference"),
+    );
+
+    expect(nodes.length).toBeGreaterThan(200);
   });
 
   it("make the object above a node, an owner that the tree holds and the nodes of a fact buttons that open their nodes", () => {
