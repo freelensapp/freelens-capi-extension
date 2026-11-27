@@ -562,6 +562,42 @@ describe("the facts of each kind (P17)", () => {
     });
   });
 
+  it("of a MachineHealthCheck: a target that the tree does not hold as text, with why, a Machine gone or one whose kind could not be read", () => {
+    // healthy, its MachineHealthCheck of the workers naming a Machine gone since it wrote its targets, as the case writes it.
+    const objects = setOf("healthy");
+    const check = named(objects, "MachineHealthCheck", "freelens-capi-healthy-md-0-m9x7h");
+    const id = "cluster.x-k8s.io/MachineHealthCheck/freelens-capi-healthy-md-0-m9x7h";
+
+    check.status.targets = [...check.status.targets, "freelens-capi-healthy-gone"];
+
+    expect(factOf(detailsOf(viewOf(objects, HEALTHY), id), "Targets")).toEqual({
+      name: "Targets",
+      form: "links",
+      links: [
+        { node: machine(WORKER), text: `Machine ${WORKER}` },
+        {
+          node: machine("freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9"),
+          text: "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+        },
+      ],
+      texts: [
+        { text: "Machine freelens-capi-healthy-gone", why: "No such object is in the namespace of the Cluster." },
+      ],
+    });
+
+    // The Machines refused: the rows of the Machines that own the KubeadmConfigs hold the others.
+    const refused = viewOf(objects, HEALTHY, { failures: { "cluster.x-k8s.io/Machine": [REFUSED] } });
+
+    expect(factOf(detailsOf(refused, id), "Targets")).toMatchObject({
+      texts: [
+        {
+          text: "Machine freelens-capi-healthy-gone",
+          why: "Not read. Its kind could not be read in the namespace of the Cluster.",
+        },
+      ],
+    });
+  });
+
   it("of a ClusterResourceSet: its selector as text and what it applied to this Cluster", () => {
     const details = detailsOf(view, "addons.cluster.x-k8s.io/ClusterResourceSet/cni-kindnet");
 

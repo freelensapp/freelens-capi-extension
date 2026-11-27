@@ -115,7 +115,7 @@ function factWords(fact: Exclude<Fact, { form: "counters" }>): string[] {
     case "host":
       return [fact.text];
     case "links":
-      return fact.links.map((link) => link.text);
+      return [...fact.links.map((link) => link.text), ...(fact.texts ?? []).map((entry) => entry.text)];
     case "answer":
       return [fact.answer.answer, `(${fact.field})`];
     case "list":
@@ -211,6 +211,29 @@ describe("the details of a node (P17)", () => {
     fireEvent.click(objects[0]);
     expect(openNode).toHaveBeenLastCalledWith(`infrastructure.cluster.x-k8s.io/DevMachine/${WORKER}`);
     expect(host.navigate).not.toHaveBeenCalled();
+  });
+
+  it("show a target that the tree does not hold as text, with why in its tooltip, and no button", () => {
+    // The MachineHealthCheck of the workers names a Machine gone since it wrote its targets, as the case writes it.
+    const name = `${HEALTHY}-md-0-m9x7h`;
+    const view = stateView("healthy", (objects) => {
+      for (const object of objects) {
+        if (object.kind === "MachineHealthCheck" && object.metadata.name === name) {
+          object.status.targets = [...object.status.targets, `${HEALTHY}-gone`];
+        }
+      }
+    });
+
+    rendered(detailsOf(view, `cluster.x-k8s.io/MachineHealthCheck/${name}`));
+
+    const row = rowNamed("Targets");
+    const unheld = within(row).getByTestId("capi-node-unheld");
+
+    expect(within(row).getAllByRole("button")).toHaveLength(2);
+    expect(unheld.textContent).toBe(`Machine ${HEALTHY}-gone`);
+    expect(within(row).getByTestId("capi-node-unheld-tooltip").textContent).toBe(
+      "No such object is in the namespace of the Cluster.",
+    );
   });
 
   it("link an object of a provider to the details of the host, whose click stops at the link", () => {

@@ -8,8 +8,9 @@
 // kind and its conditions, each section hidden when it has nothing to show and inside an error boundary of its own, so
 // that an error in one leaves the others and the tree. A node of the tree that they name, the object above it, an
 // owner that the tree holds, a template, a target, a name in a message, opens its own details in the same drawer, with
-// no navigation away (P5); an object of a provider links to the details of the host, at the version of its contract,
-// which open over these (SPEC-0001, A6).
+// no navigation away (P5), and a target that the tree does not hold is text, with why in its tooltip, as the details
+// of a Cluster show a reference that opens nothing (SPEC-0004, P18); an object of a provider links to the details of
+// the host, at the version of its contract, which open over these (SPEC-0001, A6).
 
 import { Renderer } from "@freelensapp/extensions";
 import { MarkView } from "../components/marks";
@@ -263,6 +264,13 @@ function FactValue({
             <div key={`${link.node}-${link.field ?? ""}`} data-testid="capi-node-link">
               <TextButton onOpen={() => openNode(link.node)}>{link.text}</TextButton>
               {link.field === undefined ? null : `, by ${link.field}`}
+            </div>
+          ))}
+          {(fact.texts ?? []).map((entry) => (
+            <div key={entry.text}>
+              <WithTooltip tooltip={entry.why} expandable={false} data-testid="capi-node-unheld">
+                {entry.text}
+              </WithTooltip>
             </div>
           ))}
         </>

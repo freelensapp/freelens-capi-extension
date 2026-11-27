@@ -3384,6 +3384,13 @@ the contract label of the definition for a control plane of a provider; and
   has no Machines and that its counters count the instances of its provider,
   from the result of the Cluster (`poolsWithoutMachinesOf` of `context.ts`,
   which the list uses too; SPEC-0004, P8).
+- Decided while implementing the second part, after its reviews, where P17
+  gives a MachineHealthCheck its targets as links: a target that the tree does
+  not hold, a Machine gone since the MachineHealthCheck wrote `status.targets`,
+  or one whose kind could not be read and that no row holds, is its kind and
+  its name as text, with why in its tooltip in the words of P12, as the details
+  of a Cluster show a reference that opens nothing (SPEC-0004, P18); the
+  details dropped it, with no word.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -27,7 +27,7 @@
 
 import { annotationsOf } from "./annotations";
 import { activityCell, healthCell } from "./cluster-cells";
-import { conditionViews, messageLines, noteWords, parsedTimeOf, toneSourceOf } from "./cluster-details";
+import { conditionViews, messageLines, noteWords, parsedTimeOf, toneSourceOf, UNREAD_WORDS } from "./cluster-details";
 import { pausedByAnnotation, unreadWords } from "./cluster-tree";
 import { countOf, fieldsOf, listOf, metadataOf, namespaceOf, ownersOf, textOf } from "./objects";
 import { contractReferenceOf, isClusterApiKind, objectReferenceOf } from "./references";
@@ -133,11 +133,13 @@ export interface NodeStatusSection {
 // A fact of the kind of a node (P17).
 export type Fact =
   | { readonly name: string; readonly form: "text"; readonly text: string; readonly tooltip?: string }
-  // Nodes of the tree, as links, each with the field that names it, when one does.
+  // Nodes of the tree, as links, each with the field that names it, when one does; and the objects that the fact names
+  // and that the tree does not hold, as text, each with why.
   | {
       readonly name: string;
       readonly form: "links";
       readonly links: readonly (NodeLink & { readonly field?: string })[];
+      readonly texts?: readonly { readonly text: string; readonly why: string }[];
     }
   // A field that the project writes only as true, in the three words of SPEC-0004, P27.
   | { readonly name: string; readonly form: "answer"; readonly answer: Answer; readonly field: string }
@@ -480,19 +482,25 @@ function factsOf(tree: ClusterTree, node: ObjectNode, status: ObjectStatus | und
   }
   if (isCore && node.kind === "MachineHealthCheck") {
     const statusFields = fieldsOf(object.status);
-    const targets = listOf(statusFields?.targets).flatMap((target) => {
-      const name = textOf(target);
-
-      if (name === undefined) return [];
-
+    const names = listOf(statusFields?.targets).flatMap((target) => textOf(target) ?? []);
+    const targets = names.flatMap((name) => {
       const id = addressOf(CORE, "Machine", name);
 
       return tree.nodes.has(id) ? [{ node: id, text: `Machine ${name}` }] : [];
     });
+    // A target that the tree does not hold, a Machine gone since the MachineHealthCheck wrote its targets or one whose
+    // kind could not be read, is text, with why, as the node of a Machine not read would say it (P12).
+    const machines = tree.nodes.get(`kind:${CORE}/Machine`);
+    const why = machines?.form === "kind" ? unreadWords(machines.unread) : UNREAD_WORDS["not-found"];
+    const texts = names
+      .filter((name) => !tree.nodes.has(addressOf(CORE, "Machine", name)))
+      .map((name) => ({ text: `Machine ${name}`, why }));
     const template = objectReferenceOf(fieldsOf(spec?.remediation)?.templateRef);
     const remediation = status?.remediation;
 
-    if (targets.length > 0) facts.push({ name: "Targets", form: "links", links: targets });
+    if (names.length > 0) {
+      facts.push({ name: "Targets", form: "links", links: targets, ...(texts.length === 0 ? {} : { texts }) });
+    }
     facts.push({
       name: "Counts",
       form: "list",
