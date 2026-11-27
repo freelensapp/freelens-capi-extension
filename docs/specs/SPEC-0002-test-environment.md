@@ -494,3 +494,63 @@ fixtures, and the jobs of CI of the two tiers.
   The spec has no manual check.
 - From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
   deviations"), the sessions in Freelens run on 2.1.0 alone.
+- Amended by SPEC-0028, for the captures of a Cluster with a KamajiControlPlane,
+  each a departure from this spec that the rule of SPEC-0028 that it names says:
+  - a cluster of the captures of its own, `freelens-capi-kamaji`, made by
+    `pnpm e2e:cluster:up:kamaji` on Linux on amd64 alone, with the providers of
+    the pins and the Kamaji control plane provider at its pin and nothing else,
+    whose states `pnpm e2e:fixtures:capture:kamaji` captures one at a time,
+    while `pnpm e2e:fixtures:capture all` leaves them out (SPEC-0028, P2, P3,
+    P5, P7);
+  - on the host of that cluster, `net.netfilter.nf_conntrack_max`, which the
+    scripts write and give back at `down`: a second setting of the kernel
+    beside the limits of inotify that they raise, and a write beyond the kind
+    cluster and the containers of its workload clusters, to which "Safety"
+    keeps them ("Design"; SPEC-0028, P2, P3);
+  - pins of other projects with no rule of Renovate, each with its digest: the
+    provider, MetalLB, helm, the files of the chart of Kamaji, `kamaji-etcd` and
+    the Kamaji extension, which change with the spec that reads them again
+    ("Design", "The pins"; SPEC-0028, P3, P18);
+  - on the first tier, definitions of other projects than Cluster API: those
+    of the Kamaji control plane provider, with the label
+    `cluster.x-k8s.io/provider` that clusterctl gives them,
+    `control-plane-kamaji`, in place of that of its release, and those of the
+    TenantControlPlane and of the DataStore, as the chart of Kamaji has them
+    ("Design", "The first tier, the definitions alone"; SPEC-0028, P8);
+  - the two kinds of Kamaji read on the two clusters that serve them alone
+    (SPEC-0028, P6);
+  - a field of the spec to set and unset on the first tier for a
+    KamajiControlPlane, `spec.dataStoreSchema`, and for a TenantControlPlane,
+    `spec.dataStoreOverrides`, beside those of a Cluster, a Machine and a
+    DevMachine, which the apply refuses today for another kind ("Notes and
+    deviations"; SPEC-0028, P8);
+  - three changes of the cleaning, each with its case: the time of the last
+    probe that succeeded, in the words that core writes once its probe of a
+    workload cluster has failed after a success,
+    `Remote connection probe failed, probe last succeeded at` and
+    `Last successful probe at`, each matched by its own words, moves as the
+    time of a field, and every other time inside a text is still refused; the
+    rule on generations reads the `status.observedGeneration` of a
+    TenantControlPlane alone, and keeps every other `observedGeneration` of its
+    status as captured; and every checksum in the status of a
+    TenantControlPlane gets one fixed value (SPEC-0028, P6);
+  - the holds of the Kamaji states, objects of the scripts in the namespace of
+    each, a ResourceQuota on Pods and the finalizer
+    `test-environment.freelens.app/fixture` on a KamajiControlPlane, which the
+    capture removes before it deletes the workload cluster, as it removes its
+    hooks; and, within the capture of `kamaji-provisioning`, a helper Cluster
+    of the scripts in a namespace of its own, which the capture does not read,
+    whose tenant takes the one address of the pool, deleted with the Cluster of
+    the state (SPEC-0028, P5);
+  - the two states whose workload cluster stops answering read past the grace
+    of the conditions of the Nodes of their Machines (SPEC-0028, P5);
+  - in the README of each Kamaji set, the SHA-256 of each of its files, against
+    which a case checks the files, and the six cells of the row of
+    `clusterctl describe cluster` (SPEC-0028, P6, P8);
+  - a workflow that uploads the folders of the sets, for which TESTING.md
+    amends its sentence on what no workflow uploads (SPEC-0028, P7);
+  - the session of the fixtures opens two states at each run, `healthy` and
+    `kamaji-healthy`, which the integration workflow names in
+    `TEST_FIXTURE_STATE`, and finds the kind of each object through the kinds
+    that the scripts read on the cluster of the definitions, the two of Kamaji
+    among them ("Notes and deviations"; SPEC-0028, "Tests").
