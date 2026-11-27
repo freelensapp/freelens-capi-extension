@@ -3505,7 +3505,13 @@ the contract label of the definition for a control plane of a provider; and
   `integration/__tests__/tree-page.ts` and `tree-outline.ts`, a row by the
   identity of its node in the id of its element (P18), and never through a
   search: the search that the session of the Clusters needs to find a row of
-  its list (SPEC-0004, "Notes and deviations") is step 7 here.
+  its list (SPEC-0004, "Notes and deviations") is step 7 here. After the
+  reviews of the third part, the reading of the rows from the DOM is one
+  function, `readDrawnRows` of `tree-outline.ts`, which the sessions run in the
+  frame and a case of `cluster-tree-page.test.tsx` runs on the page that it
+  renders in jsdom, where it finds the rows that `test/tree-read-rows.ts` makes
+  from the cells of the page, field by field, but their places, which jsdom
+  does not lay out.
 - Decided while implementing the third part, for step 1 at 1024 px: the name
   of a row is cut by its badge or by its button, each of which cuts with an
   ellipsis, and is whole in the first line of the tooltip of the badge, with the

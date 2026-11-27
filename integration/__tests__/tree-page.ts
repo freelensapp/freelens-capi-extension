@@ -13,12 +13,14 @@
 // among the elements. Its name does not match `*.tests.ts`, so Vitest does not collect it as a session.
 
 import { extensionPageAddress, navigateCluster } from "./extension-helpers";
-import { ROW_ID_PREFIX } from "./tree-outline";
+import { ROW_ID_PREFIX, readDrawnRows } from "./tree-outline";
 
 import type { Frame, Locator, Page } from "playwright";
 
 import type { Answer, AxNode, FirstDraw } from "./tree-checks";
-import type { ReadMark, ReadRow } from "./tree-outline";
+import type { DrawnRow } from "./tree-outline";
+
+export type { DrawnRow } from "./tree-outline";
 
 // The page of the tree, in the frame of a cluster.
 export const TREE_PAGE = extensionPageAddress("cluster-tree");
@@ -104,67 +106,10 @@ export async function openTree(
   return tree;
 }
 
-// A row that the virtual list draws, with its top and its bottom from the top of the window of the list.
-export interface DrawnRow extends ReadRow {
-  readonly top: number;
-  readonly bottom: number;
-}
-
 // The rows that the virtual list draws now, in their order in the document, each as the session reads it from its
-// element: the identity of its node from its id, its place from its top in the list, its attributes, and the words and
-// the marks of its cells, each found by its test id (`tree-outline.ts`).
+// element (`readDrawnRows` of `tree-outline.ts`).
 export function drawnRows(tree: Locator): Promise<DrawnRow[]> {
-  return tree.evaluate(
-    (element, { prefix, height }) => {
-      const list = element.querySelector<HTMLElement>(".VirtualList > .list");
-
-      if (list === null) return [];
-
-      const box = list.getBoundingClientRect();
-      const contentTop = box.top - list.scrollTop;
-      const words = (node: Element | null) => (node === null ? null : (node.textContent ?? "").trim());
-      const markOf = (mark: Element): ReadMark => ({
-        word: mark.getAttribute("data-word") ?? "",
-        state: mark.getAttribute("data-state") ?? "",
-        tone: mark.getAttribute("data-tone") ?? "",
-      });
-
-      return [...element.querySelectorAll<HTMLElement>('[role="row"][aria-level]')].map((row) => {
-        const rowBox = row.getBoundingClientRect();
-        const button = row.querySelector('[data-testid="capi-tree-name-button"]');
-        const role = row.querySelector('[data-testid="capi-tree-role"]');
-        const activity = row.querySelector('[data-testid="capi-tree-activity"]');
-        const status = row.querySelector('[data-testid="capi-tree-status"]');
-        const marks = [...row.querySelectorAll('[data-testid="capi-tree-activity-mark"]')].map(markOf);
-        const health = row.querySelector('[data-testid="capi-tree-health"]');
-        const whole = row.querySelector('[data-testid="capi-tree-name"]')?.textContent ?? "";
-        const roleText = role?.textContent ?? "";
-
-        return {
-          id: row.id.startsWith(prefix) ? row.id.slice(prefix.length) : row.id,
-          index: Math.round((rowBox.top - contentTop) / height),
-          level: Number(row.getAttribute("aria-level")),
-          expanded: row.getAttribute("aria-expanded"),
-          selected: row.getAttribute("aria-selected"),
-          name:
-            words(button) ??
-            (roleText !== "" && whole.endsWith(roleText) ? whole.slice(0, -roleText.length) : whole).trim(),
-          role: words(role),
-          activities: marks,
-          activityWords: activity !== null && marks.length === 0 ? words(activity) : null,
-          health: health === null ? null : markOf(health),
-          stale: row.querySelector('[data-testid="capi-tree-stale"]') !== null,
-          condition: words(row.querySelector('[data-testid="capi-tree-condition"]')) ?? "",
-          counts: words(row.querySelector('[data-testid="capi-tree-counts"]')),
-          status: words(status) ?? "",
-          pending: activity === null || status === null,
-          top: rowBox.top - box.top,
-          bottom: rowBox.bottom - box.top,
-        };
-      });
-    },
-    { prefix: ROW_ID_PREFIX, height: ROW_HEIGHT },
-  );
+  return tree.evaluate(readDrawnRows, { prefix: ROW_ID_PREFIX, height: ROW_HEIGHT });
 }
 
 // The scroll of the list, its height and the height of all its rows.

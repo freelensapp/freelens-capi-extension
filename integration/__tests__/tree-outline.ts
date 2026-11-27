@@ -4,11 +4,11 @@
  */
 
 // The rows of the page of the tree of a Cluster as the sessions read them in the frame of a cluster (SPEC-0005), and
-// the outline that they give, as `tree-expectations.ts` writes one, as pure functions, which their unit test checks
-// against the cells that the page draws, with no app. A row of the page carries the identity of its node in its id,
-// `capi-tree-row-<node>`, its level in `aria-level` and whether it is expanded in `aria-expanded` (P18); its cells hold
-// the words and the marks of P9 to P12, each found by its test id. Its name does not match `*.tests.ts`, so Vitest does
-// not collect it as a session.
+// the outline that they give, as `tree-expectations.ts` writes one, as functions of the document or pure, which their
+// unit tests check against the cells that the page draws, with no app, and on the page that the page test renders in
+// jsdom. A row of the page carries the identity of its node in its id, `capi-tree-row-<node>`, its level in
+// `aria-level` and whether it is expanded in `aria-expanded` (P18); its cells hold the words and the marks of P9 to
+// P12, each found by its test id. Its name does not match `*.tests.ts`, so Vitest does not collect it as a session.
 
 import type { OutlineRow } from "./tree-expectations";
 
@@ -48,6 +48,66 @@ export interface ReadRow {
   readonly status: string;
   // A cell of state that shows the spinner of the host, while its inputs load.
   readonly pending: boolean;
+}
+
+// A row that the virtual list draws, with its top and its bottom from the top of the window of the list.
+export interface DrawnRow extends ReadRow {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+// The rows that the virtual list of the element of the tree draws, in their order in the document, each as the session
+// reads it from its element: the identity of its node from its id, its place from its top in the list, its attributes,
+// and the words and the marks of its cells, each found by its test id. The sessions run it in the frame, through
+// `drawnRows` of `tree-page.ts`, which hands it to the page as its text: it reads nothing but its arguments and the
+// document. A case of the page test reads the page that it renders with it.
+export function readDrawnRows(element: Element, { prefix, height }: { prefix: string; height: number }): DrawnRow[] {
+  const list = element.querySelector<HTMLElement>(".VirtualList > .list");
+
+  if (list === null) return [];
+
+  const box = list.getBoundingClientRect();
+  const contentTop = box.top - list.scrollTop;
+  const words = (node: Element | null) => (node === null ? null : (node.textContent ?? "").trim());
+  const markOf = (mark: Element): ReadMark => ({
+    word: mark.getAttribute("data-word") ?? "",
+    state: mark.getAttribute("data-state") ?? "",
+    tone: mark.getAttribute("data-tone") ?? "",
+  });
+
+  return [...element.querySelectorAll<HTMLElement>('[role="row"][aria-level]')].map((row) => {
+    const rowBox = row.getBoundingClientRect();
+    const button = row.querySelector('[data-testid="capi-tree-name-button"]');
+    const role = row.querySelector('[data-testid="capi-tree-role"]');
+    const activity = row.querySelector('[data-testid="capi-tree-activity"]');
+    const status = row.querySelector('[data-testid="capi-tree-status"]');
+    const marks = [...row.querySelectorAll('[data-testid="capi-tree-activity-mark"]')].map(markOf);
+    const health = row.querySelector('[data-testid="capi-tree-health"]');
+    const whole = row.querySelector('[data-testid="capi-tree-name"]')?.textContent ?? "";
+    const roleText = role?.textContent ?? "";
+
+    return {
+      id: row.id.startsWith(prefix) ? row.id.slice(prefix.length) : row.id,
+      index: Math.round((rowBox.top - contentTop) / height),
+      level: Number(row.getAttribute("aria-level")),
+      expanded: row.getAttribute("aria-expanded"),
+      selected: row.getAttribute("aria-selected"),
+      name:
+        words(button) ??
+        (roleText !== "" && whole.endsWith(roleText) ? whole.slice(0, -roleText.length) : whole).trim(),
+      role: words(role),
+      activities: marks,
+      activityWords: activity !== null && marks.length === 0 ? words(activity) : null,
+      health: health === null ? null : markOf(health),
+      stale: row.querySelector('[data-testid="capi-tree-stale"]') !== null,
+      condition: words(row.querySelector('[data-testid="capi-tree-condition"]')) ?? "",
+      counts: words(row.querySelector('[data-testid="capi-tree-counts"]')),
+      status: words(status) ?? "",
+      pending: activity === null || status === null,
+      top: rowBox.top - box.top,
+      bottom: rowBox.bottom - box.top,
+    };
+  });
 }
 
 // The identity of the node of a row, from the id of its element.

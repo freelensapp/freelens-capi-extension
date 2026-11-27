@@ -1529,7 +1529,8 @@ connecting to the app with the error collector, installing the extension,
 connecting and disconnecting the kind cluster, opening the lists of the host,
 kubectl, and the selectors. The sessions of the tree share `tree-page.ts`,
 which opens the page and reads and records what it draws, `tree-outline.ts`,
-which reads a row and gives its outline, `tree-checks.ts`, what they decide as
+which reads the rows from the DOM, with a function that the page test runs in
+jsdom too, and gives their outline, `tree-checks.ts`, what they decide as
 pure functions, and `tree-expectations.ts`, what they expect, written by hand;
 the session of the tree makes its large Cluster with `large-cluster.ts`. No
 name of these matches `*.tests.ts`, so Vitest does not collect them.
