@@ -9,7 +9,7 @@
 // - the counts of the objects under each node, worst first, the stale ones of each health next to it (P11);
 // - whether an object needs a look, and the expansion at first, which the state of the rows keeps once it is computed,
 //   so that a change of what the reads give expands nothing and moves no row; then only the user expands and
-//   collapses (P13);
+//   collapses, and a node that the address names later is shown, the nodes above it expanded (P2, P13);
 // - the rows that the table shows, each node under the nodes expanded above it, in the order of the tree (P14, P16);
 // - the search: the words that a row shows, the nodes that match them and the nodes above them, expanded, while the
 //   expansions of the user stay as they were (P15);
@@ -266,6 +266,16 @@ export function searched(state: RowsState, search: string): RowsState {
   return { ...state, search };
 }
 
+// A node that the address names once the expansion at first is computed, as one that appears later, or that a link
+// of the details names (P2, P5): the nodes above it are expanded, so that it is shown; nothing else changes.
+export function revealed(state: RowsState, tree: ClusterTree, id: string): RowsState {
+  if (!tree.nodes.has(id)) return state;
+
+  const above = ancestorsOf(tree, id).filter((each) => !state.expanded.has(each));
+
+  return above.length === 0 ? state : { ...state, expanded: new Set([...state.expanded, ...above]) };
+}
+
 // The rows (P14, P15, P16)
 
 export interface TreeRow {
@@ -316,8 +326,8 @@ function cellWords(state: "not-read" | "not-found"): string {
 // result still waits for an input; and, for a node that cannot be read, the words that P12 puts in its cells: "Not
 // read", or "Not found" for an object that its namespace does not hold, in its cells Activity and Condition, and the
 // reason in its cell Status. Never the counts, a label, an id or the namespace of the Cluster, which every row would
-// match. The words of the cells Version and Status of an object join them with those cells (SPEC-0005, "Notes and
-// deviations").
+// match. The words of the cells Version and Status of an object join them in `searchWordsOf` of `tree-cells.ts`, which
+// the search of the page matches (SPEC-0005, "Notes and deviations").
 export function nodeWords(tree: ClusterTree, node: TreeNode, status: NodeStatus | undefined): string[] {
   switch (node.form) {
     case "object":

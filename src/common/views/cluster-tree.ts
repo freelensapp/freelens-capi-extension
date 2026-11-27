@@ -55,6 +55,7 @@ import {
   isClusterApiKind,
   isTemplateKind,
 } from "./references";
+import { addressOf } from "./tree-address";
 
 import type { ContractVersion } from "../parsers/contract-label";
 import type {
@@ -127,12 +128,6 @@ const ROLE_ROW: Readonly<Record<ReferenceRole, number>> = {
   "infrastructure-machine-pool": 9,
   template: ROW.template,
 };
-
-// The address of a node (P2): `<group>/<Kind>/<name>`, or `<group>/<Kind>/<namespace>/<name>` for the class in another
-// namespace than its Cluster, the one node that can live elsewhere.
-export function addressOf(group: string, kind: string, name: string, namespace?: string): string {
-  return namespace === undefined ? `${group}/${kind}/${name}` : `${group}/${kind}/${namespace}/${name}`;
-}
 
 // An owner of an object, by its group, its kind and its name in the namespace of the object.
 export interface OwnerName {
@@ -621,6 +616,15 @@ function kindReadOf(index: TreeIndex, kind: TreeKind | undefined, namespace: str
   }
   // A namespace that the filter does not hold is one that the view does not read: it is still to be read.
   return { state: "pending" };
+}
+
+// Whether the tree still reads a kind of an address in a namespace: its first load, or the definition of a kind of a
+// provider, so that the details of a node that the tree does not hold yet show the spinner, and never that it is not in
+// the tree (P19). A kind that the reads never tried is not being read.
+export function kindPending(index: TreeIndex, group: string, kind: string, namespace: string): boolean {
+  const known = index.kinds.get(kindId(group, kind));
+
+  return known !== undefined && kindReadOf(index, known, namespace).state === "pending";
 }
 
 // Whether the objects of a kind cannot be read in a namespace, as an owner row or a kind node says it (P12): its read

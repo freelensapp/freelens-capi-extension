@@ -4,12 +4,14 @@ import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { outlineText, treeSourceOf } from "../../../test/tree-sources";
 import { buildTree, compareText, evaluateTree, indexTree } from "./cluster-tree";
 import { StatusMemo } from "./context";
+import { searchWordsOf } from "./tree-cells";
 import {
   countsOf,
   countWords,
   firstExpansion,
   needsLook,
   nodeWords,
+  revealed,
   rowsOf,
   rowsStateOf,
   scrollOffset,
@@ -100,6 +102,13 @@ function idOf(tree: ClusterTree, text: string, under?: string): string {
 }
 
 const machine = (name: string) => `cluster.x-k8s.io/Machine/${name}`;
+
+function machine2xxxg(tree: ClusterTree): string {
+  const id = machine("freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg");
+
+  if (!tree.nodes.has(id)) throw new Error(`No node ${id}`);
+  return id;
+}
 
 describe("the expansion at first (P13)", () => {
   it("of healthy is the first level alone", () => {
@@ -340,6 +349,30 @@ describe("the state of the rows after the expansion at first (P13)", () => {
       "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
     );
     expect(toggled(state, workers).expanded.has(workers)).toBe(false);
+  });
+
+  it("reveals a node that the address names later, the nodes above it expanded, and changes nothing else", () => {
+    const view = stateView("healthy");
+    const state = rowsStateOf(undefined, view.tree, view.statuses);
+    const machine = machine2xxxg(view.tree);
+    const shown = revealed(state, view.tree, machine);
+
+    expect(outline(rowsOf(view.tree, state.expanded)).some((row) => row.includes("m5gtb-2xxxg"))).toBe(false);
+    expect(
+      [...shown.expanded]
+        .filter((id) => !state.expanded.has(id))
+        .map((id) => outlineText(view.tree.nodes.get(id) as TreeNode)),
+    ).toEqual([
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+      "Workers",
+    ]);
+    expect(outline(rowsOf(view.tree, shown.expanded))).toContain(
+      "        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+    );
+    // A node already shown, and one that the tree does not hold, change nothing.
+    expect(revealed(shown, view.tree, machine)).toBe(shown);
+    expect(revealed(state, view.tree, "cluster.x-k8s.io/Machine/gone")).toBe(state);
   });
 
   it("is computed again for another Cluster", () => {
@@ -606,6 +639,34 @@ describe("the search (P15)", () => {
     const view = stateView("healthy", { failures: { "bootstrap.cluster.x-k8s.io/KubeadmConfig": [REFUSED] } });
 
     expect(matched(view, "Not read")).toHaveLength(4);
+  });
+
+  it("matches a version and the words of a cell Status, those of P10 and P12 among them, never N/A", () => {
+    const view = stateView("healthy");
+    const rows = (words: string) => {
+      const found = searchTree(view.tree, words, (node) => searchWordsOf(view.tree, node, view.statuses.get(node.id)));
+
+      return [...(found?.matches ?? [])].map((id) => outlineText(view.tree.nodes.get(id) as TreeNode)).sort();
+    };
+
+    expect(rows("v1.37.0")).toEqual([
+      "Cluster freelens-capi-healthy",
+      "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+      "Machine freelens-capi-healthy-d2lgq-zqlcx",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      "Workers",
+    ]);
+    expect(rows("2 of 2 Machines available")).toEqual(["MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb"]);
+    expect(rows("targets healthy")).toEqual([
+      "MachineHealthCheck freelens-capi-healthy-d2lgq",
+      "MachineHealthCheck freelens-capi-healthy-md-0-m9x7h",
+    ]);
+    expect(rows("N/A")).toEqual([]);
+    // Without the words of those cells, the search of the name and the marks alone finds no version.
+    expect(matched(view, "v1.37.0")).toEqual([]);
   });
 
   it("gives back the expansions of the user once it is cleared", () => {

@@ -106,13 +106,29 @@ describe("the marks and the words of the details", () => {
     expect(pauseFormOf(cluster({ paused: false }, { other: "" }))).toBeUndefined();
   });
 
-  it("keep the objects of Cluster API as text, and not those of a provider (P18)", () => {
-    expect(isClusterApiObject("cluster.x-k8s.io", "MachineDeployment")).toBe(true);
-    expect(isClusterApiObject("cluster.x-k8s.io", "ClusterClass")).toBe(true);
-    expect(isClusterApiObject("controlplane.cluster.x-k8s.io", "KubeadmControlPlane")).toBe(true);
-    expect(isClusterApiObject("bootstrap.cluster.x-k8s.io", "KubeadmConfig")).toBe(true);
+  it("tell the objects of Cluster API, every kind of R1, from those of a provider (P18; SPEC-0005, P5)", () => {
+    for (const [group, kind] of [
+      ["cluster.x-k8s.io", "MachineDeployment"],
+      ["cluster.x-k8s.io", "ClusterClass"],
+      ["controlplane.cluster.x-k8s.io", "KubeadmControlPlane"],
+      ["controlplane.cluster.x-k8s.io", "KubeadmControlPlaneTemplate"],
+      ["bootstrap.cluster.x-k8s.io", "KubeadmConfig"],
+      ["bootstrap.cluster.x-k8s.io", "KubeadmConfigTemplate"],
+      ["addons.cluster.x-k8s.io", "ClusterResourceSet"],
+      ["addons.cluster.x-k8s.io", "ClusterResourceSetBinding"],
+      ["ipam.cluster.x-k8s.io", "IPAddress"],
+      ["ipam.cluster.x-k8s.io", "IPAddressClaim"],
+      ["runtime.cluster.x-k8s.io", "ExtensionConfig"],
+      ["clusterctl.cluster.x-k8s.io", "Provider"],
+      ["operator.cluster.x-k8s.io", "CoreProvider"],
+    ]) {
+      expect(isClusterApiObject(group, kind), `${group}/${kind}`).toBe(true);
+    }
     expect(isClusterApiObject("infrastructure.cluster.x-k8s.io", "DevCluster")).toBe(false);
     expect(isClusterApiObject("controlplane.example.com", "ExampleControlPlane")).toBe(false);
+    // A kind of a provider in a group of Cluster API is of a provider (SPEC-0005, P5).
+    expect(isClusterApiObject("bootstrap.cluster.x-k8s.io", "ExampleConfig")).toBe(false);
+    expect(isClusterApiObject("controlplane.cluster.x-k8s.io", "ExampleControlPlane")).toBe(false);
   });
 
   it("say why a reference opens nothing, for every reason", () => {
@@ -153,9 +169,10 @@ describe("the marks and the words of the details", () => {
     });
   });
 
-  it("link a Cluster named in a subject to its details, and the object of a provider that the Cluster names, when the view read them", () => {
+  it("link a Cluster named in a subject to its details, an object of Cluster API of the Cluster to its node in the tree, and the object of a provider that the Cluster names, when the view read them", () => {
     const details = detailsOf(["healthy"]);
     const devCluster = details.infrastructure?.reference;
+    const controlPlane = details.controlPlane?.reference?.name ?? "";
 
     expect(subjectTarget(details, "Cluster", "freelens-capi-healthy")).toEqual({
       form: "cluster",
@@ -169,10 +186,26 @@ describe("the marks and the words of the details", () => {
       selfLink: devCluster?.selfLink,
     });
     expect(subjectTarget(details, "DevCluster", "not-this-one")).toEqual({ form: "text" });
+    // The objects of Cluster API of the Cluster that the view read open the tree at their node (SPEC-0005, P5); a name
+    // that the view did not read stays text.
     expect(subjectTarget(details, "Machine", "a-machine")).toEqual({ form: "text" });
-    expect(subjectTarget(details, "KubeadmControlPlane", details.controlPlane?.reference?.name ?? "")).toEqual({
-      form: "text",
+    expect(subjectTarget(details, "Machine", "freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg")).toEqual({
+      form: "tree",
+      node: "cluster.x-k8s.io/Machine/freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
     });
+    expect(subjectTarget(details, "MachineDeployment", "freelens-capi-healthy-md-0-m9x7h")).toEqual({
+      form: "tree",
+      node: "cluster.x-k8s.io/MachineDeployment/freelens-capi-healthy-md-0-m9x7h",
+    });
+    expect(subjectTarget(details, "MachineSet", "freelens-capi-healthy-md-0-m9x7h-m5gtb")).toEqual({
+      form: "tree",
+      node: "cluster.x-k8s.io/MachineSet/freelens-capi-healthy-md-0-m9x7h-m5gtb",
+    });
+    expect(subjectTarget(details, "KubeadmControlPlane", controlPlane)).toEqual({
+      form: "tree",
+      node: `controlplane.cluster.x-k8s.io/KubeadmControlPlane/${controlPlane}`,
+    });
+    expect(subjectTarget(details, "KubeadmControlPlane", "another")).toEqual({ form: "text" });
   });
 });
 
