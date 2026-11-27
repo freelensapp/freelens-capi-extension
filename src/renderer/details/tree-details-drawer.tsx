@@ -17,7 +17,8 @@
 // that the tree does not hold says that no such object is in the tree of the Cluster, or that it is no longer, for one
 // that was there, or that the tree does not read its kind in the namespace that the address names, and shows the
 // spinner while its kind loads in the namespace where the tree reads it (P19, P23). The drawer stays open when the
-// Cluster goes, and says that its node is gone with it, until the user closes it (P23).
+// Cluster goes after the page showed its tree, and says that its node is gone with it, until the user closes it; the page
+// shows none for a Cluster that it never found (P23).
 //
 // The host gives the focus nowhere when the drawer closes (H11): the page gives it back to the element of the tree
 // once the row of the node is in view. A click outside closes the drawer from a listener on the window, after the press

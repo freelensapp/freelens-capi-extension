@@ -522,6 +522,22 @@ describe("the states of the tree (P13, P19)", () => {
     expect(screen.queryByTestId("capi-tree-details")).toBeNull();
   });
 
+  it("shows no details for the node of the address once its Cluster is not found, which the tree never showed, after their spinner while the tree loaded", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const release = host.deferLoads();
+
+    render(pageOf(paramsOf(`${HEALTHY}/freelens-capi-other`, MACHINE)));
+    await settle();
+    expect(screen.getByTestId("capi-tree-details-loading")).toBeDefined();
+
+    release();
+    await settle();
+
+    expect(screen.getByTestId("capi-tree-not-found")).toBeDefined();
+    expect(screen.queryByTestId("capi-tree-details")).toBeNull();
+  });
+
   it("says Restricted in the place of the tree when the Clusters of its namespace are refused, with the permission, and Failed otherwise", async () => {
     serveTree(objectsOfStates(["healthy"]), { Cluster: [refusal("clusters.cluster.x-k8s.io")] });
 

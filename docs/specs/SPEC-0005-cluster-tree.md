@@ -3304,12 +3304,15 @@ the contract label of the definition for a control plane of a provider; and
   `cluster-tree.ts`). They name the object as its row would, with its
   namespace for an address of four parts.
 - Decided while implementing the second part, after its reviews, where P23
-  keeps the details of an object that goes open: when the Cluster goes, every
-  object of its tree goes with it, and the details that are open stay, saying
-  that their object is no longer in the tree, until the user closes them.
-  While the Clusters of its namespace cannot be read, refused, failed, or not
-  read again after a refresh, the drawer goes with the tree, whose place says
-  why, since what the tree held is not known then.
+  keeps the details of an object that goes open: when the Cluster goes, once
+  the page showed its tree in this mount, every object of its tree goes with
+  it, and the details that are open stay, saying that their object is no
+  longer in the tree, until the user closes them. While the Clusters of its
+  namespace cannot be read, refused, failed, or not read again after a
+  refresh, the drawer goes with the tree, whose place says why, since what the
+  tree held is not known then; and the page shows no drawer for a Cluster that
+  it never found in this mount, whose tree held no node, so that no details
+  say of a tree that was never shown that it was read.
 - Decided while implementing the second part, after its reviews, where P13
   moves the scroll of the list in a layout effect: the page reads the offset
   of the list's element before React changes the rows, in

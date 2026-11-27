@@ -321,6 +321,9 @@ class TreePage {
   activeAbove: readonly string[] = [];
   // The nodes of the tree seen in this mount, for the details of one that is gone.
   readonly seen = new Set<string>();
+  // Whether the tree was shown in this mount: the details that are open stay once its Cluster goes, while a Cluster
+  // that was never found shows none (P19, P23).
+  treeShown = false;
   // The rows drawn, from a reference to an element of each row, which the virtual list mounts and unmounts with it.
   readonly drawn = new Map<string, boolean>();
   readonly #refs = new Map<string, (element: HTMLElement | null) => void>();
@@ -383,6 +386,7 @@ class TreePage {
     const cluster = `${tree.root.namespace}/${tree.root.name}`;
     const named = address !== undefined && tree.nodes.has(address) ? address : undefined;
 
+    this.treeShown = true;
     if (named !== undefined) this.seen.add(named);
     if (this.rows === undefined || this.rows.cluster !== cluster) {
       this.rows = rowsStateOf(undefined, tree, statuses, named);
@@ -1042,7 +1046,7 @@ const TreeContent = observer((props: TreeContentProps) => {
           <RowsInPlace rows={rows} change={page.change} list={() => listElementOf(tree.current)} />
         </div>
       )}
-      {shown && outcome?.state === "not-read" ? null : (
+      {!drawerShown(shown, outcome, page.treeShown) ? null : (
         <TreeDetailsDrawer
           address={address}
           contentOf={contentOf}
@@ -1059,9 +1063,18 @@ const TreeContent = observer((props: TreeContentProps) => {
   );
 });
 
-// What the drawer shows of the node that the address names (P17, P19, P23). The drawer stays while the tree loads, while
-// the Cluster is not found and once it is gone, and goes while its namespace cannot be read, which the page says in the
-// place of the tree.
+// Whether the page shows the drawer of the details of a node, open while the address names one (P17, P19, P23): while
+// the tree loads and while it is shown; once its Cluster is gone, after the tree was shown in this mount, so that the
+// details that are open say that their object went with it, until the user closes them; and never for a Cluster that
+// was never found in this mount, whose tree held no node, nor while the Clusters of its namespace cannot be read, which
+// the page says in the place of the tree.
+function drawerShown(shown: boolean, outcome: TreeOutcome | undefined, treeShown: boolean): boolean {
+  if (!shown) return true;
+  if (outcome?.state === "not-read") return false;
+  return outcome?.state !== "not-found" || treeShown;
+}
+
+// What the drawer shows of the node that the address names (P17, P19, P23), while the page shows it.
 function drawerContent(
   outcome: TreeOutcome | undefined,
   index: TreeIndex | undefined,
@@ -1071,8 +1084,8 @@ function drawerContent(
   detailsOf: (node: Extract<TreeNode, { readonly form: "object" | "reference" }>) => NodeDetails,
 ): DrawerContent {
   if (address.state !== "node") return { state: "loading" };
-  // The Cluster is gone, and every object of its tree with it: the details stay open, and say that their object is no
-  // longer in the tree, until the user closes them (P23).
+  // The Cluster is gone, after the tree was shown, and every object of its tree with it: the details stay open, and say
+  // that their object is no longer in the tree, until the user closes them (P23).
   if (outcome?.state === "not-found") return { state: "absent", gone: page.seen.has(address.id) };
   if (outcome?.state !== "found" || index === undefined) return { state: "loading" };
 
