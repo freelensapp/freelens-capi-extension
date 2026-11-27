@@ -2586,7 +2586,7 @@ each fails on any error that either process logs (AGENTS.md, "Workflows"):
    its counters "1 desired" and N/A for each other, and no row Versions; those
    of `kamaji-sleeping`, each counter 0 and the mark of SPEC-0003, P25 on the
    control plane; and, by `recordRequests`
-   (`integration/__tests__/extension-helpers.ts:1157-1173`), that no request of
+   (`integration/__tests__/extension-helpers.ts:1239-1255`), that no request of
    the frame goes to `kamaji.clastix.io` while the session runs, the condition
    of P16 while the Kamaji extension is not installed, seen failing once on a
    run planted for it ("Safety").

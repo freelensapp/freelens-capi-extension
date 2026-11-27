@@ -27,8 +27,7 @@ jobs:
           - freelens_version: v2.1.0
 
     # Limits from the durations of the runs (SPEC-0004, "Notes and deviations"):
-    # the job took 10 minutes in CI with the session of the tree, its step of
-    # the tests 7.8.
+    # the job took 10 minutes in CI, its step of the tests 7.8.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
@@ -345,12 +344,11 @@ jobs:
       # scripts, and deletes it at its end.
       #
       # The tests are deterministic, so a failure is not retried. A failing view
-      # costs one view timeout. The step took 7.8 minutes in CI with the session
-      # of the tree, with a case that waited its 60 seconds, and the large
-      # Cluster applied in 46.5 seconds and deleted in 85.4 (SPEC-0005, P22).
-      # A step that reaches its limit fails, as a case that reaches its own
-      # does, and loses the report of the sessions after it, which a run of one
-      # file gives again (SPEC-0004, "Notes and deviations").
+      # costs one view timeout. The step took 7.8 minutes in CI, the large
+      # Cluster of SPEC-0005, P22 included, with a case that waited its 60
+      # seconds. A step that reaches its limit fails, as a case that reaches its
+      # own does, and loses the report of the sessions after it, which a run of
+      # one file gives again (SPEC-0004, "Notes and deviations").
       - name: Run integration tests
         run: timeout 1500 pnpm --color=always test:integration --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:

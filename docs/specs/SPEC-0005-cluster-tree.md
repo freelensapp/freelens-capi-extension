@@ -1652,7 +1652,7 @@ session runs the large Cluster in a time of its own: the step that applies it
 has a limit of 180 s, and the hook that deletes it one of 240 s, about three
 times what the probe measured, a margin for the runners of CI, which the probe
 did not try (H25), in place of the 120 s of every other test and hook
-(`vitest.integration.config.ts:26-27`). Two limits of 25 minutes bound it: the
+(`vitest.integration.config.ts:27-28`). Two limits of 25 minutes bound it: the
 step of the tests of the integration workflow, which every session shares
 (`timeout 1500`, `.github/workflows/integration-tests.yaml:353`; TESTING.md,
 "Continuous integration"), and the window of the marks of the fixtures, which
@@ -2694,11 +2694,11 @@ checks them (Unit):
 
 `integration/__tests__/cluster-tree-real.tests.ts`, in the job of the real
 project of `test-environment.yaml`, on both releases of its matrix (SPEC-0004,
-P33). It joins `REAL_PROJECT_SESSIONS` (`vitest.integration.config.ts:5-8`),
+P33). It joins `REAL_PROJECT_SESSIONS` (`vitest.integration.config.ts:5-9`),
 which the configuration of the real tier runs and the integration workflow
 leaves out (`vitest.integration-real-project.config.ts:13`;
-`vitest.integration.config.ts:17-18`), and the paths that start that job on a
-pull request (`.github/workflows/test-environment.yaml:21-47`). It compares the
+`vitest.integration.config.ts:18-19`), and the paths that start that job on a
+pull request (`.github/workflows/test-environment.yaml:21-50`). It compares the
 tree of `freelens-capi-md` and of `freelens-capi-mp` with what
 `clusterctl describe cluster` prints of them with `--show-machinesets`,
 `--show-templates`, `--show-resourcesets`, `--echo` and `--grouping=false`,
