@@ -514,6 +514,15 @@ describe("what the sessions of the tree decide", () => {
         titles,
       ).problems,
     ).toEqual(["capi-tree-row-b: its cells are gridcell, cell, expected 2 gridcells"]);
+    // A row with fewer gridcells than the columns, all of them gridcells.
+    expect(
+      accessibilityOfTree(
+        tree(["r1", "r2"]).map((node) => (node.nodeId === "r2" ? { ...node, childIds: ["c3"] } : node)),
+        ids,
+        drawn,
+        titles,
+      ).problems,
+    ).toEqual(["capi-tree-row-b: its cells are gridcell, expected 2 gridcells"]);
     expect(
       accessibilityOfTree(tree(["r1", "r2"]), ids, [...drawn, { id: "capi-tree-row-c", level: 1 }], titles).problems,
     ).toEqual(["capi-tree-row-c: no node of the tree of accessibility"]);

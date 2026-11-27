@@ -15,11 +15,12 @@ import {
 } from "../integration/__tests__/tree-outline";
 import { rowDomId } from "../src/common/views/tree-keys";
 import { countWords } from "../src/common/views/tree-rows";
-import { STATES } from "./fixture-sets";
+import { fixtureSet, STATES } from "./fixture-sets";
 import { readRows } from "./tree-read-rows";
 import { treeOutline } from "./tree-sources";
 
 import type { ReadRow } from "../integration/__tests__/tree-outline";
+import type { KubeObjectData } from "../src/common/status/index";
 import type { ReadFailure } from "../src/common/views/read-state";
 
 const REFUSED: ReadFailure = { refused: true, message: "forbidden" };
@@ -58,6 +59,28 @@ describe("the rows of the page of the tree, as the sessions read them", () => {
     expect(outlineOfRows(bindings.rows)).toEqual(treeOutline(bindings.tree));
     expect(outlineOfRows(bindings.rows).map((row) => row.text)).toEqual(
       expect.arrayContaining(["ConfigMap cni-kindnet [not read]", "ClusterResourceSetBindings [not read]"]),
+    );
+  });
+
+  it("read an entry that its binding records as not applied, and one that no binding of the Cluster records, as the outline writes them", () => {
+    const objects = structuredClone(fixtureSet("healthy")) as unknown as Record<string, any>[];
+    const binding = objects.find((object) => object.kind === "ClusterResourceSetBinding");
+    const set = objects.find((object) => object.kind === "ClusterResourceSet");
+
+    if (binding === undefined || set === undefined) throw new Error("No ClusterResourceSet and binding in healthy");
+    // The binding records its one resource as not applied, and the ClusterResourceSet names a second one that no
+    // binding of the Cluster records.
+    for (const resource of binding.spec.bindings[0].resources) {
+      resource.applied = false;
+      delete resource.lastAppliedTime;
+    }
+    set.spec.resources.push({ kind: "ConfigMap", name: "cni-extra" });
+
+    const { tree, rows } = readRows("healthy", { objects: objects as unknown as KubeObjectData[] });
+
+    expect(outlineOfRows(rows)).toEqual(treeOutline(tree));
+    expect(outlineOfRows(rows).map((row) => row.text)).toEqual(
+      expect.arrayContaining(["ConfigMap cni-kindnet [not applied]", "ConfigMap cni-extra [in no binding]"]),
     );
   });
 
