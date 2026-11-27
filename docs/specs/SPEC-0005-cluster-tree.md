@@ -3513,6 +3513,28 @@ the contract label of the definition for a control plane of a provider; and
   Activity, Condition and Status, each at least at its minimum width of
   `cluster-tree.module.scss`; a row is one line when it is 33 px high and no
   cell of it overflows its height.
+- Decided while implementing the third part, after the first run of its CI, in
+  which step 1 found "a cell on more than one line" in the row of the Cluster
+  of `rolling-out`, 1024 px wide: the check, not the stylesheet, was wrong. It
+  took a cell whose scroll height exceeds its client height for a cell of two
+  lines; but a mark of state is a badge of the host with the padding of the
+  host and the border of `marks.module.scss`, about 25 px high, taller than the
+  17 px that the padding of 8 px of a cell of the host leaves in a row of 33 px
+  (freelens:packages/core/src/renderer/components/table/table-cell.scss:11-18;
+  freelens:packages/core/src/renderer/components/badge/badge.module.scss:34-39),
+  so it stands at the middle of its cell, into that padding, on one line, and
+  the scroll height of the cell, which counts the padding after the content,
+  exceeds its client height in every row that holds a mark, the Cluster the
+  first of them. No text of a cell of the tree can wrap: the cells, the element
+  that holds the content of each and the badges of the host keep their text on
+  one line, which a case of `styles.test.ts` checks (P9). So a row is one line
+  when it is 33 px high, when every text of its cells lies on one line, which
+  the pieces of the lines that the browser gives each text say, and when no
+  element of its cells stands above or below it (`lineProblems` of
+  `tree-checks.ts`); a failure names the cell by the test id of its content and
+  its words. For the record, the session logs the scroll height, the client
+  height and the height of the content of each cell of the first row, which
+  shows the marks standing into the padding.
 - Decided while implementing the third part, for step 2: the session reads the
   answers to the lists of the page in the frame, from its resource timing, in
   the clock of the frame, with the moment of the first rows that an observer of

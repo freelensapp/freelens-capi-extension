@@ -12,6 +12,8 @@ import {
   firstDrawProblems,
   firstInView,
   keyEffect,
+  lineProblems,
+  linesOf,
   marksProblems,
   moveScrollProblem,
   readsAGroupOfTheTree,
@@ -120,6 +122,53 @@ describe("what the sessions of the tree decide", () => {
     ).toEqual([
       `${binding}: the cell Condition says Healthy, expected N/A`,
       `${binding}: the cell Activity says Idle, expected N/A`,
+    ]);
+  });
+
+  it("read a cell as one line when each of its texts lies on one line, the marks that stand into its padding included, and report a text on two lines or a box beyond its row", () => {
+    // The pieces of a text on one line start at the same height, within half the height of a piece.
+    expect(linesOf([])).toBe(0);
+    expect(
+      linesOf([
+        { top: 412, height: 16 },
+        { top: 412.6, height: 16 },
+      ]),
+    ).toBe(1);
+    expect(
+      linesOf([
+        { top: 412, height: 16 },
+        { top: 428, height: 16 },
+      ]),
+    ).toBe(2);
+
+    // A cell of marks: the words of each mark and the counts, each on one line, at heights a little apart, as the marks
+    // stand at the middle of the line and taller than the room of the cell, which its scroll height would count.
+    const marks = {
+      testId: "capi-tree-condition",
+      text: "Degraded12 objects: 1 Degraded, 11 Healthy",
+      texts: [[{ top: 409, height: 16 }], [{ top: 411, height: 16 }]],
+      beyond: null,
+    };
+    const wrapped = {
+      testId: "capi-tree-status",
+      text: "Minimum availability requires 2 replicas, current 1 available",
+      texts: [
+        [
+          { top: 409, height: 15 },
+          { top: 424, height: 15 },
+        ],
+      ],
+      beyond: null,
+    };
+
+    expect(lineProblems("capi-tree-row-a", [marks])).toEqual([]);
+    expect(lineProblems("capi-tree-row-a", [marks, wrapped])).toEqual([
+      'capi-tree-row-a: the cell capi-tree-status on 2 lines: "Minimum availability requires 2 replicas, current 1 available"',
+    ]);
+    expect(
+      lineProblems("capi-tree-row-a", [{ ...marks, beyond: 'span "mark", -3 to 30 px of a row of 33 px' }]),
+    ).toEqual([
+      'capi-tree-row-a: the cell capi-tree-condition draws span "mark", -3 to 30 px of a row of 33 px beyond its row: "Degraded12 objects: 1 Degraded, 11 Healthy"',
     ]);
   });
 

@@ -5,9 +5,10 @@
 
 // What the sessions of the tree of a Cluster decide from what they read in the frame of a cluster (SPEC-0005,
 // "Tests", "In Freelens"), as pure functions, which their unit test checks with no app: the marks, the expansion and
-// the counts of the rows against the expectations written by hand, the first rows that the page draws against the
-// answers to its lists, the node that a key makes active and the scroll that a move leaves, the first row in view, the
-// rows of the tree in the tree of accessibility of Chromium, and the requests of the frame that write. Each returns
+// the counts of the rows against the expectations written by hand, the lines of the cells of a row, the first rows that
+// the page draws against the answers to its lists, the node that a key makes active and the scroll that a move leaves,
+// the first row in view and the scroll at which rows go above it, the rows of the tree in the tree of accessibility of
+// Chromium, and the requests of the frame that write. Each returns
 // what differs, empty when nothing does, so that a session reports every difference of a step at once. Its name does
 // not match `*.tests.ts`, so Vitest does not collect it as a session.
 
@@ -101,6 +102,51 @@ export function expansionProblems(rows: readonly ReadRow[], expected: FirstExpan
     }
   });
   return problems;
+}
+
+// The lines of a row
+
+// A piece of a line of a text, as the browser lays it out: its top and its height, in the window.
+export interface LineBox {
+  readonly top: number;
+  readonly height: number;
+}
+
+// A cell of a row as the session measures it in the frame (step 1): the test id of the element that holds its content,
+// its words, the pieces of line of each of its texts, and a box of an element of the cell that stands above or below
+// the row, by its tag and its classes, when one does.
+export interface MeasuredCell {
+  readonly testId: string;
+  readonly text: string;
+  readonly texts: readonly (readonly LineBox[])[];
+  readonly beyond: string | null;
+}
+
+// The lines that a text takes: its pieces that start at the same height, within half the height of a piece, are one.
+export function linesOf(boxes: readonly LineBox[]): number {
+  const tops: number[] = [];
+
+  for (const box of boxes) {
+    if (!tops.some((top) => Math.abs(top - box.top) < box.height / 2)) tops.push(box.top);
+  }
+  return tops.length;
+}
+
+// What differs from a row of one line (P9; step 1): each cell one of whose texts the browser lays out on more than one
+// line, and each cell that draws a box above or below its row, by the test id of its content and its words. The scroll
+// height of a cell says neither: a mark of state, a badge with its padding and its border, is taller than the room that
+// the padding of a cell of the host leaves, and stands into that padding, on one line ("Notes and deviations").
+export function lineProblems(id: string, cells: readonly MeasuredCell[]): string[] {
+  return cells.flatMap((cell) => {
+    const lines = Math.max(0, ...cell.texts.map(linesOf));
+
+    return [
+      ...(lines > 1 ? [`${id}: the cell ${cell.testId} on ${lines} lines: "${cell.text}"`] : []),
+      ...(cell.beyond === null
+        ? []
+        : [`${id}: the cell ${cell.testId} draws ${cell.beyond} beyond its row: "${cell.text}"`]),
+    ];
+  });
 }
 
 // The first rows

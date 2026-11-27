@@ -68,6 +68,8 @@ import {
   firstDrawProblems,
   firstInView,
   keyEffect,
+  lineProblems,
+  linesOf,
   marksProblems,
   moveScrollProblem,
   removalScroll,
@@ -130,7 +132,7 @@ import type { Frame, Locator } from "playwright";
 
 import type { DefinitionsSession } from "../../e2e/scripts/commands.mts";
 import type { AppSession } from "./extension-helpers";
-import type { ShownRow } from "./tree-checks";
+import type { MeasuredCell, ShownRow } from "./tree-checks";
 import type { OutlineRow } from "./tree-expectations";
 import type { DrawnRow } from "./tree-page";
 
@@ -146,6 +148,24 @@ const TITLES = ["Name", "Replicas", "Version", "Activity", "Condition", "Status"
 
 // The left edge of the drawer of the host in a frame 1205 px wide, as the probe measured it (H19).
 const DRAWER_LEFT = 480;
+
+// A cell of a row of step 1, 1024 px wide, as the frame measures it: what the check of one line reads, and, for the
+// record, its scroll height, its client height and the height of the element of its content.
+interface LaidOutCell extends MeasuredCell {
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+  readonly contentHeight: number;
+}
+
+// A row of step 1, 1024 px wide: its height, its cells, whether its name is cut and with an ellipsis, and the columns
+// of state under their minimum width.
+interface RowLayout {
+  readonly height: number;
+  readonly cells: readonly LaidOutCell[];
+  readonly cut: boolean;
+  readonly ellipsis: boolean;
+  readonly narrow: readonly string[];
+}
 
 const states = statesOf(["all"]);
 const namespaces = states.map((state) => state.namespace);
@@ -496,31 +516,71 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
 
         await expandAll(tree);
 
-        const layout = new Map<
-          string,
-          { height: number; overflow: boolean; cut: boolean; ellipsis: boolean; narrow: string[] }
-        >();
+        const layout = new Map<string, RowLayout>();
+        // Each row drawn: its height; each cell measured by the lines of its texts and the boxes of its elements, with
+        // its scroll height and its client height and the height of the element of its content, for the record; whether
+        // its name is cut, by its badge or by its button, with an ellipsis; and the columns of state under their minimum
+        // width.
         const readLayout = () =>
           tree.evaluate(
             (element, columns) => {
-              const found: [
-                string,
-                { height: number; overflow: boolean; cut: boolean; ellipsis: boolean; narrow: string[] },
-              ][] = [];
+              const found: [string, RowLayout][] = [];
 
               for (const row of element.querySelectorAll<HTMLElement>('[role="row"][aria-level]')) {
+                const box = row.getBoundingClientRect();
                 const cells = [...row.querySelectorAll<HTMLElement>(':scope > [role="gridcell"]')];
                 const name = row.querySelector<HTMLElement>('[data-testid="capi-tree-name"]');
                 const button = row.querySelector<HTMLElement>('[data-testid="capi-tree-name-button"]');
                 const cutBy = [name, button].filter(
                   (part): part is HTMLElement => part !== null && part.scrollWidth > part.clientWidth + 0.5,
                 );
+                const measure = (cell: HTMLElement, at: number) => {
+                  const content = cell.querySelector<HTMLElement>("[data-testid]");
+                  const texts: { top: number; height: number }[][] = [];
+                  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+
+                  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+                    if ((node.textContent ?? "").trim() === "") continue;
+
+                    const range = document.createRange();
+
+                    range.selectNodeContents(node);
+                    texts.push(
+                      [...range.getClientRects()]
+                        .filter((rect) => rect.width > 0 && rect.height > 0)
+                        .map((rect) => ({ top: rect.top, height: rect.height })),
+                    );
+                  }
+
+                  const beyond = [...cell.querySelectorAll<Element>("*")].find((part) => {
+                    const bounds = part.getBoundingClientRect();
+
+                    return (
+                      bounds.width > 0 &&
+                      bounds.height > 0 &&
+                      (bounds.top < box.top - 0.5 || bounds.bottom > box.bottom + 0.5)
+                    );
+                  });
+
+                  return {
+                    testId: content?.getAttribute("data-testid") ?? `cell ${at + 1}`,
+                    text: ((content ?? cell).textContent ?? "").trim(),
+                    texts,
+                    beyond:
+                      beyond === undefined
+                        ? null
+                        : `${beyond.tagName.toLowerCase()} "${beyond.getAttribute("class") ?? ""}", ${beyond.getBoundingClientRect().top - box.top} to ${beyond.getBoundingClientRect().bottom - box.top} px of a row of ${box.height} px`,
+                    scrollHeight: cell.scrollHeight,
+                    clientHeight: cell.clientHeight,
+                    contentHeight: content?.getBoundingClientRect().height ?? 0,
+                  };
+                };
 
                 found.push([
                   row.id,
                   {
-                    height: row.getBoundingClientRect().height,
-                    overflow: cells.some((cell) => cell.scrollHeight > cell.clientHeight + 1),
+                    height: box.height,
+                    cells: cells.map(measure),
                     cut: cutBy.length > 0,
                     ellipsis: cutBy.every((part) => getComputedStyle(part).textOverflow === "ellipsis"),
                     narrow: columns
@@ -540,20 +600,39 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
           );
 
         for (const [id, row] of await readLayout()) layout.set(id, row);
+
+        // For the record, the cells of the first row, the Cluster: those of the marks of state stand into the padding of
+        // their cell, on one line, which their scroll height counts ("Notes and deviations").
+        const [rootId, root] = [...layout][0] ?? [];
+
+        if (root !== undefined) {
+          console.log(
+            `1024 px wide, the cells of ${rootId}: ${root.cells
+              .map(
+                (cell) =>
+                  `${cell.testId}, its content ${cell.contentHeight.toFixed(1)} px high, scroll height ${cell.scrollHeight} of ${cell.clientHeight}, ${Math.max(0, ...cell.texts.map(linesOf))} line`,
+              )
+              .join("; ")}`,
+          );
+        }
         await scrollListTo(tree, (await listMetrics(tree)).scrollHeight);
         for (const [id, row] of await readLayout()) layout.set(id, row);
 
         const rows = await allRows(tree);
+        const lineFaults: string[] = [];
 
         expect(rows.map((row) => row.id).sort()).toEqual(
           [...layout.keys()].map((id) => id.replace(/^capi-tree-row-/, "")).sort(),
         );
         for (const [id, row] of layout) {
-          expect(Math.abs(row.height - ROW_HEIGHT), `${id}: one line of 33 px`).toBeLessThanOrEqual(0.5);
-          expect(row.overflow, `${id}: a cell on more than one line`).toBe(false);
-          expect(row.narrow, `${id}: the columns of state under their minimum width`).toEqual([]);
-          if (row.cut) expect(row.ellipsis, `${id}: a name cut with no ellipsis`).toBe(true);
+          if (Math.abs(row.height - ROW_HEIGHT) > 0.5) lineFaults.push(`${id}: a row of ${row.height} px, not 33`);
+          lineFaults.push(...lineProblems(id, row.cells));
+          if (row.narrow.length > 0) {
+            lineFaults.push(`${id}: the columns of state ${row.narrow.join(", ")} under their minimum width`);
+          }
+          if (row.cut && !row.ellipsis) lineFaults.push(`${id}: a name cut with no ellipsis`);
         }
+        expect(lineFaults).toEqual([]);
         // A name that its cell cuts is whole in its tooltip, with the role of an object of a provider.
         for (const row of rows) {
           if (layout.get(`capi-tree-row-${row.id}`)?.cut !== true) continue;
