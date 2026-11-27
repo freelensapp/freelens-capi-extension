@@ -12,15 +12,15 @@
 // source of the mounted page, which the panel in the details of the host would then take (P6). The spinner of the host
 // stands in the place of the tree until the first load of every kind that the tree reads has ended (P13); then the
 // tree is the `Table` of the host with virtual rows, `selectable`, one row for each node shown, inside an element with
-// the role `treegrid`, the one stop of Tab of the tree, which takes the keys of a tree (P9, P18). The indexes and the
-// tree are built once for each change of what they read, and the model is evaluated with the time of each render, and
+// the role `treegrid`, the one stop of Tab of the tree, which takes the keys of a tree and the focus as it is drawn,
+// unless a control holds it (P9, P15, P18). That element owns the rows that the list draws, by `aria-owns`, since the
+// virtual list of the host puts them in an element with the role `list`, and names them again as the list draws other
+// rows, which it does on a scroll with no render of the page (P18; "Notes and deviations"). The indexes and the tree
+// are built once for each change of what they read, and the model is evaluated with the time of each render, and
 // again at the earliest time that a result names (P16).
 //
 // The scroll of the list:
 //
-// - the virtual list of the host puts its rows in an element with the role `list`, so the element of the tree owns the
-//   rows that the list draws, by `aria-owns`, named again as the list draws other rows, which it does on a scroll with
-//   no render of the page (P18; "Notes and deviations");
 // - the virtual list of the host scrolls to its `selectedItemId` at every render, so the page gives it only in the
 //   render after a key move, after the details close and for a node that the address names, and clears it once the
 //   row is drawn; it then brings the row whole into view itself, by the scroll of the list's element, which the list
@@ -40,7 +40,9 @@
 // the details of the host are open over them, which the address says by `kube-details` with a value, a click on a row
 // and an Escape in the empty search close those of the host first (P15, P17; H20). The names and the buttons that
 // expand take no stop of Tab and no focus on a press of the mouse, whose default is prevented: their click, and that of
-// a row, give the focus to the element of the tree, which keeps it through every scroll (P18; H7, H13).
+// a row, give the focus to the element of the tree, which keeps it through every scroll (P18; H7, H13). While the search
+// holds words, what the user expands or collapses acts on what the search shows, at once, and leaves the expansions of
+// the user as they were (P15).
 
 import { Renderer } from "@freelensapp/extensions";
 import { observer } from "mobx-react";
@@ -315,7 +317,7 @@ class TreePage {
   // The rows drawn, from a reference to an element of each row, which the virtual list mounts and unmounts with it.
   readonly drawn = new Map<string, boolean>();
   readonly #refs = new Map<string, (element: HTMLElement | null) => void>();
-
+  // Whether the rows that the tree owns are to be named again, once the list has drawn every row of this commit.
   #owning = false;
 
   // A reference to an element of the row of a node, the same function for each node, so that a render attaches none
