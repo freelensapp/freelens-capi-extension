@@ -582,9 +582,18 @@ describe("the role of an object of a provider (P9)", () => {
     ).toBe("infrastructure machine pool");
   });
 
-  // healthy with a control plane of a provider, ExampleControlPlane, at the contract given, in the place of its
-  // KubeadmControlPlane, and a bootstrap config of a provider for one of its worker Machines, as the case writes them.
-  function exampleView(contract: string): View {
+  // The counters of a control plane of a provider, which the contract of its definition names: at `v1beta2`, the
+  // available and the up to date replicas; at `v1beta1`, the ready, the updated and the unavailable ones, and no
+  // available ones (internal/contract/controlplane.go:212-261).
+  const CONTRACT_STATUS: Readonly<Record<string, Record<string, number>>> = {
+    v1beta2: { replicas: 3, readyReplicas: 2, availableReplicas: 2, upToDateReplicas: 3 },
+    v1beta1: { replicas: 3, readyReplicas: 3, updatedReplicas: 1, unavailableReplicas: 1 },
+  };
+
+  // healthy with a control plane of a provider, ExampleControlPlane, at the contract given, with the counters of that
+  // contract alone, in the place of its KubeadmControlPlane, and a bootstrap config of a provider for one of its worker
+  // Machines, as the case writes them.
+  function exampleView(contract: string, status: Record<string, number> = CONTRACT_STATUS[contract]): View {
     const objects = setOf("healthy");
     const cluster = named(objects, "Cluster");
     const controlPlane = named(objects, "KubeadmControlPlane");
@@ -594,7 +603,7 @@ describe("the role of an object of a provider (P9)", () => {
       kind: "ExampleControlPlane",
       metadata: { name: "example", namespace: HEALTHY, labels: { "cluster.x-k8s.io/cluster-name": HEALTHY } },
       spec: { replicas: 3, version: "v1.37.0" },
-      status: { availableReplicas: 2, readyReplicas: 2, replicas: 3, upToDateReplicas: 3, updatedReplicas: 1 },
+      status,
     };
     const config: Writable = {
       apiVersion: "bootstrap.example.test/v1beta2",
@@ -636,11 +645,34 @@ describe("the role of an object of a provider (P9)", () => {
     expect(cellsOf(view, "ExampleConfig example-config (bootstrap config)").name.role).toBe("bootstrap config");
   });
 
-  it("reads the up to date Machines of a control plane at the contract v1beta1 from status.updatedReplicas", () => {
+  it("counts a control plane at the contract v1beta1 by the fields of that contract, its available Machines the desired less the unavailable ones, as the Cluster counts them", () => {
     const plane = cellsOf(exampleView("v1beta1"), "ExampleControlPlane example (control plane)");
 
     expect(plane.replicas.text).toBe("2/3");
-    expect(tooltipOf(plane.replicas.tooltip)).toContain("Up to date: 1 Machine");
+    expect(tooltipOf(plane.replicas.tooltip)).toEqual([
+      "Desired: 3 Machines",
+      "Current: 3 Machines",
+      "Ready: 3 Machines",
+      "Available: 2 Machines, the desired less 1 unavailable",
+      "Up to date: 1 Machine",
+    ]);
+
+    // More unavailable than desired: none available, never fewer.
+    const over = cellsOf(
+      exampleView("v1beta1", { replicas: 3, readyReplicas: 0, updatedReplicas: 3, unavailableReplicas: 5 }),
+      "ExampleControlPlane example (control plane)",
+    );
+
+    expect(over.replicas.text).toBe("0/3");
+
+    // No unavailable replicas written yet: the available ones are not known, whatever a field of another contract says.
+    const unwritten = cellsOf(
+      exampleView("v1beta1", { replicas: 3, availableReplicas: 3 }),
+      "ExampleControlPlane example (control plane)",
+    );
+
+    expect(unwritten.replicas.text).toBe("N/A/3");
+    expect(tooltipOf(unwritten.replicas.tooltip)).toContain("Available: N/A, not written yet");
   });
 });
 

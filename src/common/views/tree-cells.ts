@@ -190,6 +190,14 @@ const COUNTERS = [
   ["up to date", "status.upToDateReplicas"],
 ] as const;
 
+// A counter of the replicas of an object, by its label; at the contract `v1beta1` of a control plane, the available
+// ones carry the unavailable ones, of which they are the desired less.
+export interface ReplicaCounter {
+  readonly label: (typeof COUNTERS)[number][0];
+  readonly count: number | undefined;
+  readonly unavailable?: number;
+}
+
 function machines(count: number): string {
   return count === 1 ? "1 Machine" : `${count} Machines`;
 }
@@ -198,21 +206,47 @@ function fieldAt(object: KubeObjectData, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => fieldsOf(value)?.[key], object);
 }
 
-// The available Machines of the desired, `status.availableReplicas` of `spec.replicas`, with every counter in the
-// tooltip; a counter that is not written is N/A.
-function replicasOf(object: KubeObjectData, upToDate = "status.upToDateReplicas"): WordsCell {
-  const counters = COUNTERS.map(([label, path]) => ({
-    label,
-    count: countOf(fieldAt(object, label === "up to date" ? upToDate : path)),
-  }));
+// The counters of the replicas of a control plane, a MachineDeployment, a MachineSet or a MachinePool, by the fields of
+// the project at `v1beta2`; for a control plane at the contract `v1beta1`, by the fields of that contract, which names
+// the ready, the updated and the unavailable replicas and no available ones: the Cluster counts those as the desired
+// less the unavailable ones, none below 0, and none while either is not written
+// (core/reconcilers/cluster/cluster_controller_status.go:150-159; internal/contract/controlplane.go:212-261). A counter
+// that is not written is undefined.
+export function replicaCounters(object: KubeObjectData, contract?: string): ReplicaCounter[] {
+  if (contract !== "v1beta1") {
+    return COUNTERS.map(([label, path]) => ({ label, count: countOf(fieldAt(object, path)) }));
+  }
+
+  const desired = countOf(fieldAt(object, "spec.replicas"));
+  const unavailable = countOf(fieldAt(object, "status.unavailableReplicas"));
+
+  return [
+    { label: "desired", count: desired },
+    { label: "current", count: countOf(fieldAt(object, "status.replicas")) },
+    { label: "ready", count: countOf(fieldAt(object, "status.readyReplicas")) },
+    {
+      label: "available",
+      count: desired === undefined || unavailable === undefined ? undefined : Math.max(0, desired - unavailable),
+      ...(desired === undefined || unavailable === undefined ? {} : { unavailable }),
+    },
+    { label: "up to date", count: countOf(fieldAt(object, "status.updatedReplicas")) },
+  ];
+}
+
+// The available Machines of the desired, as `2/3`, with every counter in the tooltip; a counter that is not written is
+// N/A.
+function replicasOf(object: KubeObjectData, contract?: string): WordsCell {
+  const counters = replicaCounters(object, contract);
   const available = counters[3].count;
   const desired = counters[0].count;
 
   return {
     text: available === undefined && desired === undefined ? "N/A" : `${available ?? "N/A"}/${desired ?? "N/A"}`,
-    tooltip: counters.map(({ label, count }) =>
+    tooltip: counters.map(({ label, count, unavailable }) =>
       line(
-        `${label[0].toUpperCase()}${label.slice(1)}: ${count === undefined ? "N/A, not written yet" : machines(count)}`,
+        `${label[0].toUpperCase()}${label.slice(1)}: ${count === undefined ? "N/A, not written yet" : machines(count)}${
+          unavailable === undefined ? "" : `, the desired less ${unavailable} unavailable`
+        }`,
       ),
     ),
   };
@@ -255,13 +289,8 @@ function replicasCell(tree: ClusterTree, node: TreeNode, conditions: ConditionsR
 
   switch (node.form) {
     case "object":
-      if (isControlPlane(node)) {
-        // By the contract of the control plane: `status.updatedReplicas` holds the up to date ones at `v1beta1`.
-        return replicasOf(
-          node.object,
-          node.resolution?.contract === "v1beta1" ? "status.updatedReplicas" : "status.upToDateReplicas",
-        );
-      }
+      // By the contract of a control plane of a provider (P9).
+      if (isControlPlane(node)) return replicasOf(node.object, node.resolution?.contract);
       if (node.group === CORE && ["MachineDeployment", "MachineSet", "MachinePool"].includes(node.kind)) {
         return replicasOf(node.object);
       }

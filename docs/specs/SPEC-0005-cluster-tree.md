@@ -3365,6 +3365,19 @@ the contract label of the definition for a control plane of a provider; and
   becomes active, above it in the tree in which the page last showed it, whose
   nodes above the active node the page keeps from one render to the next, and
   the next key move starts there; the code gave the root.
+- Decided while implementing the second part, after its reviews, in place of
+  what the note above on the cell Replicas says of the contract `v1beta1`: a
+  control plane at the contract `v1beta1` is counted by the fields of that
+  contract, `spec.replicas`, `status.replicas`, `status.readyReplicas`,
+  `status.updatedReplicas` and `status.unavailableReplicas`, which names no
+  available replicas: the cell and the details count its available Machines as
+  the Cluster counts them, the desired less the unavailable ones, none below 0,
+  and none while either is not written
+  (core/reconcilers/cluster/cluster_controller_status.go:150-159), and the
+  tooltip says so, as "Available: 2 Machines, the desired less 1 unavailable";
+  its up to date Machines are `status.updatedReplicas`
+  (internal/contract/controlplane.go:212-261). The unit object of that
+  contract holds its fields alone.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

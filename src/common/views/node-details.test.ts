@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TREE_CLUSTERS } from "../../../integration/__tests__/tree-expectations";
 import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
-import { treeSourceOf } from "../../../test/tree-sources";
+import { resolved, treeSourceOf } from "../../../test/tree-sources";
 import { annotationsOf } from "./annotations";
 import { buildTree, evaluateTree, indexTree } from "./cluster-tree";
 import { StatusMemo } from "./context";
@@ -12,6 +12,7 @@ import type { KubeObjectData } from "../status/index";
 import type { ClusterTree, NodeStatus, ObjectNode, ReferenceNode } from "./cluster-tree";
 import type { Fact, NodeDetails } from "./node-details";
 import type { ReadFailure } from "./read-state";
+import type { ResolvedReference } from "./references";
 
 // The cases of SPEC-0005, "Tests", "Unit", `node-details.test.ts` (P17, P20): the sections of each kind, shown or
 // hidden; the place of a node and the field that found it, and the reason of each case under Other objects; the
@@ -428,6 +429,47 @@ describe("the facts of each kind (P17)", () => {
       factOf(detailsOf(view, "cluster.x-k8s.io/MachineSet/freelens-capi-healthy-md-0-m9x7h-m5gtb"), "Templates"),
     ).toMatchObject({
       links: [{ node: "infrastructure.cluster.x-k8s.io/DevMachineTemplate/freelens-capi-healthy-md-0-xp9c7" }, {}],
+    });
+  });
+
+  it("of a control plane of a provider at the contract v1beta1: the counters of that contract, its available Machines the desired less the unavailable ones", () => {
+    // healthy, with a control plane of a provider at the contract v1beta1 in the place of its KubeadmControlPlane, with
+    // the counters of that contract alone, as the case writes them.
+    const objects = setOf("healthy");
+    const controlPlane = named(objects, "KubeadmControlPlane");
+    const provider: Writable = {
+      apiVersion: "controlplane.example.test/v1beta1",
+      kind: "ExampleControlPlane",
+      metadata: { name: "example", namespace: HEALTHY, labels: { "cluster.x-k8s.io/cluster-name": HEALTHY } },
+      spec: { replicas: 3, version: "v1.37.0" },
+      status: { replicas: 3, readyReplicas: 3, updatedReplicas: 1, unavailableReplicas: 1 },
+    };
+
+    named(objects, "Cluster").spec.controlPlaneRef = {
+      apiGroup: "controlplane.example.test",
+      kind: "ExampleControlPlane",
+      name: "example",
+    };
+
+    const example = viewOf([...objects.filter((object) => object !== controlPlane), provider], HEALTHY, {
+      resolutions: {
+        "controlplane.example.test/ExampleControlPlane": {
+          ...resolved("controlplane.example.test/ExampleControlPlane", "control-plane-example"),
+          contract: "v1beta1",
+        } as ResolvedReference,
+      },
+    });
+
+    expect(factOf(detailsOf(example, "controlplane.example.test/ExampleControlPlane/example"), "Machines")).toEqual({
+      name: "Machines",
+      form: "counters",
+      counters: [
+        { label: "desired Machines", count: 3 },
+        { label: "current Machines", count: 3 },
+        { label: "ready Machines", count: 3 },
+        { label: "available Machines", count: 2 },
+        { label: "up to date Machines", count: 1 },
+      ],
     });
   });
 

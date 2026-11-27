@@ -32,7 +32,7 @@ import { pausedByAnnotation, unreadWords } from "./cluster-tree";
 import { countOf, fieldsOf, listOf, metadataOf, namespaceOf, ownersOf, textOf } from "./objects";
 import { contractReferenceOf, isClusterApiKind, objectReferenceOf } from "./references";
 import { addressOf } from "./tree-address";
-import { nameText, objectText, placeReasonWords, treeCellsOf } from "./tree-cells";
+import { nameText, objectText, placeReasonWords, replicaCounters, treeCellsOf } from "./tree-cells";
 import { VIRTUAL_NAMES } from "./tree-rows";
 import { variableNamesOf } from "./variable-names";
 import { ROLE_WORDS } from "./words";
@@ -342,24 +342,15 @@ function statusSection(tree: ClusterTree, node: ObjectNode, status: NodeStatus, 
 
 // Facts (P17)
 
-const COUNTERS = [
-  ["spec.replicas", "desired"],
-  ["status.replicas", "current"],
-  ["status.readyReplicas", "ready"],
-  ["status.availableReplicas", "available"],
-  ["status.upToDateReplicas", "up to date"],
-] as const;
-
 function fieldAt(object: KubeObjectData, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => fieldsOf(value)?.[key], object);
 }
 
+// The counters, as the cell Replicas counts them, by the contract of a control plane of a provider (P9).
 function countersOf(node: ObjectNode): Counter[] {
-  const upToDate = node.resolution?.contract === "v1beta1" ? "status.updatedReplicas" : "status.upToDateReplicas";
-
-  return COUNTERS.map(([path, label]) => ({
+  return replicaCounters(node.object, node.resolution?.contract).map(({ label, count }) => ({
     label: `${label} Machines`,
-    count: countOf(fieldAt(node.object, label === "up to date" ? upToDate : path)),
+    count,
   }));
 }
 
