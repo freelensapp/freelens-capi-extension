@@ -1313,3 +1313,196 @@ describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
   });
 });
 
+describe("a first read of a kind that runs, which does not stay false once it is (SPEC-0005, P23)", () => {
+  it("holds before the read starts and while the first loads run, and no longer once they have ended", async () => {
+    serveTree(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+
+    expect(read.firstLoadsRun()).toBe(true);
+
+    const release = host.deferLoads();
+    const stop = read.start();
+
+    await settle();
+    expect(read.firstLoadsRun()).toBe(true);
+
+    release();
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(false);
+    stop();
+  });
+
+  it("holds again, once the tree is shown, while the first load of a kind of a provider that a new Machine names runs", async () => {
+    // healthy, and then a Machine of its Cluster that names an infrastructure machine of a kind that no other object
+    // names, ExampleMachine, which arrives once the first loads have ended, as a watch brings it.
+    const kind = "ExampleMachine";
+    const examples = {
+      kind,
+      apiVersionWithGroup: "infrastructure.example.test/v1beta2",
+      apiBase: "/apis/infrastructure.example.test/v1beta2/examplemachines",
+      isNamespaced: true,
+    };
+    const objects = structuredClone(fixtureSet("healthy")) as unknown as Record<string, any>[];
+    const template = objects.find(
+      (object) => object.kind === "Machine" && object.metadata.name === "freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+    ) as Record<string, any>;
+    const added = structuredClone(template);
+
+    added.metadata.name = "freelens-capi-healthy-added";
+    added.spec.infrastructureRef = { apiGroup: "infrastructure.example.test", kind, name: "added" };
+
+    serve(undefined, [
+      ...DEFINITIONS,
+      DEV_CLUSTERS,
+      ...DEV_DEFINITIONS,
+      definition("examplemachines.infrastructure.example.test", "infrastructure.example.test", kind, {
+        "cluster.x-k8s.io/v1beta2": "v1beta2",
+      }),
+    ]);
+    for (const api of [...Object.values(TREE_APIS), examples]) host.registerApi(api);
+    serveOwn(objectsOfStates(["healthy"]));
+    host.cluster.set(examples.apiBase, { items: [], failures: [] });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(false);
+
+    const release = host.deferLoads();
+    const machines = byKind(read).get("Machine") as unknown as { items: { push(item: unknown): void } };
+
+    act(() => runInAction(() => machines.items.push(hostObject(added))));
+    await settle();
+
+    // The store of the new kind is built, and its first load runs: the tree stays shown, and a first read runs.
+    expect(byKind(read).has(kind)).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(true);
+
+    release();
+    await settle();
+    expect(read.firstLoadsRun()).toBe(false);
+    stop();
+  });
+
+  it("holds again, once the tree is shown, while the definition of a kind of a provider that a new Machine names is read", async () => {
+    // healthy, with the store of definitions failed, so that each definition is read by a GET; then a Machine that names
+    // an infrastructure machine of a kind that no other object names, ExampleMachine, whose GET answers later.
+    const kind = "ExampleMachine";
+    const examples = {
+      kind,
+      apiVersionWithGroup: "infrastructure.example.test/v1beta2",
+      apiBase: "/apis/infrastructure.example.test/v1beta2/examplemachines",
+      isNamespaced: true,
+    };
+    const objects = structuredClone(fixtureSet("healthy")) as unknown as Record<string, any>[];
+    const added = structuredClone(
+      objects.find(
+        (object) =>
+          object.kind === "Machine" && object.metadata.name === "freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      ) as Record<string, any>,
+    );
+    const example = definition("examplemachines.infrastructure.example.test", "infrastructure.example.test", kind, {
+      "cluster.x-k8s.io/v1beta2": "v1beta2",
+    });
+    const definitions = new Map(
+      [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS].map((each) => [each.metadata?.name, each]),
+    );
+    let answer = (_definition: unknown) => undefined as void;
+
+    added.metadata.name = "freelens-capi-healthy-added";
+    delete added.metadata.uid;
+    added.spec.infrastructureRef = { apiGroup: "infrastructure.example.test", kind, name: "added" };
+    serve(undefined, []);
+    runInAction(() => {
+      host.crdStore.items = [];
+      host.crdStore.failedLoading = true;
+    });
+    for (const api of [...Object.values(TREE_APIS), examples]) host.registerApi(api);
+    serveOwn(objectsOfStates(["healthy"]));
+    host.cluster.set(examples.apiBase, { items: [], failures: [] });
+    host.crdGet.mockImplementation(async (name) => {
+      if (name === example.metadata?.name) return new Promise((resolve) => (answer = resolve));
+      return definitions.get(name) ?? null;
+    });
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(false);
+
+    const machines = byKind(read).get("Machine") as unknown as { items: { push(item: unknown): void } };
+
+    act(() => runInAction(() => machines.items.push(hostObject(added))));
+    await settle();
+
+    // The definition is still being read: no store of the new kind yet, the tree stays shown, and a first read runs.
+    expect(host.crdGet.mock.calls.map(([name]) => name)).toContain(example.metadata?.name);
+    expect(byKind(read).has(kind)).toBe(false);
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(true);
+
+    act(() => answer(example));
+    await settle();
+    expect(byKind(read).has(kind)).toBe(true);
+    expect(read.firstLoadsRun()).toBe(false);
+    stop();
+  });
+
+  it("holds while the store of the namespace that the class reference names now loads, and not during a refresh", async () => {
+    const objects = structuredClone(fixtureSet("healthy")) as KubeObject[];
+    const clusterClass = objects.find((object) => object.kind === "ClusterClass") as KubeObject;
+
+    serveTree(
+      hostObjects([
+        ...objects,
+        { ...clusterClass, metadata: { ...clusterClass.metadata, namespace: "freelens-capi-classes" } },
+      ] as KubeObject[]),
+    );
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    // A refresh reads every kind again: no first read runs.
+    const refreshing = host.deferLoads();
+
+    act(() => read.refresh());
+    await settle();
+    expect(read.firstLoadsRun()).toBe(false);
+    refreshing();
+    await settle();
+
+    const release = host.deferLoads();
+    const clusters = byKind(read).get("Cluster") as unknown as {
+      items: { replace(items: unknown[]): void } & HostObject[];
+    };
+
+    act(() => {
+      const [current] = [...clusters.items];
+      const moved = structuredClone({ ...current }) as unknown as Record<string, unknown> & {
+        spec: { topology: { classRef: { namespace?: string } } };
+      };
+
+      moved.spec.topology.classRef.namespace = "freelens-capi-classes";
+      runInAction(() =>
+        clusters.items.replace([hostObject({ ...moved, metadata: { ...current.metadata, resourceVersion: "2" } })]),
+      );
+    });
+    await settle();
+    expect(read.firstLoadsEnded()).toBe(true);
+    expect(read.firstLoadsRun()).toBe(true);
+
+    release();
+    await settle();
+    expect(read.firstLoadsRun()).toBe(false);
+    stop();
+  });
+});
