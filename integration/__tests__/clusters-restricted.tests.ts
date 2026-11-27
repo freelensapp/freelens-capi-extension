@@ -43,7 +43,7 @@
 // failed, deletes the file, every object of RBAC, the ServiceAccount and its namespace, and checks that they are gone.
 // The token is never logged.
 
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openDefinitions } from "../../e2e/scripts/commands.mts";
@@ -197,7 +197,7 @@ const DEFINITION_REFUSED =
 const PAGE = extensionPageAddress("clusters");
 
 // The folder of the screenshots of the themes, when the run takes them.
-const screenshots = process.env.TEST_SCREENSHOTS_DIR;
+const screenshots = process.env.TEST_SCREENSHOTS_DIR || undefined;
 
 // What the notices of the page say of a refusal (src/common/views/read-state.ts).
 const LIST_PERMISSION =
@@ -356,6 +356,7 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
 
     const file = path.join(screenshots, `restricted-${name}.png`);
 
+    mkdirSync(screenshots, { recursive: true });
     await opened().session.window.screenshot({ path: file });
     console.log(`screenshot ${file}`);
   }

@@ -148,7 +148,7 @@ const DRAWER_LEFT = 480;
 const states = statesOf(["all"]);
 const namespaces = states.map((state) => state.namespace);
 const repository = path.resolve(import.meta.dirname, "..", "..");
-const folder = process.env.TEST_SCREENSHOTS_DIR;
+const folder = process.env.TEST_SCREENSHOTS_DIR || undefined;
 
 // The namespace and the name of the Cluster of a state.
 function clusterOf(state: string): { namespace: string; name: string } {
@@ -427,8 +427,8 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
 
   it("applies the theme and the variant that the profile names, in the root frame and in that of the cluster (the theme)", async () => {
     const { session, frame } = opened();
-    const theme = process.env.TEST_THEME;
-    const variant = process.env.TEST_THEME_VARIANT;
+    const theme = process.env.TEST_THEME || undefined;
+    const variant = process.env.TEST_THEME_VARIANT || undefined;
 
     if (theme === undefined && variant === undefined) {
       console.log("TEST_THEME and TEST_THEME_VARIANT are not set: the theme is not checked");
@@ -924,7 +924,7 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
       const keyboard = session.window.keyboard;
       const { namespace, name } = clusterOf("healthy");
       const tree = await openTree(frame, namespace, name);
-      const planted = process.env.TEST_PLANT_KEYS !== undefined;
+      const planted = Boolean(process.env.TEST_PLANT_KEYS);
       let dropping: (() => Promise<void>) | undefined;
 
       await expandAll(tree);
@@ -1182,7 +1182,7 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
       await expandAll(tree);
       await scrollListTo(tree, (await listMetrics(tree)).scrollHeight);
 
-      const planted = process.env.TEST_PLANT_COMPENSATION !== undefined;
+      const planted = Boolean(process.env.TEST_PLANT_COMPENSATION);
       const inView = async () => {
         const first = firstInView(await drawnRows(tree));
 
@@ -1555,7 +1555,7 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
 
         if (named === undefined) throw new Error("No Machine in view to click");
 
-        const restore = process.env.TEST_PLANT_FOCUS !== undefined ? await focusTheName(tree) : undefined;
+        const restore = process.env.TEST_PLANT_FOCUS ? await focusTheName(tree) : undefined;
 
         try {
           await clickName(tree, named.id);
