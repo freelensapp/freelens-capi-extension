@@ -9,6 +9,8 @@ import {
   accessReviews,
   allows,
   allowsDefinitions,
+  CLUSTERS_PAGE_DEFINITIONS,
+  CLUSTERS_PAGE_KINDS,
   CONTROL_PLANE_DEFINITION,
   extraObjects,
   IDENTITY,
@@ -349,6 +351,25 @@ describe("the identity of the restricted session (P23)", () => {
       `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${INFRASTRUCTURE_DEFINITION}`,
       `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${MACHINE_DEFINITION}`,
       `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${MACHINE_TEMPLATE_DEFINITION}`,
+    ]);
+  });
+
+  // The cases of the page of the Clusters leave out the refusals of what that page reads alone, so that the page of the
+  // Clusters reading a kind or a definition of the tree, which it never reads, is a refusal that no case expects.
+  it("expects in the cases of the page of the Clusters the refusals of the kinds and of the definitions that that page reads alone", () => {
+    expect(CLUSTERS_PAGE_KINDS).toEqual([...PAGE_KINDS, INFRASTRUCTURE]);
+    expect(CLUSTERS_PAGE_DEFINITIONS).toEqual([CONTROL_PLANE_DEFINITION, INFRASTRUCTURE_DEFINITION]);
+    expect(refusedLists(CLUSTERS_IN_PAUSED, "every", CLUSTERS_PAGE_KINDS)).toEqual(
+      [...PAGE_KINDS, INFRASTRUCTURE].map((each) => `/apis/${each.group}/${each.version}/${each.plural}`),
+    );
+    for (const each of [...TREE_KINDS, ...PROVIDER_KINDS.filter((provider) => provider !== INFRASTRUCTURE)]) {
+      expect(refusedLists(CLUSTERS_IN_PAUSED, "every", CLUSTERS_PAGE_KINDS)).not.toContain(
+        `/apis/${each.group}/${each.version}/${each.plural}`,
+      );
+    }
+    expect(refusedDefinitions(BY_NAME, CLUSTERS_PAGE_DEFINITIONS)).toEqual([
+      "/apis/apiextensions.k8s.io/v1/customresourcedefinitions",
+      `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${INFRASTRUCTURE_DEFINITION}`,
     ]);
   });
 

@@ -123,6 +123,13 @@ export const NAMED_DEFINITIONS = [
   MACHINE_TEMPLATE_DEFINITION,
 ] as const;
 
+// What the page of the Clusters reads, that of SPEC-0004 alone: its kinds and the infrastructure cluster of the
+// fixtures, and the definitions of the control plane and of the infrastructure cluster by their names. Its cases leave
+// out the refusals of these alone, so that a read of a kind or of a definition of the tree of a Cluster, which that page
+// never makes, is never a refusal that one of them leaves out.
+export const CLUSTERS_PAGE_KINDS: readonly Kind[] = [...PAGE_KINDS, INFRASTRUCTURE];
+export const CLUSTERS_PAGE_DEFINITIONS: readonly string[] = [CONTROL_PLANE_DEFINITION, INFRASTRUCTURE_DEFINITION];
+
 // The path of the list of the definitions, which the host makes as the frame of a cluster starts.
 export const DEFINITIONS_PATH = "/apis/apiextensions.k8s.io/v1/customresourcedefinitions";
 
@@ -369,10 +376,15 @@ export function listPath(kind: Kind, namespace?: string): string {
   return `/apis/${kind.group}/${kind.version}/${namespace === undefined ? "" : `namespaces/${namespace}/`}${kind.plural}`;
 }
 
-// The refusals that the page expects when it reads every kind in these namespaces, or over the whole cluster with
-// every namespace selected: the list of each kind that the access refuses there.
-export function refusedLists(access: Access, namespaces: readonly string[] | "every"): string[] {
-  return READ_KINDS.flatMap((kind) =>
+// The refusals that a page expects when it reads its kinds, every kind that an access grants or refuses unless they are
+// given, in these namespaces, or over the whole cluster with every namespace selected: the list of each kind that the
+// access refuses there.
+export function refusedLists(
+  access: Access,
+  namespaces: readonly string[] | "every",
+  kinds: readonly Kind[] = READ_KINDS,
+): string[] {
+  return kinds.flatMap((kind) =>
     namespaces === "every"
       ? allows(access, kind, undefined)
         ? []
@@ -384,13 +396,12 @@ export function refusedLists(access: Access, namespaces: readonly string[] | "ev
 }
 
 // The refusals of the definitions that an access expects: the list that the host makes as the frame of a cluster
-// starts, and the get of each definition that a view reads by its name and the access does not name.
-export function refusedDefinitions(access: Access): string[] {
+// starts, and the get of each definition that a view reads by its name, those of every view unless they are given,
+// and that the access does not name.
+export function refusedDefinitions(access: Access, names: readonly string[] = NAMED_DEFINITIONS): string[] {
   return [
     ...(allowsDefinitions(access) ? [] : [DEFINITIONS_PATH]),
-    ...NAMED_DEFINITIONS.filter((name) => !allowsDefinitions(access, name)).map(
-      (name) => `${DEFINITIONS_PATH}/${name}`,
-    ),
+    ...names.filter((name) => !allowsDefinitions(access, name)).map((name) => `${DEFINITIONS_PATH}/${name}`),
   ];
 }
 

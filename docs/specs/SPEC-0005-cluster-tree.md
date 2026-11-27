@@ -3708,7 +3708,15 @@ the contract label of the definition for a control plane of a provider; and
   the nodes that cannot be read. Every access grants the kinds of the tree and
   those of the providers of the fixtures, and the access of the definitions by
   their names grants, beside the two of SPEC-0004, those of the DevMachines and
-  of the DevMachineTemplates, which the tree of `healthy` reads.
+  of the DevMachineTemplates, which the tree of `healthy` reads. After the
+  reviews of the third part, the cases of the page of the Clusters leave out the
+  refusals of the kinds and of the definitions that that page reads alone
+  (`CLUSTERS_PAGE_KINDS` and `CLUSTERS_PAGE_DEFINITIONS` of
+  `restricted-access.ts`), while every access still grants, and asks the
+  cluster about, the kinds of the tree as well: with them, those cases left out
+  refusals that the page of the Clusters never meets, such as a list of the
+  KubeadmConfigs over the whole cluster, which a regression of that page would
+  have hidden.
 - A fact of Freelens dev on Chromium, seen in the first run of the branch of the
   screenshots of the third part, in its job of the theme `freelens` dark: the
   restricted session loaded the frame of its cluster again for case 5, the

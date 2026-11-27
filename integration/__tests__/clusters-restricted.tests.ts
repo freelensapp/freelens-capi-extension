@@ -67,6 +67,8 @@ import {
 import {
   accessObjects,
   accessReviews,
+  CLUSTERS_PAGE_DEFINITIONS,
+  CLUSTERS_PAGE_KINDS,
   CONTROL_PLANE_DEFINITION,
   DEFINITIONS_PATH,
   extraObjects,
@@ -615,9 +617,9 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       const { session, frame } = opened();
       const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
-        ...refusedLists(CLUSTERS_IN_PAUSED, [HEALTHY, PAUSED]),
-        ...refusedLists(CLUSTERS_IN_PAUSED, "every"),
-        ...refusedLists(CLUSTERS_IN_BOTH, [HEALTHY, PAUSED]),
+        ...refusedLists(CLUSTERS_IN_PAUSED, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
+        ...refusedLists(CLUSTERS_IN_PAUSED, "every", CLUSTERS_PAGE_KINDS),
+        ...refusedLists(CLUSTERS_IN_BOTH, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
       ]);
 
       try {
@@ -702,8 +704,8 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       const { session, frame } = opened();
       const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
-        ...refusedLists(MACHINES_IN_PAUSED, [HEALTHY, PAUSED]),
-        ...refusedLists(MACHINES_IN_BOTH, [HEALTHY, PAUSED]),
+        ...refusedLists(MACHINES_IN_PAUSED, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
+        ...refusedLists(MACHINES_IN_BOTH, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
       ]);
 
       try {
@@ -1009,8 +1011,12 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       // the get of the definition of the infrastructure cluster once the identity may not read it, from the page.
       const stopList = expectRefusals([DEFINITIONS_PATH], { anyPage: true });
       const stopGets = expectRefusals([
-        ...refusedDefinitions(DEFINITIONS_BY_NAME).filter((path) => path !== DEFINITIONS_PATH),
-        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED).filter((path) => path !== DEFINITIONS_PATH),
+        ...refusedDefinitions(DEFINITIONS_BY_NAME, CLUSTERS_PAGE_DEFINITIONS).filter(
+          (path) => path !== DEFINITIONS_PATH,
+        ),
+        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED, CLUSTERS_PAGE_DEFINITIONS).filter(
+          (path) => path !== DEFINITIONS_PATH,
+        ),
       ]);
 
       try {
