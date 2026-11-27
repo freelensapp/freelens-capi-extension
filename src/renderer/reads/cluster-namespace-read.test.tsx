@@ -1196,6 +1196,31 @@ describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
     stop();
   });
 
+  it("wait for the first load of the store of the Clusters itself, never for that of any store of the read, while the host has registered the API of another kind alone", async () => {
+    // The host registers the API of the Machines alone at first: the read builds the store of the Machines and loads
+    // it, and its first loads have not ended, since the read has no store of the Clusters yet.
+    serve(["machines"], [...DEFINITIONS, DEV_CLUSTERS, ...DEV_DEFINITIONS]);
+    serveOwn(objectsOfStates(["healthy"]));
+
+    const read = new ClusterNamespaceRead(NAMESPACE, NAME, TREE_VIEW_KINDS);
+    const stop = read.start();
+
+    await settle();
+
+    expect([...byKind(read).keys()]).toEqual(["Machine"]);
+    expect(byKind(read).get("Machine")?.loadAll).toHaveBeenCalledTimes(1);
+    expect(read.firstLoadsEnded()).toBe(false);
+
+    act(() => {
+      serveTree(objectsOfStates(["healthy"]));
+    });
+    await settle();
+
+    expect(byKind(read).has("Cluster")).toBe(true);
+    expect(read.firstLoadsEnded()).toBe(true);
+    stop();
+  });
+
   it("have not ended while a definition that a reference names is still read, with the store of definitions failed, its stores loaded", async () => {
     serveTree(objectsOfStates(["healthy"]));
     runInAction(() => {

@@ -2972,9 +2972,14 @@ the contract label of the definition for a control plane of a provider; and
   of their addresses, whatever the order of a store, an object that another of
   them owns, or that a Machine or a MachinePool among them names, after that
   one; and after each the rows of P7 place what it holds, and what that holds
-  in turn, so that the objects that it controls, owns or names go under it,
-  never beside it with a reason that says that their owners are not nodes of
-  the tree. The rows then read only the objects that the nodes made since they
+  in turn, so that the objects that it controls, owns or names go under it.
+  The templates aside, as the second part found and its unit case pins: the
+  row of the owners places no template once the templates are placed, so a
+  template that a template under Other objects owns goes beside it, and an
+  object that a template alone owns goes there before the templates are
+  placed, each with the reason that its owners are not nodes of the tree,
+  naming a template that is a node by then; Cluster API makes neither shape.
+  The rows then read only the objects that the nodes made since they
   last read control, own or name, in the order in which a pass over every
   object reads them, so that the tree is the one that every row run again over
   every object gives, and the work grows with the objects of the Cluster, never
@@ -3236,6 +3241,43 @@ the contract label of the definition for a control plane of a provider; and
   click outside while the focus is still in the details or on the body, as the
   details of a Cluster do (SPEC-0004, P15), and stays on the control that a
   click outside gave it to.
+
+- Decided while implementing the second part, after the last review of the
+  first: the case of the placement that counts its passes over the objects of
+  the Cluster counts too what the rows read of each object, the calls of
+  `followedReferencesOf` and of `ownersOf`, from 150 to 300 restored Machines,
+  which grow as the Machines do, at most twice, so that a row that read every
+  node or every object for each object under Other objects fails it. Four cases
+  pin the mechanisms by which the rows place what an object under Other objects
+  holds as a pass of every row over every object places it, each on the
+  smallest set on which the review found it to change the tree: what a node
+  placed in a pass owns after it joins that pass; what it owns before it waits
+  for the next pass; the objects that the nodes own are read in the order of
+  the objects of the Cluster; and the row of the claims reads again the nodes
+  that its own pass made.
+- Decided while implementing the second part, where the order of the rows of P7
+  and the passes of the rows part: the row of the owners places, in one pass
+  over the objects of the Cluster in their order, every object that it can
+  place, and an object that it places makes a node under which the same pass
+  places what that object owns after it, by its owner, where an earlier row of
+  P7 would place it by its own rule: an IPAddress that its claim controls and
+  that the `status.addressRef` of the claim names, by its owner rather than by
+  that reference, when the row of the owners places the claim, as under the row
+  of an owner of a kind that cannot be read; and a claim that a MachineSet
+  controls, by its owner rather than by its controller, when that row places the
+  MachineSet. The parent is the same; the placement that the details say and the
+  order of P14 among the siblings differ. The placement keeps it, as the whole
+  settle of the first part did, and unit cases pin it.
+- Decided while implementing the second part: the first settle of the rows,
+  before any object goes under Other objects, still runs every row over every
+  object until they place nothing more, so a chain of owners in which each
+  object comes before its owner in the order of the objects of the Cluster, its
+  head a node, takes as many passes as it has links, the square of its length;
+  the chains of owners of Cluster API are a few levels deep.
+- Decided while implementing the second part: the first loads of the read wait
+  for the first load of the store of the Clusters itself, never for that of
+  whatever store the read has built, which a case of the read pins with the
+  host registering the API of the Machines alone at first.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -1440,9 +1440,12 @@ class Placer {
   // Other objects (P7): an object of the Cluster that no row places, with its reason, which holds what it owns and
   // names by the same rules. The objects go there one at a time, owners first, and after each the rows above place
   // what it holds, and what that holds in turn (`#placeHeld`), so that an object that the last one controls or names
-  // goes under it, never beside it with a false reason. An object whose owner is of a kind still loading waits for it,
-  // and so does an object whose owner, or whose Machine or MachinePool that names it, waits. The work grows with the
-  // objects, never with their square (P16).
+  // goes under it. The templates aside: the row of the owners places no template once the templates are placed, so a
+  // template that a template under Other objects owns goes beside it, and an object that a template alone owns goes
+  // there before the templates are placed; each says that its owners are not nodes of the tree, naming a template that
+  // is one by then, a shape that Cluster API does not make (SPEC-0005, "Notes and deviations"). An object whose owner
+  // is of a kind still loading waits for it, and so does an object whose owner, or whose Machine or MachinePool that
+  // names it, waits. The work grows with the objects, never with their square (P16).
   #placeOthers(templates: boolean): void {
     // The objects that no row placed, in the order of the rows of P7 that place their kinds, then of their addresses,
     // whatever the order of a store.
