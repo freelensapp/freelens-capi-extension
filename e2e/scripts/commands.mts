@@ -1161,9 +1161,10 @@ export interface RealProjectSession extends TierSession {
   // The version of Kubernetes of the workload clusters, from the pins.
   kubernetesVersion: string;
   // What `clusterctl describe cluster` prints of a workload cluster of the namespace of the workload clusters of `up`,
-  // with the pinned clusterctl, which checks for no newer clusterctl (SPEC-0001, R4.9): the tool of the project, which
-  // the sessions of the real tier compare the view with (SPEC-0004, "With the real project").
-  describeCluster(name: string): Promise<string>;
+  // with the pinned clusterctl, which checks for no newer clusterctl (SPEC-0001, R4.9), and the flags given: the tool
+  // of the project, which the sessions of the real tier compare the view with (SPEC-0004, "With the real project";
+  // SPEC-0005, "With the real project").
+  describeCluster(name: string, flags?: readonly string[]): Promise<string>;
   // The pinned files of S6 (SPEC-0004, P29), each checked against its pin: the package of the Sveltos extension, with
   // its file name and its SHA-256, and the definitions of the chart of Sveltos, each as its text.
   sveltos(): Promise<{
@@ -1282,8 +1283,8 @@ export async function openRealProject(): Promise<RealProjectSession> {
       ...tierRequests(MANAGEMENT),
       kindnet: (namespace) => kindnetResources(kindnet, namespace),
       kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
-      describeCluster: async (name) =>
-        clusterctl(await binary(), MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE], {
+      describeCluster: async (name, flags = []) =>
+        clusterctl(await binary(), MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE, ...flags], {
           quiet: true,
         }),
       sveltos: async () => {
