@@ -3310,6 +3310,17 @@ the contract label of the definition for a control plane of a provider; and
   While the Clusters of its namespace cannot be read, refused, failed, or not
   read again after a refresh, the drawer goes with the tree, whose place says
   why, since what the tree held is not known then.
+- Decided while implementing the second part, after its reviews, where P13
+  moves the scroll of the list in a layout effect: the page reads the offset
+  of the list's element before React changes the rows, in
+  `getSnapshotBeforeUpdate` of a class component that renders nothing, since
+  Chromium clamps that offset to the shorter list once rows go at its end, and
+  takes the first row in view from that offset, never from the clamped one;
+  then, in the same commit and before the paint, it sets the scroll to that
+  offset moved by the height of the rows inserted or removed above that row.
+  Taken from the clamped offset, rows removed while the user sits at the
+  bottom of the tree moved the rows in view a second time, which a case of the
+  page shows on a list that clamps its scroll as Chromium does.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

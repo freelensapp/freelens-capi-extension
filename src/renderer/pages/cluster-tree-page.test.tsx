@@ -212,6 +212,26 @@ function layOut(height: number, scrollTop = 0): HTMLElement {
   return list;
 }
 
+// The element of the virtual list that scrolls, laid out as Chromium lays it out: its rows of 33 px, the height that
+// the case gives it, and a scroll that the browser keeps within what the list holds, clamped to the shorter list as
+// soon as rows go.
+function layOutClamped(height: number): HTMLElement {
+  const list = document.querySelector<HTMLElement>(".VirtualList > .list");
+  const max = () => Math.max(0, (list?.children.length ?? 0) * ROW_HEIGHT - height);
+  let top = 0;
+
+  if (list === null) throw new Error("No list");
+  Object.defineProperty(list, "clientHeight", { configurable: true, get: () => height });
+  Object.defineProperty(list, "scrollTop", {
+    configurable: true,
+    get: () => Math.min(top, max()),
+    set: (value: number) => {
+      top = Math.max(0, Math.min(value, max()));
+    },
+  });
+  return list;
+}
+
 function tree(): HTMLElement {
   return screen.getByTestId("capi-tree");
 }
@@ -837,6 +857,42 @@ describe("the table of the tree (P9, P13, P16)", () => {
     fireEvent.click(within(rowOf("virtual:health-checks")).getByTestId("capi-tree-expander"));
     expect(rowIds().length).toBeGreaterThan(before.length);
     expect(list.scrollTop).toBe(first * ROW_HEIGHT);
+  });
+
+  it("keeps the first row in view in place when rows go above it at the end of the list, whose scroll the browser clamps to the shorter list", async () => {
+    const { built } = await opened(MACHINE);
+
+    nextFrame();
+
+    // A list three rows high, scrolled to its end, the user sitting at the bottom of the tree.
+    const list = layOutClamped(3 * ROW_HEIGHT);
+
+    list.scrollTop = 1_000_000;
+
+    const before = rowIds();
+    const first = before[Math.floor(list.scrollTop / ROW_HEIGHT)];
+
+    expect(first).toBe("cluster.x-k8s.io/ClusterClass/quick-start");
+    expect(before.indexOf(OTHER_MACHINE)).toBeLessThan(before.indexOf(first));
+
+    // The other Machine goes, above the first row in view, with its infrastructure machine and its bootstrap config,
+    // as the watches bring their deletion.
+    const other = `${HEALTHY}-md-0-m9x7h-m5gtb-5pzv9`;
+
+    act(() => {
+      runInAction(() => {
+        for (const kind of ["Machine", "DevMachine", "KubeadmConfig"]) {
+          const store = ownStore(kind, built);
+
+          store.items.replace(store.items.filter((object) => object.getName() !== other));
+        }
+      });
+    });
+
+    const after = rowIds();
+
+    expect(after).not.toContain(OTHER_MACHINE);
+    expect(after[Math.floor(list.scrollTop / ROW_HEIGHT)]).toBe(first);
   });
 
   it("gives no selectedItemId and sets no scroll after a search that keeps the row of the active node out of view", async () => {

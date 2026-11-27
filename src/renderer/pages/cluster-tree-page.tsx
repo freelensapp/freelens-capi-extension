@@ -22,9 +22,10 @@
 //   render after a key move, after the details close and for a node that the address names, and clears it once the
 //   row is drawn; it then brings the row whole into view itself, by the scroll of the list's element, which the list
 //   leaves half under its head at its first mount (P16; H6, H17);
-// - rows that the reads insert or remove above the first row in view leave the rows in view in place: a layout effect
-//   moves the scroll of the list by their height, before the paint (P13; H18); an expansion, a collapse and a search
-//   move no row and scroll nothing.
+// - rows that the reads insert or remove above the first row in view leave the rows in view in place: the page reads
+//   the offset of the list before React changes the rows, since the browser clamps it to a shorter list once rows are
+//   removed, and, in the same commit, before the paint, moves the scroll from that offset by their height (P13; H18);
+//   an expansion, a collapse and a search move no row and scroll nothing.
 //
 // What the page computes is computed inside the error boundary that P17 and P19 give it, so that an error leaves the
 // header, and the tree when it is in the details: the page renders its header and, inside the boundary of the tree, a
@@ -371,6 +372,41 @@ interface TreeItem {
   getName(): string;
 }
 
+interface RowsInPlaceProps {
+  readonly rows: readonly TreeRow[];
+  readonly change: RowsChange;
+  // The element of the virtual list that scrolls.
+  readonly list: () => HTMLElement | null;
+}
+
+// Keeps the rows in view in place when the reads insert or remove rows above the first row in view (P13; H18). It reads
+// the offset of the list's element before React changes the rows, since the browser clamps that offset to the shorter
+// list once rows are removed, at the end of the list; then, once the rows are in the document and before the browser
+// paints them, it takes the first row in view from that offset, never from the offset that the browser clamped, and
+// moves the scroll from it by the height of the rows inserted or removed above that row. A class component, since only
+// one reads the document before React changes it (`getSnapshotBeforeUpdate`); it renders nothing and reads no
+// observable.
+class RowsInPlace extends React.Component<RowsInPlaceProps> {
+  getSnapshotBeforeUpdate(): number | null {
+    return this.props.list()?.scrollTop ?? null;
+  }
+
+  componentDidUpdate(previous: RowsInPlaceProps, _state: unknown, offset: number | null) {
+    const list = this.props.list();
+
+    if (list === null || offset === null || previous.rows === this.props.rows) return;
+
+    const first = previous.rows[Math.floor(offset / ROW_HEIGHT)]?.node.id;
+    const moved = scrollOffset(previous.rows, this.props.rows, first, this.props.change);
+
+    if (moved !== 0) list.scrollTop = offset + moved;
+  }
+
+  render() {
+    return null;
+  }
+}
+
 interface TreeViewProps {
   readonly namespace: string;
   readonly name: string;
@@ -652,22 +688,11 @@ const TreeContent = observer((props: TreeContentProps) => {
   useLayoutEffect(() => onMatches(matches), [matches, onMatches]);
   useLayoutEffect(() => () => onMatches(undefined), [onMatches]);
 
-  // Once the rows of a render are in the document and before the browser paints them (P13, P16).
+  // Once the rows of a render are in the document and before the browser paints them, and after `RowsInPlace` has kept
+  // the rows in view in place (P13, P16).
   useLayoutEffect(() => {
-    const list = listElementOf(tree.current);
-    const before = page.before;
-    const change = page.change;
-
     page.before = rows;
     page.change = "reads";
-    // Rows that the reads inserted or removed above the first row in view leave it in place, by the scroll of the list,
-    // which keeps its offset when rows change above the view (H18).
-    if (list !== null && before !== undefined && before !== rows) {
-      const first = before[Math.floor(list.scrollTop / ROW_HEIGHT)]?.node.id;
-      const offset = scrollOffset(before, rows, first, change);
-
-      if (offset !== 0) list.scrollTop += offset;
-    }
     // The row that the list scrolls to is drawn: the page clears `selectedItemId` once the list has scrolled, and then
     // brings the row whole into view, which a row that the list leaves partly in view needs.
     const target = page.target;
@@ -912,6 +937,7 @@ const TreeContent = observer((props: TreeContentProps) => {
               ))}
             </TableHead>
           </Table>
+          <RowsInPlace rows={rows} change={page.change} list={() => listElementOf(tree.current)} />
         </div>
       )}
       {shown && outcome?.state === "not-read" ? null : (
