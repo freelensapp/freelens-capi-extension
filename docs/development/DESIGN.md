@@ -9,7 +9,13 @@ view, the list and the details of Clusters, set the rules below
 ([SPEC-0004](../specs/SPEC-0004-clusters.md)); the tree of a Cluster added the
 rules of a tree, of the details of every object of a Cluster, of the links
 between them and of the reads of a view by its own kinds
-([SPEC-0005](../specs/SPEC-0005-cluster-tree.md)); the later views add theirs.
+([SPEC-0005](../specs/SPEC-0005-cluster-tree.md)); a Cluster with the control
+plane of another provider added the word of counters that are not Machines,
+the version that a control plane reports, the cause of an activity that cannot
+be read, and the way to the tenant of a KamajiControlPlane, which the Kamaji
+extension of the organization shows
+([SPEC-0028](../specs/SPEC-0028-other-control-plane.md)); the later views add
+theirs.
 The facts behind them are in
 [SPEC-0001](../specs/SPEC-0001-reconnaissance.md), and the rules of status in
 [SPEC-0003](../specs/SPEC-0003-status-model.md).
@@ -103,7 +109,13 @@ as "SPEC-0003, P31", and the kit as `kit` with its file.
   deleting (SPEC-0003, P16).
   - Activity: each activity, in a mark of its tone, with its state when it is
     not Progressing and its duration, in the order of the closed set of
-    SPEC-0003, Replacing included (SPEC-0003, "The closed sets").
+    SPEC-0003, Replacing included (SPEC-0003, "The closed sets"). A control
+    plane that has none of `RollingOut`, `ScalingUp` and `ScalingDown`, and its
+    Cluster, stay Unknown, but while they are deleting, and are never read as
+    Idle, and the model gives each, with that Unknown, the note
+    `activities-not-written`: for that note alone, the tooltip of the cell says
+    why, next to the activity Unknown, and the details say it among the notes of
+    the model (SPEC-0003, P1; SPEC-0028, P9).
   - Condition: the word of the health in its tone, then the word "stale" when
     the health has a mark of freshness, and, for a Cluster, how many of its
     MachinePools are of unknown health, when one is (SPEC-0003, the rule of
@@ -218,7 +230,9 @@ and in a theme that is not the default, such as its high contrast theme
   SPEC-0003 gives them (SPEC-0003, P27).
 - A missing value is N/A, with a tooltip that says why when the reason is
   known: not written yet, no managed topology, not set by the topology, a kind
-  that keeps no replicas, a kind that has no status.
+  that keeps no replicas, a kind that has no status, an object that the view
+  could not read, as a control plane whose version it takes from that object
+  (SPEC-0028, P11).
 - The role of an object of a provider is said in the words of the closed set of
   SPEC-0003, the eight of `ProviderRole`: infrastructure cluster, control plane,
   infrastructure machine, bootstrap config, infrastructure machine pool, IPAM
@@ -240,9 +254,30 @@ and in a theme that is not the default, such as its high contrast theme
   which says that a kind has no status, and in its cell Status the reason
   (SPEC-0004, P18; SPEC-0005, P12).
 - Counters name their kind and their unit: desired, current, ready,
-  available and up to date Machines. A cell of counters shows the available
-  of the desired, as `2/3`, with every counter in its tooltip (SPEC-0004,
-  P8).
+  available and up to date, each with the word of what is counted. A cell of
+  counters shows the available of the desired, as `2/3`, with every counter in
+  its tooltip (SPEC-0004, P8). The counters of a control plane carry the word
+  of what it counts, as far as the view knows it. A KubeadmControlPlane counts
+  Machines, by its kind, whether its object was read or not, with no spinner
+  for the word, and so do the control plane Machines of a Cluster with no
+  control plane reference. A control plane of another kind shows the spinner
+  of the host in the place of its counters while its own object still loads,
+  then Machines when that object has `spec.machineTemplate`, which the
+  contract asks of a control plane of Machines, and replicas when it has none
+  or when the view could not read it, since replicas is the word of the
+  contract and claims nothing of what a replica is. The count of each version
+  of the control plane takes the same word (SPEC-0028, P10).
+- A version is the one that the project gives the object. A Cluster with no
+  version in its topology and none copied from its control plane shows the one
+  that its control plane reports, its `status.versions`, else its
+  `status.version`, as the project reads it, an empty one being no version;
+  `status.version` is a field that the contract deprecates, which the details
+  say with the label "deprecated" after the field, and a cell of a list in its
+  tooltip, never in the cell, where the label would read as a word on the
+  version. The version of the topology, or one copied from the control plane,
+  shows whatever the object of the control plane; the spinner takes the place
+  of the version only when neither gives one and that object still loads
+  (SPEC-0028, P11).
 - A yes or no is phrased so that Yes is the healthy answer, as "Initialized:
   Yes", and reads Unknown, never No, when the project has not said
   (SPEC-0004, P27; kit, `docs/design.md`, "Status"). A field that the project
@@ -335,8 +370,11 @@ and in a theme that is not the default, such as its high contrast theme
   object of a provider, the details of the host, over those of the extension,
   which stay open under them (SPEC-0001, A6; SPEC-0004, P18). Both are a drawer
   of the host: one Escape closes both, and the close icon of the details of the
-  host closes them alone. In the details of a Cluster, the references to its
-  KubeadmControlPlane, its MachineDeployments, its MachinePools and its
+  host closes them alone. Over a list, after that Escape the focus goes back to
+  the name that opened the details of the extension, which give it back once
+  both have closed, whatever their order (SPEC-0028, P17). In the details of a
+  Cluster, the references to its KubeadmControlPlane, its MachineDeployments,
+  its MachinePools and its
   ClusterClass, which the maintainer decided on 2026-11-25 to keep as plain text
   until SPEC-0005 gave them details of the extension (SPEC-0004, P18), open the
   tree of that Cluster at their node, with its details, as the maintainer
@@ -382,6 +420,43 @@ and in a theme that is not the default, such as its high contrast theme
   (SPEC-0001, R6.5); its definition names no version that the parser knows
   (SPEC-0003, P26); the cluster serves no such kind; or the object does not
   exist.
+
+## The tenant of a KamajiControlPlane
+
+The TenantControlPlane of Kamaji is the one kind of another project that the
+extension reads, by the exception to SPEC-0001, A2 and A3 that the maintainer
+decided on 2026-11-26 for that kind alone: at
+`kamaji.clastix.io/v1alpha1`, its name, its namespace and its owner
+references, only while the Kamaji extension of the organization is enabled,
+and never its Secrets (SPEC-0028, P16). It is no rule for another kind or
+another project, which would need a decision of its own.
+
+- The tenant of a KamajiControlPlane is found as the provider makes it: by its
+  name, its namespace and its owner reference with the flag of controller, the
+  name alone never enough (SPEC-0028, P14).
+- It is read, and linked, only while the Kamaji extension is enabled, as
+  `Common.App.getEnabledExtensions()` of the extension API says, read in an
+  observer so that the view follows the extension enabled, disabled or
+  uninstalled with no reload: no page of the documents of the extension API
+  describes a way to know it, and that member is the least fragile one that the
+  API gives (SPEC-0028, P15, P16). Whether the cluster serves the kind comes
+  from the store of definitions of the host, or, for a user who may not list the
+  definitions, from the APIs that the host registers from the discovery of the
+  cluster, with no request, and no definition of Kamaji is read by its name
+  (SPEC-0028, P16, P17).
+- The link opens the details of the host for the tenant, where the Kamaji
+  extension registers its panel, over the details of the extension, as the
+  link to an object of a provider does (SPEC-0028, P17). While the Kamaji
+  extension is not enabled, the tenant is text that says which extension shows
+  it, with the name of its package in the text itself, and nothing of its kind
+  is read, so that no permission is asked for it and no refusal of it is
+  shown; no text says that the cluster serves no TenantControlPlane before the
+  host knows the kinds that it serves (SPEC-0028, P16, P17).
+- The tenant of a KamajiControlPlane whose deployment names a cluster of its
+  own is text that says so, and no tenant is looked for, whatever the view
+  reads of its namespace; nothing under that field is read, never the Secret
+  of the kubeconfig that names that cluster (SPEC-0001, A3; SPEC-0028, P14,
+  P17).
 
 ## The states that are not the happy one
 
@@ -480,7 +555,13 @@ tree of a Cluster does (SPEC-0005):
   reference, which sits where an object read names the owner, as a control
   plane under the Cluster, and else in the node of that kind, never as an
   absence; and every other object of the Cluster under a node of its own,
-  Other objects, with the reason (SPEC-0005, P7, P12).
+  Other objects, with the reason (SPEC-0005, P7, P12). A field of a contract
+  that the object does not have, as the machine template of a control plane
+  that keeps no Machines, is no node and no node not found; the
+  TenantControlPlane of a KamajiControlPlane, which the view reads only for the
+  row Tenant of its details, is no node, and neither is its kind when it cannot
+  be read, whose notice names no node; the tree waits for no first load of it,
+  which the row Tenant alone shows (SPEC-0028, P13, P16).
 - **The order.** The roles in a fixed order, then the nodes of the kinds that
   cannot be read, in the order of the rules that place their objects and, for
   one rule, by name, and the nodes of one kind by their names, never by their
@@ -600,3 +681,5 @@ and no other module of a view reads them, which the check of Safety asserts
 | Live data are polled at an interval that the panel shows, with a manual refresh ("Interaction and performance")                                                                                  | The tree follows the watches of its stores, with no interval, and has a manual refresh in its header                                                                                                                                                                 | The stores of the tree, its own, bring each change through their watches, as the stores of every view of the extension do; the refresh reads again what a watch can lose, as the reload after a 410 does                                                                                                                                                             | SPEC-0005, P23                |
 | A reference to another object is a link when its target exists ("Details")                                                                                                                       | The IPAM pool of an IPAddressClaim and the remediation template of a MachineHealthCheck are text: their kind, their name and their group, and the role of the pool                                                                                                   | The tree reads neither, nor the definitions of their kinds, so it can tell neither whether they exist nor the version of a link, until the view of the pools in M2 and that of the remediations, SPEC-0013                                                                                                                                                           | SPEC-0005, P17                |
 | Every tile and every mark is a door: a count opens the filtered list ("Ad hoc views")                                                                                                            | The counts of a node of the tree are words of its cell Condition, and no control: the row is the door, which opens its details or expands it                                                                                                                         | A count that opened something else would be a second target inside a row; the search of the tree keeps the nodes whose health is the word searched                                                                                                                                                                                                                   | SPEC-0005, P11                |
+| A reference to another object is a link when its target exists ("Details")                                                                                                                       | The tenant of a KamajiControlPlane, which the Kamaji extension of the organization shows, is text while that extension is not enabled                                                                                                                                | Its view is the panel of the Kamaji extension in the details of the host; without it, nothing of this extension needs the tenant, and no permission on a kind of Kamaji is asked                                                                                                                                                                                     | SPEC-0028, P17                |
+| A form the project has deprecated is shown with a label that says so ("Status")                                                                                                                  | The version that a control plane reports in `status.version` has the label "deprecated" in the details and in the tooltip of the cell of a list, not in the cell                                                                                                     | In a cell of one line the label would read as a word on the version, which is the version that the control plane runs                                                                                                                                                                                                                                                | SPEC-0028, P11                |

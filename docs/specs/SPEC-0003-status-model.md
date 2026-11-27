@@ -2572,3 +2572,9 @@ second, and reads `src/common/parsers/` too.
   every job of CI ran green on `main` after them, that of the real project
   included, where S7 ran its three cases on the real project and passed. The
   spec has no manual check.
+- Amended by SPEC-0028, P9, for P1: a control plane of a provider that has none
+  of `RollingOut`, `ScalingUp` and `ScalingDown`, and its Cluster, keep the
+  activity Unknown, and the model gives each, with that Unknown, a note,
+  `activities-not-written`, with the three types and, for the Cluster, the kind
+  and the name of its control plane; one that is deleting holds Deleting alone,
+  with no note; no result changes but the notes.

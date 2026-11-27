@@ -3913,3 +3913,13 @@ healthy and rolling out, or unhealthy and provisioning.
   CI run Freelens 2.1.0 alone, without waiting for a pull request that uses a
   member added in 2.1.0. The extension follows the latest release of Freelens,
   and it has no release yet.
+- Amended by SPEC-0028, as the maintainer decided on 2026-11-26: A2 and A3 have
+  one exception. The extension reads the TenantControlPlanes of
+  `kamaji.clastix.io` at `v1alpha1`, for their name, their namespace and their
+  owner references only, only while the Kamaji extension of the organization,
+  `@freelensapp/kamaji-extension`, is enabled, and never their Secrets, so that
+  the details of a Cluster whose control plane is a KamajiControlPlane link its
+  tenant (SPEC-0028, P14 to P17). It is the one kind of another project that the
+  extension reads, and the rule of A3 that the extension never requests a
+  version of a kind other than the one A2 names admits this version of this
+  kind, and no other.

@@ -2955,3 +2955,43 @@ No question is open.
   that a refresh gets again): a refresh, or a reload after a 410, that fails
   again with the same answer keeps one entry for it, the latest, in the notices
   of the list and of the details too; P25 holds.
+- Amended by SPEC-0028:
+  - the tooltip of the cell of the activity says the note
+    `activities-not-written` of SPEC-0003, P1, next to the activity Unknown,
+    for that note alone (P7, P12; SPEC-0028, P9);
+  - the counters of a control plane carry the word of what it counts: a
+    KubeadmControlPlane, Machines, by its kind, read or not, with no spinner
+    for the word, and so the control plane Machines of a Cluster with no
+    reference; a control plane of another kind, the spinner while its object
+    loads, then the word that its object gives, Machines when it has
+    `spec.machineTemplate` and replicas when it has none, and replicas when it
+    cannot be read; the count of a version takes the same word (P8, P9, "The
+    details"; SPEC-0028, P10);
+  - a Cluster with no version in its topology and none in
+    `status.controlPlane.versions` shows the `status.versions`, else the
+    `status.version` when it is not empty, of its control plane, with the label
+    "deprecated" for the second in the details and in the tooltip of the cell,
+    and the spinner only when neither the topology nor
+    `status.controlPlane.versions` gives a version and that object loads (P9,
+    "The details"; SPEC-0028, P11);
+  - the section Control plane of the details gains the row Tenant for a
+    KamajiControlPlane ("The details"; SPEC-0028, P12, P17), a link to the
+    details of the host for an object of another project while the Kamaji
+    extension is enabled, and text otherwise (P18; SPEC-0028, P17);
+  - one Escape that closes the details of the host over those of the extension
+    gives the focus back to the name that opened the latter once both have
+    closed, whatever their order (P15, P18; SPEC-0028, P17);
+  - the views read the TenantControlPlanes within the terms that the maintainer
+    decided (SPEC-0001, "Notes and deviations"); as SPEC-0028 proposes, through
+    a dependent store of the page and the stores of a view of one Cluster,
+    `KindFeeds` gaining `tenant`; whether the cluster serves their kind comes
+    from the store of definitions of the host, or, when that store cannot be
+    read, from the APIs that the host registers from the discovery of the
+    cluster, as P20 reads them, and no definition of Kamaji is read by its name
+    ("What the view reads", P19, P20, P25, P31; SPEC-0028, P16, P17);
+  - they read, of the spec of a control plane of a provider, the presence of
+    `spec.machineTemplate`, and, of the spec of a KamajiControlPlane, the
+    presence of `spec.deployment.externalClusterReference` and no field under
+    it ("What the view reads", "Safety"; SPEC-0028, P10, P14);
+  - the restricted session grants the KamajiControlPlanes, and reads their
+    definition by its name in its case 3 (P23; SPEC-0028, "Tests").
