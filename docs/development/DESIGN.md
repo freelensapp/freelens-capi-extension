@@ -218,7 +218,9 @@ and in a theme that is not the default, such as its high contrast theme
   SPEC-0003 gives them (SPEC-0003, P27).
 - A missing value is N/A, with a tooltip that says why when the reason is
   known: not written yet, no managed topology, not set by the topology, a kind
-  that keeps no replicas, a kind that has no status.
+  that keeps no replicas, a kind that has no status, an object that is deleting,
+  to which the model gives no health, with the stage of its deletion in its
+  details (SPEC-0005, "Notes and deviations").
 - The role of an object of a provider is said in the words of the closed set of
   SPEC-0003, the eight of `ProviderRole`: infrastructure cluster, control plane,
   infrastructure machine, bootstrap config, infrastructure machine pool, IPAM
@@ -528,11 +530,15 @@ tree of a Cluster does (SPEC-0005):
   the row, and the click gives the focus to the element, with `preventScroll`.
   Down and Up, Home and End, Page Up and Page Down move; Right expands, or goes
   to the first child; Left collapses, or goes to the node above; Enter and
-  Space open the details, or expand or collapse a virtual node, and do nothing
-  on an entry of a binding; Escape closes the details, with the focus back on
-  the element. A move first brings its row into view. The focus stays on the
-  element when the active row leaves the window. The keys act only while the
-  focus is in the tree (SPEC-0005, P18).
+  Space open the details, or expand or collapse a virtual node or the node of a
+  kind, and do nothing on an entry of a binding; Escape closes the details,
+  with the focus back on the element. A move first brings its row into view.
+  The focus stays on the element when the active row leaves the window. When
+  the rows no longer show the active node, a search makes the first node that
+  it matches active, with no scroll, and a collapse or a change of the reads
+  the nearest node above it that the rows show, else the root. The keys act
+  only while the focus is in the tree (SPEC-0005, P18, "Notes and
+  deviations").
 - **Live.** The view follows the watches of its stores and polls nothing; its
   header holds a refresh that reads its stores again, which keep their rows
   while it loads, as the reload after a 410 does: a refresh that fails is said

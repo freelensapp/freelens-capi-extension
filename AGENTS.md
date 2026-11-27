@@ -254,9 +254,11 @@ src/
   renderer/api/                  # The models: Cluster at v1beta2 (cluster/), the kinds that the view of Clusters
                                  #   reads as the context of the status model and those that the tree of a Cluster
                                  #   adds (context/), and their shared types
-  renderer/pages/                # The page of the Clusters and its list (SPEC-0004)
+  renderer/pages/                # The page of the Clusters and its list (SPEC-0004), and the page of the tree of a
+                                 #   Cluster (SPEC-0005)
   renderer/details/              # The details of a Cluster (SPEC-0004): the drawer that the page opens over its list,
-                                 #   the view of one Cluster and the panel in the details of the host
+                                 #   the view of one Cluster and the panel in the details of the host; and the details
+                                 #   of a node of the tree, in the drawer that its page opens over the tree (SPEC-0005)
   renderer/reads/                # How a view reads the stores of the host: the adapter of each store, the reads of a
                                  #   mount, the stores of the page, the definitions, the context of the frame, and the
                                  #   stores of its own that a view of one Cluster reads outside the page, with the
@@ -268,8 +270,10 @@ src/
                                  #   of each family of kinds, freshness, activity and tone, each with its unit test
   common/views/                  # The pure functions of the views: the context of the model, the state of the reads,
                                  #   the references, the availability of a kind, the cells of a list, the address, the
-                                 #   state and the sections of the details, and the tree of a Cluster, its rows, the
-                                 #   selector of a ClusterResourceSet and the names of the variables, each tested
+                                 #   state and the sections of the details, and the tree of a Cluster, its rows, its
+                                 #   address, its cells, its keys, the details of its nodes, the annotations that they
+                                 #   show, the selector of a ClusterResourceSet and the names of the variables, each
+                                 #   tested
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
 test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their files for the unit tests of the views
@@ -291,7 +295,8 @@ e2e/scripts/                     # The scripts of the test environment, run by N
 ```
 
 The extension registers the page of the Clusters of SPEC-0004, with its
-sidebar entry, and the panel of the Clusters in the details of the host; each
+sidebar entry, the panel of the Clusters in the details of the host, and the
+page of the tree of a Cluster of SPEC-0005, with no entry of its own; each
 feature adds its files with its spec.
 
 Build output goes to `dist/`: `main.js`, `renderer.js` and `renderer.css`, with
@@ -390,7 +395,10 @@ provider that the references of what it read name and its ClusterClass in the
 namespace that the class reference of its Cluster names (SPEC-0005, P6).
 
 `src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
-and its sidebar entries (`clusterPageMenus`). The details panel and the menu
+and its sidebar entries (`clusterPageMenus`), and the page of the tree of a
+Cluster, with its parameters `cluster` and `details` and no sidebar entry,
+which the details of a Cluster open from their row Tree (SPEC-0005, P1, P3).
+The details panel and the menu
 items of a kind are registered (`kubeObjectDetailItems`,
 `kubeObjectMenuItems`) with `Renderer.K8sApi.detailsFor` and
 `Renderer.K8sApi.menuItemFor`, which take `kind` and `crd.apiVersions` from the
@@ -399,7 +407,8 @@ that it comes after the metadata of the host and before its custom resource
 section and its events (SPEC-0004, P16). The details of the extension are not a
 registration: the page renders them over its list while its parameter
 `details`, which its registration declares in `params`, names a Cluster (P6,
-P15).
+P15), as the page of the tree renders the details of a node over the tree
+(SPEC-0005, P17).
 The page of a kind of the template is made by `createAvailableVersionPage`
 from the list pages of its versions, newest first: it renders the first one
 whose store the host has, and a "not available" message when the cluster
@@ -603,7 +612,10 @@ Clusters of SPEC-0004, with their list and their details.
   P32). A reference to an object of a provider is a `Renderer.Component.MaybeLink` to
   `Renderer.Navigation.getDetailsUrl(selfLink)`, which opens the details of the host over the page; a Cluster named in
   a message opens the details of the extension through the parameter of the page, which the page sets itself and the
-  panel sets with `navigate` of the extension (P6, P18).
+  panel sets with `navigate` of the extension (P6, P18). The page of the tree of a Cluster renders the details of a
+  node the same way, over the tree (`src/renderer/details/tree-details-drawer.tsx`), and an object of Cluster API that
+  they name, an owner, a template or a name in a message, selects its node and opens its details in the same drawer
+  (SPEC-0005, P5, P17).
 - The host renders a cluster page with `params` only. A page gets the extension from the registration, which passes
   the `params` of the host on
   (`Page: (props: Common.Types.PageComponentProps) => <ClustersPage {...props} extension={this} />`), with the page
@@ -1086,10 +1098,9 @@ status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. Until the page of the tree of a Cluster imports them, it
-also lists the three modules of the tree in `src/common/views/` as production
-entries, since only their tests reach them; the page removes the entries
-(SPEC-0005, "Notes and deviations"). The entry of
+`environment-tests/`. The entries of the three modules of the tree in
+`src/common/views/` went with the page of the tree of a Cluster, which imports
+them (SPEC-0005, "Notes and deviations"). The entry of
 `src/common/status/index.ts` went with the list of the Clusters of SPEC-0004,
 whose page imports the model, and that of
 `src/common/parsers/list-annotation.ts`, the one parser that the model does not
