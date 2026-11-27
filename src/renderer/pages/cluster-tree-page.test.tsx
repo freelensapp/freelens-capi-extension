@@ -1463,6 +1463,25 @@ describe("the search (P15)", () => {
     expect(rowIds()).toEqual(before);
   });
 
+  it("leaves the details open, those of the node and those of the host, on an Escape in it with words, which clears them", async () => {
+    const { params } = await opened(DEV_CLUSTER);
+
+    fireEvent.change(search(), { target: { value: "Dev" } });
+    escapeIn(search());
+
+    expect(search().value).toBe("");
+    expect(params.details.get()).toBe(DEV_CLUSTER);
+    expect(screen.getByTestId("capi-tree-details")).toBeDefined();
+
+    runInAction(() => host.params.set("kube-details", "/apis/infrastructure.cluster.x-k8s.io/v1beta2/devclusters/x"));
+    fireEvent.change(search(), { target: { value: "Dev" } });
+    escapeIn(search());
+
+    expect(search().value).toBe("");
+    expect(host.hideDetails).not.toHaveBeenCalled();
+    expect(params.details.get()).toBe(DEV_CLUSTER);
+  });
+
   it("closes, on an Escape in it with no words, the details of the host while kube-details holds a value, else the details of the node", async () => {
     const { params } = await opened(DEV_CLUSTER);
 
