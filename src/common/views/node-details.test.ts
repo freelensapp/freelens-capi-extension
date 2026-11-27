@@ -286,6 +286,40 @@ describe("the metadata of a node (P5, P20)", () => {
     expect(detailsOf(view, `infrastructure.cluster.x-k8s.io/DevMachine/${WORKER}`).metadata?.annotations).toBeDefined();
   });
 
+  it.each([
+    ["a KubeadmConfig", "KubeadmConfig", WORKER],
+    ["a KubeadmConfigTemplate", "KubeadmConfigTemplate", "freelens-capi-healthy-md-0-2wh2v"],
+    ["a KubeadmControlPlane", "KubeadmControlPlane", "freelens-capi-healthy-d2lgq"],
+    ["the ClusterClass", "ClusterClass", "quick-start"],
+    ["the Cluster", "Cluster", HEALTHY],
+    ["the infrastructure cluster of a provider", "DevCluster", "freelens-capi-healthy-8fgcf"],
+    ["an infrastructure machine of a provider", "DevMachine", WORKER],
+    ["a template of a provider", "DevMachineTemplate", "freelens-capi-healthy-md-0-xp9c7"],
+  ])(
+    "leave the annotations of %s out of the metadata of the host, in a row of their own, the one that kubectl apply writes held and not shown (P20)",
+    (_, kind, name) => {
+      const objects = setOf("healthy");
+      const object = named(objects, kind, name);
+
+      // The annotation that `kubectl apply` writes, holding the spec as applied, and another one, written by the case.
+      object.metadata.annotations = {
+        ...object.metadata.annotations,
+        [LAST_APPLIED]: JSON.stringify({ spec: { files: [{ path: "/etc/secret", content: "s3cr3t" }] } }),
+        "example.test/shown": "yes",
+      };
+
+      const view = viewOf(objects, HEALTHY);
+      const node = [...view.tree.nodes.values()].find(
+        (each) => each.form === "object" && each.kind === kind && each.name === name,
+      );
+      const annotations = detailsOf(view, node?.id ?? "").metadata?.annotations;
+
+      expect(annotations?.held).toEqual([LAST_APPLIED]);
+      expect(annotations?.shown).toContainEqual({ key: "example.test/shown", value: "yes" });
+      expect(JSON.stringify(annotations)).not.toMatch(/s3cr3t/);
+    },
+  );
+
   it("read whether an object holds that annotation, never its value", () => {
     const object = {
       apiVersion: "v1",
