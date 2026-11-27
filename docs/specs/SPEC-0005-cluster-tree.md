@@ -3282,3 +3282,22 @@ the contract label of the definition for a control plane of a provider; and
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
 spec says of 2.0.0 stays a fact of the host, as probed then.
+
+- Amended by SPEC-0028, P13: the TenantControlPlane of a KamajiControlPlane is
+  no node (P8), the last rows of P7 leave it out, and its kind, which is no kind
+  of the tree, makes no node when its read is refused or fails at its first
+  load, or is held back after a refresh that failed, unlike a kind of P12; the
+  tree reads the TenantControlPlanes for the row Tenant of the details of a
+  control plane (P6, P17), through a store that the read of one Cluster builds
+  once its first loads have ended, their kind being none of those whose first
+  loads the tree waits for (P13; SPEC-0028, P16); the notice of the tree for
+  their kind says that the details of the node of the control plane show the
+  tenant as text, with the reason, until it can be read, and names no node of
+  it, an exception to the note of this spec on the words of the notices of the
+  tree, those of `treeNotices` (SPEC-0028, P16); the tooltip of the cell of the
+  activity says the note of SPEC-0028, P9, as in the list; the cell Replicas of
+  a control plane and its details take the word of SPEC-0028, P10, and the
+  versions in the details of its node follow SPEC-0028, P11 (P9, P17). The
+  Kamaji sets of SPEC-0028 hold a control plane of a provider at the contract
+  `v1beta2`, which "Notes and deviations" lists among the captures still
+  missing: only the one at `v1beta1` stays missing.
