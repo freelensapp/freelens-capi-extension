@@ -15,13 +15,7 @@
     // the Vitest alias for @freelensapp/extensions, which knip does not follow
     "test/freelens-extensions.ts",
     // compiled by `type:check:environments` only, with no importer
-    "environment-tests/*.ts",
-    // the pure functions of the tree of a Cluster (SPEC-0005), which its page
-    // imports once it comes, in the second of its three pull requests; until
-    // then only their tests reach them. The page removes these entries
-    "src/common/views/cluster-tree.ts!",
-    "src/common/views/tree-rows.ts!",
-    "src/common/views/variable-names.ts!"
+    "environment-tests/*.ts"
   ],
   "project": [
     "*.{js,mjs,ts}",

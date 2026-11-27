@@ -14,6 +14,7 @@ import {
 } from "./components/error-boundary";
 import { ClusterPanel } from "./details/cluster-details-v1beta2";
 import { ClusterApiIcon } from "./icons/cluster-api";
+import { ClusterTreePage } from "./pages/cluster-tree-page";
 import { ClustersPage } from "./pages/clusters-page-v1beta2";
 import { CLUSTERS_PAGE, TREE_PAGE } from "./pages/page-ids";
 
@@ -46,8 +47,10 @@ export default class CapiRenderer extends Renderer.LensExtension {
 
   // The page of the Clusters (SPEC-0004, "The page and its sidebar entry"), its component made once, here, and given
   // the extension from the registration, since the host passes a page its parameters alone (AGENTS.md, "Renderer
-  // Components"), with the parameter `details`, the address of the Cluster whose details are open (P6).
-  clusterPages: Renderer.LensExtension["clusterPages"] = [
+  // Components"), with the parameter `details`, the address of the Cluster whose details are open (P6). The page of the
+  // tree of a Cluster, with no entry in the sidebar, and its parameters `cluster`, the address of its Cluster, and
+  // `details`, the node whose details are open (SPEC-0005, P1, P2).
+  clusterPages: Renderer.LensExtension["clusterPages"] = Array.of<Renderer.LensExtension["clusterPages"][number]>(
     {
       id: CLUSTERS_PAGE,
       params: { details: "" },
@@ -55,7 +58,14 @@ export default class CapiRenderer extends Renderer.LensExtension {
         Page: (props: Common.Types.PageComponentProps) => <ClustersPage {...props} extension={this} />,
       },
     },
-  ].map((registration) => withPageErrorBoundary(this, registration));
+    {
+      id: TREE_PAGE,
+      params: { cluster: "", details: "" },
+      components: {
+        Page: (props: Common.Types.PageComponentProps) => <ClusterTreePage {...props} extension={this} />,
+      },
+    },
+  ).map((registration) => withPageErrorBoundary(this, registration));
 
   // The root entry, "Cluster API", with its icon and the page of the Clusters as its target, on every cluster, so
   // that the page says why a cluster has none; and its one child, text only (SPEC-0004, P4). The icon only passes its

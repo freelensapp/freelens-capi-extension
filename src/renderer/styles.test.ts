@@ -5,7 +5,11 @@ import { describe, expect, it } from "vitest";
 // The cases of SPEC-0004, "Tests", "Unit", `styles.test.ts`: the stylesheets of the view author no color, only the
 // tokens of the theme and `transparent` (P21; kit, `docs/design.md`, "Theme"); the columns of state keep their room in
 // a narrow window while those of the domain give theirs, the class and the version first and the name last (P7); and
-// no cell of the list holds more than one line (kit, `docs/design.md`, "Lists"; P12).
+// no cell of the list holds more than one line (kit, `docs/design.md`, "Lists"; P12). And those of SPEC-0005, "Tests",
+// "Unit", `styles.test.ts` (P9, P18), for the stylesheet of the tree of a Cluster: one line in every cell, cut with an
+// ellipsis by the element that holds its content; the columns of state that keep their room and those of the domain
+// that give theirs, Replicas and Version first and the name last; the indentation in the spacing of the host; the
+// outline of the active row; and the chain of flexible boxes down to the virtual list, each of which may shrink.
 
 const RENDERER = join(process.cwd(), "src", "renderer");
 
@@ -74,6 +78,7 @@ describe("the stylesheets of the view", () => {
         join("components", "marks.module.scss"),
         join("components", "notice.module.scss"),
         join("pages", "clusters-page.module.scss"),
+        join("pages", "cluster-tree.module.scss"),
       ]),
     );
   });
@@ -144,6 +149,7 @@ describe("the cells of the list (P12; kit, Lists)", () => {
   it.each([
     ["pages/clusters-page.module.scss", () => page],
     ["components/marks.module.scss", () => marks],
+    ["pages/cluster-tree.module.scss", () => readFileSync(join(RENDERER, "pages", "cluster-tree.module.scss"), "utf8")],
   ])("%s lets nothing wrap, but in a tooltip", (_name, text) => {
     const outsideTooltips = text().replace(/\.tooltip \{[^}]*\}/g, "");
 
@@ -207,5 +213,80 @@ describe("the columns of the list (P7)", () => {
     for (const name of domain.filter((column) => column !== "name")) {
       expect(columns.get("name")?.shrink, name).toBeLessThan(columns.get(name)?.shrink ?? 0);
     }
+  });
+});
+
+describe("the tree of a Cluster (SPEC-0005, P9, P18)", () => {
+  const tree = readFileSync(join(RENDERER, "pages", "cluster-tree.module.scss"), "utf8");
+  const columns = columnsOf(tree);
+  const state = ["activity", "condition", "status"];
+  const domain = ["name", "replicas", "version", "age"];
+
+  it("holds one line in every cell, which cuts what overflows", () => {
+    const cells = declarationsOf(tree, ".table :global(.TableCell)");
+
+    expect(cells).toMatch(/white-space: nowrap;/);
+    expect(cells).toMatch(/overflow: hidden;/);
+  });
+
+  it("holds the content of every cell, the counts included, on one line in an element that cuts it with an ellipsis", () => {
+    const content = declarationsOf(tree, ".content");
+
+    expect(content).toMatch(/white-space: nowrap;/);
+    expect(content).toMatch(/overflow: hidden;/);
+    expect(content).toMatch(/text-overflow: ellipsis;/);
+    expect(content).toMatch(/max-width: 100%;/);
+  });
+
+  it("has a rule for each column, whose class the cells of the page carry", () => {
+    expect([...columns.keys()].sort()).toEqual([...state, ...domain].sort());
+  });
+
+  it("keeps a minimum width in the columns of state, which never shrink", () => {
+    for (const name of state) {
+      expect(columns.get(name)?.shrink, name).toBe(0);
+      expect(columns.get(name)?.minWidth, name).toBeDefined();
+    }
+  });
+
+  it("shrinks the columns of the domain, Replicas and Version the most and the name the least", () => {
+    for (const name of domain) expect(columns.get(name)?.shrink, name).toBeGreaterThan(0);
+    for (const name of domain.filter((column) => column !== "replicas" && column !== "version")) {
+      expect(columns.get("replicas")?.shrink, name).toBeGreaterThan(columns.get(name)?.shrink ?? 0);
+      expect(columns.get("version")?.shrink, name).toBeGreaterThan(columns.get(name)?.shrink ?? 0);
+    }
+    for (const name of domain.filter((column) => column !== "name")) {
+      expect(columns.get("name")?.shrink, name).toBeLessThan(columns.get(name)?.shrink ?? 0);
+    }
+  });
+
+  it("indents a node by the spacing of the host, once for each level of its depth", () => {
+    expect(declarationsOf(tree, ".indent")).toMatch(/width: calc\(var\(--treeDepth, 0\) \* var\(--padding\) \* 2\);/);
+  });
+
+  it("shows the focus of the tree on the active row with an outline in a token of the theme, inside its box", () => {
+    const rule = declarationsOf(tree, ".tree:focus-visible .active");
+
+    expect(rule).toMatch(/outline: 2px solid var\(--[\w-]+\);/);
+    expect(rule).toMatch(/outline-offset: -2px;/);
+  });
+
+  // The list layout of the host gives its own chain (freelens:item-list-layout.scss:34-46): without it the virtual list
+  // takes the height of all its rows, and never scrolls.
+  it.each([".page", ".tree", ".table"])(
+    "makes %s a flexible column that may shrink below its content, in the chain down to the virtual list",
+    (selector) => {
+      const rule = declarationsOf(tree, selector);
+
+      expect(rule).toMatch(/display: flex;/);
+      expect(rule).toMatch(/flex-direction: column;/);
+      expect(rule).toMatch(/min-height: 0;/);
+    },
+  );
+
+  it("lets the element of the tree and the table fill what the page leaves them", () => {
+    expect(declarationsOf(tree, ".tree")).toMatch(/flex: 1 1 auto;/);
+    expect(declarationsOf(tree, ".table")).toMatch(/flex: 1 1 auto;/);
+    expect(declarationsOf(tree, ".page")).toMatch(/height: 100%;/);
   });
 });

@@ -1,0 +1,26 @@
+declare const classNames: {
+  readonly page: "page";
+  readonly tree: "tree";
+  readonly table: "table";
+  readonly header: "header";
+  readonly title: "title";
+  readonly search: "search";
+  readonly matches: "matches";
+  readonly notices: "notices";
+  readonly state: "state";
+  readonly name: "name";
+  readonly replicas: "replicas";
+  readonly version: "version";
+  readonly activity: "activity";
+  readonly condition: "condition";
+  readonly status: "status";
+  readonly age: "age";
+  readonly content: "content";
+  readonly indent: "indent";
+  readonly expander: "expander";
+  readonly nameButton: "nameButton";
+  readonly role: "role";
+  readonly active: "active";
+  readonly tooltip: "tooltip";
+};
+export = classNames;

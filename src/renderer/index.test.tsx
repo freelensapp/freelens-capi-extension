@@ -5,14 +5,16 @@ import { runInAction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Common, host } from "../../test/freelens-extensions";
 import { Cluster } from "./api/cluster/cluster-v1beta2";
-import CapiRenderer, { CLUSTERS_PAGE, ROOT_MENU } from "./index";
+import CapiRenderer, { CLUSTERS_PAGE, ROOT_MENU, TREE_PAGE } from "./index";
 
 import type { Renderer, Common as Sdk } from "@freelensapp/extensions";
 
+import type * as TreeModule from "./pages/cluster-tree-page";
 import type * as PageModule from "./pages/clusters-page-v1beta2";
 
-// The props that the registration gives the page of the Clusters, recorded around the page itself.
+// The props that the registration gives the page of the Clusters and the page of the tree, recorded around each page.
 const pageProps = vi.hoisted(() => [] as unknown[]);
+const treeProps = vi.hoisted(() => [] as unknown[]);
 
 vi.mock("./pages/clusters-page-v1beta2", async (importOriginal) => {
   const actual = await importOriginal<typeof PageModule>();
@@ -26,11 +28,25 @@ vi.mock("./pages/clusters-page-v1beta2", async (importOriginal) => {
   };
 });
 
+vi.mock("./pages/cluster-tree-page", async (importOriginal) => {
+  const actual = await importOriginal<typeof TreeModule>();
+
+  return {
+    ...actual,
+    ClusterTreePage: (props: TreeModule.ClusterTreePageProps) => {
+      treeProps.push(props);
+      return <actual.ClusterTreePage {...props} />;
+    },
+  };
+});
+
 // The cases of SPEC-0004, "Tests", "Unit", `index.test.tsx`: one page with the parameter `details` (P6), inside the
 // error boundary of the template; the root entry of the sidebar with its icon and its one child of text (P4); the
 // details of Cluster at v1beta2 alone, at priority 250, through `withDetailsErrorBoundary` (P16); `customResources`
 // with the model of Cluster alone (SPEC-0001, A7); and no API registered by the extension, at any version (SPEC-0001,
-// R7.31).
+// R7.31). And those of SPEC-0005, "Tests", "Unit", `index.test.tsx` (P1): two pages, that of the tree with the
+// parameters `cluster` and `details`; no new entry of the sidebar, no new panel, `customResources` with the model of
+// Cluster alone.
 
 function extension(): Renderer.LensExtension {
   return new (CapiRenderer as unknown as new (manifest: { name: string }) => Renderer.LensExtension)({
@@ -48,12 +64,12 @@ afterEach(() => {
 });
 
 describe("the registrations of the renderer", () => {
-  it("register one page, the page of the Clusters, with the parameter details, given the extension from the registration", () => {
+  it("register two pages, the page of the Clusters, with the parameter details, given the extension from the registration", () => {
     const renderer = extension();
     const { Page } = renderer.clusterPages[0].components;
     const params = { details: { get: () => "" } } as unknown as Sdk.Types.PageComponentProps["params"];
 
-    expect(renderer.clusterPages.map((page) => page.id)).toEqual([CLUSTERS_PAGE]);
+    expect(renderer.clusterPages.map((page) => page.id)).toEqual([CLUSTERS_PAGE, TREE_PAGE]);
     expect(CLUSTERS_PAGE).toBe("clusters");
     // The address of the Cluster whose details are open, `<namespace>/<name>`, empty while none is (P6).
     expect(renderer.clusterPages[0].params).toEqual({ details: "" });
@@ -64,6 +80,54 @@ describe("the registrations of the renderer", () => {
     expect(pageProps).toEqual([{ params, extension: renderer }]);
     expect((pageProps[0] as PageModule.ClustersPageProps).extension).toBe(renderer);
     expect((pageProps[0] as PageModule.ClustersPageProps).params).toBe(params);
+  });
+
+  it("register the page of the tree, with the parameters cluster and details, given the extension from the registration (SPEC-0005, P1)", () => {
+    const renderer = extension();
+    const [, tree] = renderer.clusterPages;
+    const { Page } = tree.components;
+    const params = {
+      cluster: { get: () => "" },
+      details: { get: () => "" },
+    } as unknown as Sdk.Types.PageComponentProps["params"];
+
+    expect(TREE_PAGE).toBe("cluster-tree");
+    // The address of the Cluster, `<namespace>/<name>`, and the node whose details are open, empty while none is (P2).
+    expect(tree.params).toEqual({ cluster: "", details: "" });
+
+    treeProps.length = 0;
+    render(<Page params={params} />);
+
+    expect(treeProps).toEqual([{ params, extension: renderer }]);
+    expect((treeProps[0] as TreeModule.ClusterTreePageProps).extension).toBe(renderer);
+  });
+
+  it("register no entry of the sidebar for the page of the tree, which is that of one Cluster (SPEC-0005, P1)", () => {
+    const menus = extension().clusterPageMenus;
+
+    expect(menus.map((menu) => menu.target?.pageId)).toEqual([CLUSTERS_PAGE, CLUSTERS_PAGE]);
+  });
+
+  it("render the page of the tree inside the error boundary of the template", () => {
+    const [, tree] = extension().clusterPages;
+    const { Page } = tree.components;
+
+    // A definition that the page cannot read makes it throw as it renders.
+    runInAction(() => {
+      host.crdStore.items = [{}];
+    });
+    Common.logger.error.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(
+      <>
+        <Page params={{}} />
+        <p>sidebar</p>
+      </>,
+    );
+
+    expect(screen.getByText(/^TypeError: /)).toBeDefined();
+    expect(screen.getByText("sidebar")).toBeDefined();
+    expect(Common.logger.error).toHaveBeenCalledTimes(1);
   });
 
   it("register the root entry, Cluster API, with its icon and the page as its target, and one child of text", () => {
@@ -151,6 +215,30 @@ describe("the registrations of the renderer", () => {
     expect(host.navigateExtension).toHaveBeenCalledWith(CLUSTERS_PAGE, {
       details: "freelens-capi-healthy/freelens-capi-healthy",
     });
+  });
+
+  it("open the tree of a Cluster from the panel through the parameters of the page of the tree (SPEC-0005, P3, P5)", () => {
+    const renderer = extension() as Renderer.LensExtension & {
+      openTree(namespace: string, name: string, node?: string): void;
+    };
+
+    renderer.openTree("freelens-capi-healthy", "freelens-capi-healthy");
+    renderer.openTree(
+      "freelens-capi-healthy",
+      "freelens-capi-healthy",
+      "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+    );
+
+    expect(host.navigateExtension.mock.calls).toEqual([
+      [TREE_PAGE, { cluster: "freelens-capi-healthy/freelens-capi-healthy", details: "" }],
+      [
+        TREE_PAGE,
+        {
+          cluster: "freelens-capi-healthy/freelens-capi-healthy",
+          details: "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+        },
+      ],
+    ]);
   });
 
   it("register no API, at v1beta1 or at any other version", () => {

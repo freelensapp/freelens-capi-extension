@@ -97,15 +97,17 @@ export interface MarksCellProps {
   children: ReactNode;
   // The whole content of the cell, in words.
   tooltip: ReactNode;
+  // A class of the view that holds the cell, beside the class of a cell of marks.
+  className?: string;
   "data-testid"?: string;
 }
 
 // The marks of a cell, side by side on one line, in a flat badge of the host that keeps its line, cuts what does not
 // fit with an ellipsis and never expands on a click, with the whole content of the cell in its tooltip.
-export function MarksCell({ children, tooltip, "data-testid": testId }: MarksCellProps) {
+export function MarksCell({ children, tooltip, className, "data-testid": testId }: MarksCellProps) {
   return (
     <Badge
-      className={styles.cell}
+      className={className === undefined ? styles.cell : `${styles.cell} ${className}`}
       flat
       expandable={false}
       label={<>{children}</>}

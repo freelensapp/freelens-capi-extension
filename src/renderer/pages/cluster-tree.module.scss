@@ -1,0 +1,194 @@
+// The page of the tree of a Cluster (SPEC-0005, P1, P9, P13, P18). The view authors no color: the tokens of the theme
+// and the components of the host give them.
+
+// The page, the element of the tree around the table, the `Table` of the host and its virtual list form a chain of
+// flexible boxes of a definite height, each of which may shrink below its content, as the list layout of the host
+// gives its own (item-list-layout.scss:34-46 of Freelens): the virtual list fills the height of its parent, and without
+// the chain it takes the height of all its rows, draws every one of them and never scrolls, while the content area of
+// the host clips the rows past the window (P9; H5). The table hands its class to its virtual list, so the rule of
+// `.table` reaches both.
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tree {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.table {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+// The header of one line: the title, which says what the page shows, the search of the host, how many nodes match it,
+// and the refresh (P1, P15, P23).
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 1em;
+  align-items: center;
+  padding: 1em 1em 0.5em;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search {
+  flex: 0 1 22em;
+}
+
+.matches {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+// The notices of the kinds that could not be read, above the tree (P19, "Partial").
+.notices {
+  flex: 0 0 auto;
+  padding: 0 1em;
+}
+
+// A state in the place of the tree, under the header (P19).
+.state {
+  padding: 1em;
+  line-height: 1.4;
+
+  p {
+    margin: 0.25em 0 0;
+  }
+}
+
+// The columns (P9). Every cell is one line: the rows of the table of the host have one height, 33 px, and a second
+// line runs into the next row. Its content sits in an element that cuts it with an ellipsis (`.content`), since the
+// cell of the host lays out its content as a flexible box whose text it cuts with none (H22), and its tooltip carries
+// it whole. In a narrow window the columns of the domain give their room first, Replicas and Version the most and the
+// name the least, and the columns of state keep their minimum width and never shrink, so that the state of every row
+// stays in view, as the list of the Clusters does. The numbers are in em of the font of the table, 14 px.
+.table :global(.TableCell) {
+  white-space: nowrap;
+  overflow: hidden;
+
+  // 18em holds the indentation of a few levels, the button that expands and a kind and a name of about 25 characters;
+  // a deeper or longer name is cut, whole in its tooltip.
+  &.name {
+    flex: 3 0.5 18em;
+    min-width: 10em;
+  }
+
+  // 3.5em holds the counters of a row, such as `2/3`.
+  &.replicas {
+    flex: 0.5 4 3.5em;
+    min-width: 3em;
+  }
+
+  // 5em holds a version such as `v1.37.0`.
+  &.version {
+    flex: 0.5 4 5em;
+    min-width: 3em;
+  }
+
+  // 8.5em holds the first mark of the widest word of the closed set of activities, "Provisioning", as the list does.
+  &.activity {
+    flex: 2 0 8.5em;
+    min-width: 8.5em;
+  }
+
+  // 14em holds the word of a health and the word "stale", each in its badge, and the start of the counts of P11; what
+  // does not fit is cut, and the tooltip carries it.
+  &.condition {
+    flex: 2.5 0 14em;
+    min-width: 14em;
+  }
+
+  &.status {
+    flex: 2 0 6em;
+    min-width: 6em;
+  }
+
+  // 4.5em holds the compact age of the host, as the list does.
+  &.age {
+    flex: 0.5 1 4.5em;
+    min-width: 4.5em;
+  }
+}
+
+// The element that holds the content of every cell, the counts of P11 included (P9).
+.content {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+// The indentation of a node: one step of the spacing of the host for each level of its depth, twice the unit of the
+// host, as the probe drew it (P9; H2). The depth comes from the row.
+.indent {
+  flex: 0 0 auto;
+  width: calc(var(--treeDepth, 0) * var(--padding) * 2);
+}
+
+// The button that expands or collapses a node, and the place that it keeps on a leaf, so that the names line up.
+.expander {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--padding) * 2.5);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+// The kind and the name of a node, a button that opens its details: it reads as the text of the cell, cut with an
+// ellipsis.
+.nameButton {
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+// The role of an object of a provider, a small flat badge of the host after its name, with no background (P9; H10).
+.role {
+  margin-left: 0.5em;
+}
+
+// The row of the active node shows the focus of the tree, with an outline in a token of the theme inside its box,
+// since the host resets the outline of every element and the cell cuts what overflows it (P18; DESIGN.md,
+// "Navigation").
+.tree:focus-visible .active {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.tooltip {
+  white-space: pre-wrap;
+  text-align: left;
+}
