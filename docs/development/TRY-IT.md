@@ -116,9 +116,11 @@ and writes nothing; what each part shows is in
    `freelens-capi-mp`, `ControlPlaneMachinesReady` among them; the control
    plane and the workers part by part, each with its own health; the
    infrastructure, whose DevCluster is a link to the details of Freelens at
-   the version of its contract, over those of the extension, while the other
-   references are text; the topology, the network and the conditions, each
-   with its weight. Escape, the close icon, or a click outside closes them.
+   the version of its contract, over those of the extension, while the control
+   plane, each part, the ClusterClass and the names of the objects of Cluster
+   API in the lines of a message open the tree of the Cluster at their object,
+   with its details; the topology, the network and the conditions, each with
+   its weight. Escape, the close icon, or a click outside closes them.
 3. **The details of Freelens.** Freelens keeps its own list and details of the
    Clusters, which open from the definition `clusters.cluster.x-k8s.io`, under
    "Custom Resources", "Definitions", or from the command palette. In its
