@@ -1099,6 +1099,23 @@ describe("the keys and the focus of the tree (P18)", () => {
     expect(owned()).toEqual(rowIds().map(rowDomId));
   });
 
+  it("owns no row and names none once a search that matches nothing leaves the list with no row", async () => {
+    await opened();
+    nextFrame();
+
+    expect(tree().getAttribute("aria-owns")).not.toBeNull();
+    expect(tree().getAttribute("aria-activedescendant")).not.toBeNull();
+
+    fireEvent.change(search(), { target: { value: "no-such-word" } });
+    await settle();
+
+    expect(rowIds()).toEqual([]);
+    expect(rowElements()).toHaveLength(0);
+    expect(screen.getByTestId("capi-tree-matches").textContent).toBe("0 nodes match");
+    expect(tree().hasAttribute("aria-owns")).toBe(false);
+    expect(tree().hasAttribute("aria-activedescendant")).toBe(false);
+  });
+
   it("makes the nearest node above the active node active once the reads remove it, never the Cluster, and the next key moves from there", async () => {
     const { built } = await opened(OTHER_MACHINE);
 
@@ -1489,6 +1506,38 @@ describe("the search (P15)", () => {
     expect(input.value).toBe("");
     expect(screen.queryByTestId("capi-tree-matches")).toBeNull();
     expect(rowIds()).toEqual(before);
+  });
+
+  it("says no longer how many nodes match once the tree is gone, as when it throws on a change of the reads while the search holds words", async () => {
+    const { built } = await opened();
+
+    fireEvent.change(search(), { target: { value: "Workers" } });
+    expect(screen.getByTestId("capi-tree-matches").textContent).toBe("1 node matches");
+
+    const treeOf = vi.spyOn(TreeBuilds.prototype, "treeOf").mockImplementation(() => {
+      throw new TypeError("the tree failed later");
+    });
+
+    onTestFinished(() => treeOf.mockRestore());
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    // A Machine arrives, as a watch brings it, and the tree, built again, throws.
+    const machines = ownStore("Machine", built);
+
+    act(() => {
+      runInAction(() =>
+        machines.items.push(
+          changed("Machine", `${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`, (object) => {
+            object.metadata.name = `${HEALTHY}-later`;
+          }),
+        ),
+      );
+    });
+    await settle();
+
+    expect(screen.getByText("TypeError: the tree failed later")).toBeDefined();
+    expect(search().value).toBe("Workers");
+    expect(screen.queryByTestId("capi-tree-matches")).toBeNull();
   });
 
   it("shows at once what the user expands or collapses during a search, by a click and by the keys, and gives the expansions of the user back once it is cleared", async () => {
