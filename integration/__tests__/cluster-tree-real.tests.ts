@@ -15,8 +15,9 @@
 //    the row that holds it in the tool, at its depth, the virtual rows Workers, ClusterResourceSets and Templates read as
 //    the nodes Workers, Add-ons and Templates, and a row under the virtual row Other read where P7 places it;
 // 2. for every row with a status, the condition that the health of its node rests on, which the summary of its details
-//    gives, has the type, the status and the reason that the tool shows, and the counters of the rows of a control plane
-//    and of a MachineDeployment are those of the tooltip of the cell Replicas of their nodes;
+//    gives, has the type, the status and the reason that the tool shows, the details closed on Escape after each, and
+//    the counters of the rows of a control plane and of a MachineDeployment are those of the tooltip of the cell
+//    Replicas of their nodes, each row brought into the window of the list first;
 // 3. every node of the tree that the tool does not print is of a kind that the tool leaves out.
 //
 // The objects of the real project change as its controllers write them, so each comparison reads both sides again
@@ -45,7 +46,18 @@ import {
   treeDifferences,
 } from "./real-project-checks";
 import { parentsOfRows } from "./tree-outline";
-import { allRows, detailsOf, expandAll, openTree, rowOf, titleOf, tooltipLines, treeAddress, until } from "./tree-page";
+import {
+  allRows,
+  detailsOf,
+  expandAll,
+  openTree,
+  rowInView,
+  titleOf,
+  tooltipLines,
+  treeAddress,
+  treeOf,
+  until,
+} from "./tree-page";
 
 import type { Frame, Locator } from "playwright";
 
@@ -90,7 +102,7 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
   }
 
   // The tree of a Cluster with every node expanded, and every row of it.
-  async function treeOf(name: string): Promise<{ tree: Locator; rows: DrawnRow[] }> {
+  async function expandedTreeOf(name: string): Promise<{ tree: Locator; rows: DrawnRow[] }> {
     const tree = await openTree(opened().frame, NAMESPACE, name);
 
     await expandAll(tree);
@@ -113,7 +125,10 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
     });
   }
 
-  // The summary of the details of a node, opened by the address of the page: `<type>: <status>, <reason>`.
+  // The summary of the details of a node, opened by the address of the page: `<type>: <status>, <reason>`. The details
+  // then close on Escape, pressed on the element of the tree, which takes the focus first, so that the key reaches the
+  // window of the frame, where their drawer hears it: the drawer covers the frame from 480 px (H19), the cell Replicas
+  // of the rows among it, which a hover after them would not reach.
   async function summaryOf(name: string, node: DrawnRow): Promise<string> {
     const { frame } = opened();
     const drawer = detailsOf(frame);
@@ -126,7 +141,12 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
     const summary = drawer.getByTestId("capi-details-summary");
 
     await summary.waitFor(viewTimeout);
-    return ((await summary.locator(".value > div").first().textContent()) ?? "").trim();
+
+    const said = ((await summary.locator(".value > div").first().textContent()) ?? "").trim();
+
+    await treeOf(frame).press("Escape");
+    await until(`the details of ${title} to close`, async () => (await titleOf(drawer)) === null);
+    return said;
   }
 
   beforeAll(async () => {
@@ -179,7 +199,7 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
       await expect
         .poll(async () => {
           const described = describedTree(await real.describeCluster(name, TREE_FLAGS));
-          const { rows } = await treeOf(name);
+          const { rows } = await expandedTreeOf(name);
 
           return described.length === 0 ? ["clusterctl printed no tree"] : treeDifferences(described, nodesOf(rows));
         }, settleTimeout)
@@ -196,7 +216,7 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
       await expect
         .poll(async () => {
           const described = describedTree(await real.describeCluster(name, TREE_FLAGS));
-          const { tree, rows } = await treeOf(name);
+          const { tree, rows } = await expandedTreeOf(name);
           const differences: string[] = [];
 
           for (const row of described) {
@@ -213,11 +233,9 @@ describe.skipIf(project === undefined)("the tree of the Clusters of the real pro
               row.object.kind === "MachineDeployment" ||
               (row.depth === 1 && row.object.version !== undefined && row.object.kind !== "MachinePool")
             ) {
-              const lines = await tooltipLines(
-                opened().frame,
-                opened().session.window,
-                rowOf(tree, node.id).getByTestId("capi-tree-replicas"),
-              );
+              // The row brought into the window of the list, whose virtual rows draw only those near it.
+              const cell = (await rowInView(tree, node.id)).getByTestId("capi-tree-replicas");
+              const lines = await tooltipLines(opened().frame, opened().session.window, cell);
 
               differences.push(...countersDifferences(row, replicaCountersOf(lines)));
             }

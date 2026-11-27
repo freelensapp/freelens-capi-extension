@@ -3710,6 +3710,14 @@ the contract label of the definition for a control plane of a provider; and
   MachineDeployment and a control plane, `Ready` on any other object, none on a
   MachineSet or a MachinePool (internal/util/tree/tree.go:640-800). Its
   counters are compared with the tooltip of the cell Replicas of the node.
+  After the first run of its CI, in which the hover of the cell Replicas of the
+  KubeadmControlPlane of both Clusters timed out, the drawer of the details of
+  the node read before it intercepting the pointer, since it covers the frame
+  from 480 px (H19) and the cell starts near there: the session closes the
+  details on Escape after each summary, pressed on the element of the tree, and
+  brings each row into the window of the list before it hovers its cell, since
+  the list draws only the rows near its window. The cell is found by its test
+  id, `capi-tree-replicas`, which the run found in the row of the control plane.
 - Decided while implementing the third part, for the large Cluster of P22: the
   copies are of the first worker of `healthy`, each named with its number padded
   to the width of 300, `freelens-capi-healthy-md-0-m9x7h-m5gtb-001` to `-300`,
