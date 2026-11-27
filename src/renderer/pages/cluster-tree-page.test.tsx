@@ -16,9 +16,12 @@ import {
   TREE_APIS,
 } from "../../../test/host-stores";
 import { objectsOfStates } from "../../../test/view-sources";
+import { TreeBuilds } from "../../common/views/cluster-tree";
+import { nodeDetailsOf } from "../../common/views/node-details";
 import { COLUMN_TITLES, TREE_COLUMNS } from "../../common/views/tree-cells";
 import { rowDomId } from "../../common/views/tree-keys";
 import { ROW_HEIGHT } from "../../common/views/tree-rows";
+import { ErrorBoundary } from "../components/error-boundary";
 import { ClusterPanel } from "../details/cluster-details-v1beta2";
 import { mountedPageSource } from "../reads/cluster-source";
 import styles from "./cluster-tree.module.scss";
@@ -39,6 +42,13 @@ import type { Cluster } from "../api/cluster/cluster-v1beta2";
 // the element of the class `list` that scrolls, as the virtual list of the host does, and records its props. jsdom lays
 // nothing out: a case gives that element its height and its scroll, and the frames that the page asks for run when the
 // case says, through `requestAnimationFrame`, which the cases replace.
+
+// The function of the details of a node, as the page imports it, which a case makes throw (P17, P19).
+vi.mock("../../common/views/node-details", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../common/views/node-details")>();
+
+  return { ...actual, nodeDetailsOf: vi.fn(actual.nodeDetailsOf) };
+});
 
 const EXTENSION = new Renderer.LensExtension({
   name: "@freelensapp/capi-extension",
@@ -400,6 +410,59 @@ describe("the states of the tree (P13, P19)", () => {
     expect(screen.getByTestId("host-search-input")).toBeDefined();
     expect(screen.getByTestId("capi-tree-refresh")).toBeDefined();
     expect(screen.queryByTestId("capi-tree")).toBeNull();
+  });
+
+  it("shows the error page in the place of the tree when what the tree computes throws, the header kept", async () => {
+    const treeOf = vi.spyOn(TreeBuilds.prototype, "treeOf").mockImplementation(() => {
+      throw new TypeError("the tree failed");
+    });
+
+    onTestFinished(() => treeOf.mockRestore());
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    serveTree(objectsOfStates(["healthy"]));
+    // The page as its registration renders it, inside the error boundary of a page.
+    render(<ErrorBoundary extension={EXTENSION}>{pageOf(paramsOf(ADDRESS, MACHINE))}</ErrorBoundary>);
+    await settle();
+
+    expect(treeOf).toHaveBeenCalled();
+    expect(screen.getByText("TypeError: the tree failed")).toBeDefined();
+    expect(screen.getByTestId("capi-tree-title").textContent).toBe(
+      "Cluster Tree: freelens-capi-healthy, freelens-capi-healthy",
+    );
+    expect(screen.getByTestId("host-search-input")).toBeDefined();
+    expect(screen.getByTestId("capi-tree-refresh")).toBeDefined();
+    expect(screen.queryByTestId("capi-tree")).toBeNull();
+  });
+
+  it("shows the error page in the drawer alone when the details of a node throw, the tree and the header kept", async () => {
+    const details = vi.mocked(nodeDetailsOf);
+    const real = details.getMockImplementation() as typeof nodeDetailsOf;
+
+    details.mockImplementation((found, node, inputs) => {
+      if (node.kind === "Machine") throw new TypeError("the details failed");
+      return real(found, node, inputs);
+    });
+    onTestFinished(() => {
+      details.mockImplementation(real);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    serveTree(objectsOfStates(["healthy"]));
+    render(<ErrorBoundary extension={EXTENSION}>{pageOf(paramsOf(ADDRESS, MACHINE))}</ErrorBoundary>);
+    await settle();
+
+    const drawer = screen.getByTestId("capi-tree-details");
+
+    expect(within(drawer).getByText("TypeError: the details failed")).toBeDefined();
+    expect(drawerTitle()).toBe(`Machine: ${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`);
+    expect(rowIds()).toContain(MACHINE);
+    expect(within(tree()).getAllByRole("row").length).toBeGreaterThan(5);
+    expect(screen.getByTestId("capi-tree-title")).toBeDefined();
+    expect(Common.logger.error).toHaveBeenCalledTimes(1);
+
+    // The details of another node show, the boundary of the drawer being keyed by the node.
+    fireEvent.click(rowOf(DEV_CLUSTER));
+    expect(within(screen.getByTestId("capi-tree-details")).queryByText("TypeError: the details failed")).toBeNull();
+    expect(screen.getByTestId("capi-node-details")).toBeDefined();
   });
 
   it("says that no such Cluster is in its namespace, which was read, with a button to the page of the Clusters", async () => {

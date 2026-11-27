@@ -3279,6 +3279,19 @@ the contract label of the definition for a control plane of a provider; and
   whatever store the read has built, which a case of the read pins with the
   host registering the API of the Machines alone at first.
 
+- Decided while implementing the second part, after its reviews, where P17 and
+  P19 give the error boundaries: what the page computes is computed inside
+  them. The page renders its header, the title, the search, how many nodes
+  match and the refresh, and, inside the boundary of the tree, a child that
+  builds the tree, evaluates the model, counts, searches and gives the
+  notices, and draws them, the tree and the drawer, so that an error there
+  leaves the header, with the error page in the place of the tree; the child
+  tells the header how many nodes match. The drawer computes the details of
+  its node inside a boundary of its own, keyed by the node, so that an error
+  there leaves the tree, and takes its title from the address alone; it goes
+  with the tree when the tree fails. Two cases plant a throw, one in the tree
+  and one in the details of a node.
+
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
 spec says of 2.0.0 stays a fact of the host, as probed then.

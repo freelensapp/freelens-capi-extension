@@ -8,8 +8,9 @@
 // (P2). Its title, `<Kind>: <name>`, the copy of the name, its width, which the details of the host share, and its
 // closing are those of the host: it closes on its icon, on Escape, through a listener on the window, and on a click
 // outside every drawer, which a click on a row does not reach, since the row stops the click as it handles it. Its
-// toolbar stays empty until the actions of M3, and its content renders inside an error boundary of its own, keyed by
-// the node, so that an error in the details leaves the tree.
+// toolbar stays empty until the actions of M3. Its content is computed and rendered inside an error boundary of its
+// own, keyed by the node, so that an error in the details leaves the tree (P17, P19): the page hands it the function
+// that computes what it shows, and its title comes from the address alone.
 //
 // The details of the root are those of a Cluster (SPEC-0004), from the read of the tree, with no row Tree; those of any
 // other node, read or not, are those of `object-details.tsx`. A value that names no node says so, as written; a node
@@ -52,7 +53,8 @@ export type DrawerContent =
 
 export interface TreeDetailsDrawerProps {
   readonly address: NodeAddress;
-  readonly content: DrawerContent;
+  // What the drawer shows of the node of the address, computed inside the error boundary of the drawer.
+  readonly contentOf: () => DrawerContent;
   // The Cluster of the tree, by its namespace and its name.
   readonly namespace: string;
   readonly name: string;
@@ -65,16 +67,44 @@ export interface TreeDetailsDrawerProps {
   readonly close: (focusBack: boolean) => void;
 }
 
-function titleOf(address: NodeAddress, content: DrawerContent, name: string): string {
+// The title of the host, `<Kind>: <name>`, as the address names the node, with its namespace for the class read in
+// another namespace, as its row names it; "Details" for an address that names no node.
+function titleOf(address: NodeAddress): string {
   if (address.state === "closed") return "";
   if (address.state === "invalid") return "Details";
-  if (content.state === "root") return `Cluster: ${name}`;
-  if (content.state === "node") return content.details.title;
   return `${address.kind}: ${address.namespace === undefined ? address.name : `${address.namespace}/${address.name}`}`;
 }
 
+type BodyProps = Omit<TreeDetailsDrawerProps, "close" | "address"> & {
+  readonly address: Extract<NodeAddress, { readonly state: "node" }>;
+};
+
+// What the drawer shows of the node of the address, computed here, inside the error boundary of the drawer: the
+// spinner, that the node is not in the tree, the details of the root, or those of the node (P17, P19).
+function DrawerBody({ address, contentOf, namespace, name, source, host, links, openNode }: BodyProps) {
+  const content = contentOf();
+
+  switch (content.state) {
+    case "loading":
+      return <Spinner center data-testid="capi-tree-details-loading" />;
+    case "absent":
+      return (
+        <div className={styles.state} role="status" data-testid="capi-tree-details-absent">
+          {content.gone
+            ? `No such object is in the tree of the Cluster ${namespace}/${name} any longer: ${address.kind} ${address.name} was there, and is gone.`
+            : `No such object is in the tree of the Cluster ${namespace}/${name}, which was read: ${address.kind} ${address.name}.`}
+        </div>
+      );
+    case "root":
+      return <ClusterView source={source} namespace={namespace} name={name} host={host} metadata={true} inTree />;
+    case "node":
+      return <ObjectDetails details={content.details} host={host} links={links} openNode={openNode} />;
+  }
+}
+
 export const TreeDetailsDrawer = observer((props: TreeDetailsDrawerProps) => {
-  const { address, content, namespace, name, source, host, links, openNode, close } = props;
+  const { address, close, ...body } = props;
+  const { host } = props;
   const open = address.state !== "closed";
   // The target of the click that the window is dispatching, if any.
   const click = useRef<EventTarget | null>(null);
@@ -112,7 +142,7 @@ export const TreeDetailsDrawer = observer((props: TreeDetailsDrawerProps) => {
   return (
     <Drawer
       open={open}
-      title={titleOf(address, content, name)}
+      title={titleOf(address)}
       onClose={onClose}
       data-testid={DETAILS_TEST_ID}
       testIdForClose={`${DETAILS_TEST_ID}-close`}
@@ -121,21 +151,9 @@ export const TreeDetailsDrawer = observer((props: TreeDetailsDrawerProps) => {
         <div className={styles.state} role="status" data-testid="capi-tree-details-invalid">
           {`The address names no object: the value of details is "${address.value}", which is not <group>/<Kind>/<name>, or <group>/<Kind>/<namespace>/<name> for a class in another namespace.`}
         </div>
-      ) : address.state === "closed" ? null : content.state === "loading" ? (
-        <Spinner center data-testid="capi-tree-details-loading" />
-      ) : content.state === "absent" ? (
-        <div className={styles.state} role="status" data-testid="capi-tree-details-absent">
-          {content.gone
-            ? `No such object is in the tree of the Cluster ${namespace}/${name} any longer: ${address.kind} ${address.name} was there, and is gone.`
-            : `No such object is in the tree of the Cluster ${namespace}/${name}, which was read: ${address.kind} ${address.name}.`}
-        </div>
-      ) : (
+      ) : address.state === "closed" ? null : (
         <ErrorBoundary extension={host.extension} resetKey={address.id}>
-          {content.state === "root" ? (
-            <ClusterView source={source} namespace={namespace} name={name} host={host} metadata={true} inTree />
-          ) : (
-            <ObjectDetails details={content.details} host={host} links={links} openNode={openNode} />
-          )}
+          <DrawerBody {...body} address={address} />
         </ErrorBoundary>
       )}
     </Drawer>

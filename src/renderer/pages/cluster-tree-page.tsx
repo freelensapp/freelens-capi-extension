@@ -26,6 +26,11 @@
 //   moves the scroll of the list by their height, before the paint (P13; H18); an expansion, a collapse and a search
 //   move no row and scroll nothing.
 //
+// What the page computes is computed inside the error boundary that P17 and P19 give it, so that an error leaves the
+// header, and the tree when it is in the details: the page renders its header and, inside the boundary of the tree, a
+// child that builds the tree, evaluates the model, counts and searches, and renders the tree and the drawer; the drawer
+// computes the details of the node inside a boundary of its own (P17, P19).
+//
 // The details of a node are the `Drawer` of the host over the tree (`tree-details-drawer.tsx`). A click on a row stops
 // there as it opens them, so that the listener of the host on the window does not close them at once (H11), and while
 // the details of the host are open over them, which the address says by `kube-details` with a value, a click on a row
@@ -35,7 +40,7 @@
 
 import { Renderer } from "@freelensapp/extensions";
 import { observer } from "mobx-react";
-import React, { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import React, { createRef, useEffect, useLayoutEffect, useReducer, useState } from "react";
 import { evaluateTree, kindPending, TreeBuilds } from "../../common/views/cluster-tree";
 import { CLUSTERS_PERMISSION } from "../../common/views/cluster-view";
 import { StatusMemo } from "../../common/views/context";
@@ -274,9 +279,12 @@ function StatusCellView({ status }: { status: StatusView }) {
 }
 
 // What the page knows of the rows between its renders, which no render reads as a dependency of its own: the
-// expansions of the user, the active node, the row that the list scrolls to and the one that the page brings whole
-// into view, the address revealed last, the rows of the last commit and what changed them, and which rows are drawn.
+// element of the tree, the expansions of the user, the active node, the row that the list scrolls to and the one that
+// the page brings whole into view, the address revealed last, the rows of the last commit and what changed them, and
+// which rows are drawn.
 class TreePage {
+  // The element of the tree, around the table, which takes the focus and the keys (P18).
+  readonly tree = createRef<HTMLDivElement>();
   rows: RowsState | undefined;
   active: string | undefined;
   // The `selectedItemId` of the table, until its row is drawn.
@@ -351,6 +359,11 @@ class TreePage {
     this.#showNode(id);
     this.focusBack = focusBack;
   }
+
+  // Gives the focus to the element of the tree, with no scroll (P18).
+  focusTree(): void {
+    this.tree.current?.focus({ preventScroll: true });
+  }
 }
 
 interface TreeItem {
@@ -424,19 +437,121 @@ function ClusterState({
   );
 }
 
+// The page of the tree of one Cluster: its header, the title, the search, how many nodes match and the refresh, and,
+// inside the error boundary of the tree, what the page computes and draws from its reads (P15, P19, P23).
 const TreeView = observer(({ namespace, name, details, extension }: TreeViewProps) => {
   const [read] = useState(() => new ClusterNamespaceRead(namespace, name, TREE_VIEW_KINDS));
   const [builds] = useState(() => new TreeBuilds());
   const [memo] = useState(() => new StatusMemo());
   const [page] = useState(() => new TreePage());
   const [search, setSearch] = useState("");
-  const [, rerender] = useReducer((tick: number) => tick + 1, 0);
-  const tree = useRef<HTMLDivElement>(null);
+  // How many nodes the search matches, which the tree says once it has searched.
+  const [matches, setMatches] = useState<number | undefined>(undefined);
+  const [tick, rerender] = useReducer((count: number) => count + 1, 0);
+  // Closes the details, the same function for the life of the page, which reads the address and the rows that the page
+  // drew last when it runs: the row of the node is scrolled to, then brought whole into view, and the focus goes back to
+  // the tree when the closing asks for it (P17). The parameters of a page are the same for its life.
+  const [closeDetails] = useState(() => (focusBack: boolean) => {
+    const address = parseNodeAddress(details?.get());
+    const id = address.state === "node" ? address.id : undefined;
+
+    page.openedByRow = undefined;
+    details?.clear();
+    if (id !== undefined && (page.before ?? []).some((row) => row.node.id === id)) page.moveTo(id, focusBack);
+    else if (focusBack) page.focusTree();
+    rerender();
+  });
 
   useEffect(() => read.start(), [read]);
 
   const shown = read.firstLoadsEnded();
   const refreshDisabled = !shown || read.firstLoadsRun();
+  const address = parseNodeAddress(details?.get());
+
+  // An Escape in the empty search closes the details: those of the host first, while they are open over those of a
+  // node, since the search stops the Escape before the listener of their drawer on the window hears it (P15).
+  const onSearchKey = (event: React.KeyboardEvent) => {
+    if (event.nativeEvent.code !== "Escape" || search !== "") return;
+    if (hostDetailsOpen()) Navigation.hideDetails();
+    else if (address.state !== "closed") closeDetails(false);
+  };
+
+  return (
+    <div className={styles.page} data-testid="capi-tree-page">
+      <div className={styles.header}>
+        <h5 className={styles.title} data-testid="capi-tree-title">{`${PAGE_TITLE}: ${name}, ${namespace}`}</h5>
+        <div className={styles.search}>
+          <SearchInput
+            value={search}
+            autoFocus={false}
+            onChange={(value) => {
+              page.change = "search";
+              setSearch(value);
+            }}
+            onKeyDown={onSearchKey}
+          />
+        </div>
+        {search === "" || matches === undefined ? null : (
+          <span className={styles.matches} data-testid="capi-tree-matches">
+            {matches === 1 ? "1 node matches" : `${matches} nodes match`}
+          </span>
+        )}
+        <Icon
+          material="refresh"
+          interactive
+          role="button"
+          aria-label={REFRESH_WORDS}
+          aria-disabled={refreshDisabled}
+          disabled={refreshDisabled}
+          tooltip={refreshDisabled ? REFRESH_WAIT : REFRESH_WORDS}
+          onClick={() => read.refresh()}
+          data-testid="capi-tree-refresh"
+        />
+      </div>
+      <ErrorBoundary extension={extension} resetKey={`${namespace}/${name}`}>
+        <TreeContent
+          namespace={namespace}
+          name={name}
+          details={details}
+          extension={extension}
+          read={read}
+          builds={builds}
+          memo={memo}
+          page={page}
+          search={search}
+          tick={tick}
+          rerender={rerender}
+          closeDetails={closeDetails}
+          onMatches={setMatches}
+        />
+      </ErrorBoundary>
+    </div>
+  );
+});
+
+interface TreeContentProps extends TreeViewProps {
+  readonly read: ClusterNamespaceRead;
+  readonly builds: TreeBuilds;
+  readonly memo: StatusMemo;
+  readonly page: TreePage;
+  readonly search: string;
+  // A count that the page moves to render the tree again after a change of what it knows of the rows.
+  readonly tick: number;
+  readonly rerender: () => void;
+  readonly closeDetails: (focusBack: boolean) => void;
+  // Tells the header how many nodes the search matches, or that it searches nothing.
+  readonly onMatches: (matches: number | undefined) => void;
+}
+
+// What the page computes from its reads and draws, inside the error boundary of the tree: the indexes and the tree,
+// built once for each change of what they read, the model evaluated with the time of each render, the counts, the rows,
+// the search and the notices (P13 to P16, P19); then the spinner, the state of the Cluster or the tree, and the drawer
+// of the details of a node.
+const TreeContent = observer((props: TreeContentProps) => {
+  const { namespace, name, details, extension, read, builds, memo, page, search, rerender, closeDetails, onMatches } =
+    props;
+  const tree = page.tree;
+  const shown = read.firstLoadsEnded();
   const now = Date.now();
   const address = parseNodeAddress(details?.get());
   const addressId = address.state === "node" ? address.id : undefined;
@@ -466,11 +581,12 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
       (earliest, instant) => (earliest === undefined ? instant : Math.min(earliest, instant)),
       undefined,
     );
+  const matches = matched?.matches.size;
 
   page.active = active;
 
   // The node of the address, the details of the host and the focus.
-  const focusTree = () => tree.current?.focus({ preventScroll: true });
+  const focusTree = () => page.focusTree();
   const openDetails = (id: string) => {
     page.openedByRow = id;
     details?.set(id);
@@ -498,15 +614,6 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
       page.change = "expansion";
     }
     focusTree();
-    rerender();
-  };
-  const closeDetails = (focusBack: boolean) => {
-    const id = addressId;
-
-    page.openedByRow = undefined;
-    details?.clear();
-    if (id !== undefined && rows.some((row) => row.node.id === id)) page.moveTo(id, focusBack);
-    else if (focusBack) focusTree();
     rerender();
   };
   const host: ViewHost = {
@@ -539,7 +646,11 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
     const timer = setTimeout(() => rerender(), Math.max(0, next - Date.now()));
 
     return () => clearTimeout(timer);
-  }, [next]);
+  }, [next, rerender]);
+
+  // The header says how many nodes the search matches, once the tree has searched, and nothing once the tree is gone.
+  useLayoutEffect(() => onMatches(matches), [matches, onMatches]);
+  useLayoutEffect(() => () => onMatches(undefined), [onMatches]);
 
   // Once the rows of a render are in the document and before the browser paints them (P13, P16).
   useLayoutEffect(() => {
@@ -619,14 +730,6 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
       case "none":
         break;
     }
-  };
-
-  // An Escape in the empty search closes the details: those of the host first, while they are open over those of a
-  // node, since the search stops the Escape before the listener of their drawer on the window hears it (P15).
-  const onSearchKey = (event: React.KeyboardEvent) => {
-    if (event.nativeEvent.code !== "Escape" || search !== "") return;
-    if (hostDetailsOpen()) Navigation.hideDetails();
-    else if (address.state !== "closed") closeDetails(false);
   };
 
   const conditionsOf = (node: TreeNode): ConditionsResult | undefined => {
@@ -761,45 +864,14 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
     );
   };
 
-  const content = drawerContent(found, index, address, namespace, page, (node) => {
-    const status = statuses.get(node.id);
-
-    return nodeDetailsOf(found as ClusterTree, node, { status, conditions: conditionsOf(node) });
-  });
-  const matches = matched?.matches.size ?? 0;
+  // What the drawer shows of the node of the address, which the drawer computes inside its own error boundary (P17).
+  const contentOf = () =>
+    drawerContent(found, index, address, namespace, page, (node) =>
+      nodeDetailsOf(found as ClusterTree, node, { status: statuses.get(node.id), conditions: conditionsOf(node) }),
+    );
 
   return (
-    <div className={styles.page} data-testid="capi-tree-page">
-      <div className={styles.header}>
-        <h5 className={styles.title} data-testid="capi-tree-title">{`${PAGE_TITLE}: ${name}, ${namespace}`}</h5>
-        <div className={styles.search}>
-          <SearchInput
-            value={search}
-            autoFocus={false}
-            onChange={(value) => {
-              page.change = "search";
-              setSearch(value);
-            }}
-            onKeyDown={onSearchKey}
-          />
-        </div>
-        {search === "" ? null : (
-          <span className={styles.matches} data-testid="capi-tree-matches">
-            {matches === 1 ? "1 node matches" : `${matches} nodes match`}
-          </span>
-        )}
-        <Icon
-          material="refresh"
-          interactive
-          role="button"
-          aria-label={REFRESH_WORDS}
-          aria-disabled={refreshDisabled}
-          disabled={refreshDisabled}
-          tooltip={refreshDisabled ? REFRESH_WAIT : REFRESH_WORDS}
-          onClick={() => read.refresh()}
-          data-testid="capi-tree-refresh"
-        />
-      </div>
+    <>
       {notices.length === 0 ? null : (
         <div className={styles.notices}>
           {notices.map((notice) => (
@@ -807,47 +879,45 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
           ))}
         </div>
       )}
-      <ErrorBoundary extension={extension} resetKey={`${namespace}/${name}`}>
-        {!shown ? (
-          <Spinner center data-testid="capi-tree-loading" />
-        ) : outcome !== undefined && outcome.state !== "found" ? (
-          <ClusterState namespace={namespace} name={name} view={outcome} openClusters={openClusters} />
-        ) : (
-          <div
-            ref={tree}
-            role="treegrid"
-            tabIndex={0}
-            aria-label={`Tree of the Cluster ${name}`}
-            aria-activedescendant={activeDescendant(active, active !== undefined && page.drawn.get(active) === true)}
-            className={styles.tree}
-            data-testid="capi-tree"
-            onKeyDown={onKeyDown}
+      {!shown ? (
+        <Spinner center data-testid="capi-tree-loading" />
+      ) : outcome !== undefined && outcome.state !== "found" ? (
+        <ClusterState namespace={namespace} name={name} view={outcome} openClusters={openClusters} />
+      ) : (
+        <div
+          ref={tree}
+          role="treegrid"
+          tabIndex={0}
+          aria-label={`Tree of the Cluster ${name}`}
+          aria-activedescendant={activeDescendant(active, active !== undefined && page.drawn.get(active) === true)}
+          className={styles.tree}
+          data-testid="capi-tree"
+          onKeyDown={onKeyDown}
+        >
+          <Table
+            className={styles.table}
+            virtual
+            selectable
+            items={items}
+            getTableRow={getTableRow}
+            selectedItemId={page.target}
           >
-            <Table
-              className={styles.table}
-              virtual
-              selectable
-              items={items}
-              getTableRow={getTableRow}
-              selectedItemId={page.target}
-            >
-              <TableHead sticky={false} {...(HEAD_ROW_ATTRIBUTES as object)}>
-                {TREE_COLUMNS.map((column) => (
-                  <TableCell key={column} className={styles[column]} {...(HEAD_CELL_ATTRIBUTES as object)}>
-                    <WithTooltip expandable={false} data-testid="capi-tree-head">
-                      {COLUMN_TITLES[column]}
-                    </WithTooltip>
-                  </TableCell>
-                ))}
-              </TableHead>
-            </Table>
-          </div>
-        )}
-      </ErrorBoundary>
+            <TableHead sticky={false} {...(HEAD_ROW_ATTRIBUTES as object)}>
+              {TREE_COLUMNS.map((column) => (
+                <TableCell key={column} className={styles[column]} {...(HEAD_CELL_ATTRIBUTES as object)}>
+                  <WithTooltip expandable={false} data-testid="capi-tree-head">
+                    {COLUMN_TITLES[column]}
+                  </WithTooltip>
+                </TableCell>
+              ))}
+            </TableHead>
+          </Table>
+        </div>
+      )}
       {shown && outcome?.state !== "found" ? null : (
         <TreeDetailsDrawer
           address={address}
-          content={content}
+          contentOf={contentOf}
           namespace={namespace}
           name={name}
           source={read}
@@ -857,7 +927,7 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
           close={closeDetails}
         />
       )}
-    </div>
+    </>
   );
 });
 
