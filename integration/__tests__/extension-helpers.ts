@@ -15,12 +15,14 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
 import { API_KUBE_PREFIX, isExpectedRefusal, isExpectedThrottling, isRefusedModuleLoad } from "./expected-refusals";
+import { entryBeforeOpening, extensionName, extensionPageAddress } from "./extension-pages";
 
 import type { Browser, ConsoleMessage, Frame, Locator, Page, Request } from "playwright";
 
 import type { ExpectedRefusal, ExpectedThrottling, FailedResponse } from "./expected-refusals";
 
-export const extensionName = "@freelensapp/capi-extension";
+// The name of the extension and the address of a page of an extension, which the sessions import from here too.
+export { extensionName, extensionPageAddress };
 
 // The root of this checkout, installed in place and read for the manifests.
 const extensionDir = path.resolve(import.meta.dirname, "..", "..");
@@ -957,10 +959,18 @@ export async function reloadClusterFrame(session: AppSession, frame: Frame) {
 
 /**
  * Goes to an address of the cluster frame, as a link of the host would: the
- * frame follows its history only on a `popstate` event.
+ * frame follows its history only on a `popstate` event. To a page of the
+ * extension it goes once the sidebar of the frame shows the root entry of the
+ * extension (`entryBeforeOpening` of `extension-pages.ts`): a frame that starts
+ * draws its sidebar before it loads the extension, and the host takes the
+ * address of a page that it has not enabled yet to its start page.
  */
 export async function navigateCluster(frame: Frame, address: string) {
   console.log(`navigate the cluster frame to ${address}`);
+
+  const entry = entryBeforeOpening(address);
+
+  if (entry !== undefined) await frame.getByTestId(entry).waitFor({ state: "attached", ...viewTimeout });
   await frame.evaluate((target) => {
     window.history.pushState({}, "", target);
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -1182,17 +1192,6 @@ export async function kubectl(args: readonly string[]): Promise<string> {
   });
 
   return stdout;
-}
-
-/**
- * The address of a page of an extension in the cluster frame,
- * `/extension/<name>/<pageId>`, with the `@` of the name of the extension
- * dropped and its `/` turned into `--`, as the host makes it
- * (freelens:packages/core/src/renderer/routes/for-extension.ts:11-15;
- * freelens:packages/core/src/extensions/lens-extension.ts:125-127).
- */
-export function extensionPageAddress(pageId: string, extension = extensionName): string {
-  return `/extension/${extension.replace("@", "").replace("/", "--")}/${pageId}`;
 }
 
 /**

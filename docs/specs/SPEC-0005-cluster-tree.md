@@ -3857,6 +3857,37 @@ the contract label of the definition for a control plane of a provider; and
   shape of the host's, in Chromium, gave the same: the scroll held with a table
   that draws in the commit of its parent, was clamped at the end of the list
   with one that draws in the next commit, and held from the head of the table.
+- Decided while implementing the third part, after the second run of its CI, in
+  which each case of the restricted session that loads its frame again waited
+  60 s for the head of the list of the page of the Clusters, which the first
+  run had shown after each of its eight loads: the sessions navigate the frame
+  of a cluster to a page of the extension once its sidebar shows the root entry
+  of the extension, by the id that the host gives it
+  (`entryBeforeOpening` of `extension-pages.ts`, which `navigateCluster` of
+  `extension-helpers.ts` calls). A frame that starts draws its sidebar before it
+  loads the extensions, which it does once the cluster is ready and the catalog
+  holds its entities
+  (freelens:packages/core/src/renderer/frames/cluster-frame/init-cluster-frame/init-cluster-frame.ts:46-54);
+  it enables the pages of an extension, and shows its entries in the sidebar,
+  under one condition, once it has loaded it
+  (freelens:packages/core/src/renderer/routes/extension-route-registrator.injectable.tsx:44-54;
+  freelens:packages/core/src/renderer/components/layout/extension-sidebar-item-registrator.injectable.tsx:65);
+  and its layout takes an address that no enabled route serves to its start
+  page
+  (freelens:packages/core/src/renderer/frames/cluster-frame/cluster-frame-layout-child-component.injectable.tsx:41-42;
+  SPEC-0004, "Notes and deviations"). The session opened the page once the
+  sidebar of the new frame showed, so it raced the load of the extension:
+  `untilFrameRenders`, which the fix of the first run added, looks for the
+  sidebar every 250 ms and returns as soon as it shows, where
+  `frame.waitForSelector`, before it, returned later. From the load of the
+  frame to the navigation the first run took 8.23 to 8.68 s, and the page came
+  each time; the second took 7.44 to 8.24 s, and it never came, while case 4,
+  which loads no frame, showed it in the frame that case 2 had loaded 68 s
+  before, and the session logged no error at its end, so no frame failed to
+  load. A case of `index.test.tsx` checks that the entry is the root entry that
+  the extension registers, under the id that the host makes from the name of
+  the package, before the address of either page, and that no other address
+  waits for one.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

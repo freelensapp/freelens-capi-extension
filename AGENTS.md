@@ -1417,7 +1417,12 @@ with it the application menu, is out of reach of CDP. They navigate the root
 frame with `Renderer.Navigation.navigate` of the extension API, find the kind
 cluster with `Renderer.Catalog.catalogEntities` by its name, `kind-<name>`,
 and connect it by navigating to `/cluster/<id>` and disconnect it with the
-entity's `disconnect()`. `browser.close()` of a browser connected over CDP
+entity's `disconnect()`. They open a page of the extension in the frame of a
+cluster once the sidebar of the frame shows the root entry of the extension: a
+frame that starts draws its sidebar before it loads the extensions, and the
+host takes the address of a page that it has not enabled yet to its start page
+(`entryBeforeOpening` of `extension-pages.ts`; SPEC-0005, "Notes and
+deviations"). `browser.close()` of a browser connected over CDP
 closes only the connection, so a session ends with it and the app keeps
 running. The renderer's console carries the errors of the root frame and of
 every cluster frame; the main log is read from the file that
@@ -1534,13 +1539,16 @@ nothing about the extension, and the session no longer collects them.
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
 connecting and disconnecting the kind cluster, opening the lists of the host,
-kubectl, and the selectors. The sessions of the tree share `tree-page.ts`,
-which opens the page and reads and records what it draws, `tree-outline.ts`,
-which reads the rows from the DOM, with a function that the page test runs in
-jsdom too, and gives their outline, `tree-checks.ts`, what they decide as
-pure functions, and `tree-expectations.ts`, what they expect, written by hand;
-the session of the tree makes its large Cluster with `large-cluster.ts`. No
-name of these matches `*.tests.ts`, so Vitest does not collect them.
+kubectl, and the selectors; the name of the extension, the address of its
+pages and the entry of the sidebar that a navigation to one of them waits for
+are in `extension-pages.ts`, as pure functions. The sessions of the tree share
+`tree-page.ts`, which opens the page and reads and records what it draws,
+`tree-outline.ts`, which reads the rows from the DOM, with a function that the
+page test runs in jsdom too, and gives their outline, `tree-checks.ts`, what
+they decide as pure functions, and `tree-expectations.ts`, what they expect,
+written by hand; the session of the tree makes its large Cluster with
+`large-cluster.ts`. No name of these matches `*.tests.ts`, so Vitest does not
+collect them.
 `integration/tsconfig.json` compiles the directory with Node and the DOM,
 because the callbacks of `page.evaluate` run in the page, and with the types
 of `@freelensapp/extensions`, which declare `globalThis.FreelensExtensionApi`
