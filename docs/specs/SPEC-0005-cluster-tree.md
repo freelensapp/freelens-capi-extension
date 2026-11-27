@@ -3391,6 +3391,26 @@ the contract label of the definition for a control plane of a provider; and
   its name as text, with why in its tooltip in the words of P12, as the details
   of a Cluster show a reference that opens nothing (SPEC-0004, P18); the
   details dropped it, with no word.
+- Decided while implementing the second part, after its reviews, where P18
+  shows the outline of the row of the active node "while the element has the
+  focus": the stylesheet draws it on `:focus-visible` of the element of the
+  tree, so the browser shows it when the focus came from the keyboard or a key
+  acts in the tree, and not after a click of the mouse until a key is pressed,
+  as it shows the focus of a control of the host (browser behavior, not in
+  these sources); after a click, the hover and the selected row of the host
+  show where the user is, and the outline says where the keys act once they
+  are used. So does the focus that the page gives the tree as it is drawn,
+  after the click that opened the page.
+- Decided while implementing the second part, after its reviews: the line of
+  "Tests", "Unit", for `cluster-details-v1beta2.test.tsx` that asks for "an
+  owner of Cluster API" as a button that opens the tree at its node is not
+  followed. The owners of a Cluster stay text in the drawer of the page of the
+  Clusters, in the panel in the details of the host and in the details of the
+  root, as SPEC-0004, P32 has them: the tree of a Cluster holds the objects
+  under it, never an owner of the Cluster, so such a button would name no node
+  of that tree. The owners in the details of every other node link to their
+  nodes when the tree holds them, as P5 says, and an owner that is the Cluster
+  to the root (the note above on P5 and P17).
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
