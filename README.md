@@ -30,6 +30,17 @@ that Freelens opens for a Cluster, after its metadata. A read that the cluster
 refuses or that fails is said as such, with the permission it takes, never as
 an empty list.
 
+The row Tree of the details opens the tree of the Cluster, "Cluster Tree":
+every object that makes the Cluster, those of its providers included, one row
+each, under the object or the group that holds it, as `clusterctl describe
+cluster` places them, live. Each row shows its replicas, its version, its
+activities, its health with how many objects of each health it holds, and its
+status; the tree opens on the objects that need a look. A click on a row, or
+Enter, opens the details of its object over the tree; the keys of a tree move
+through it; the search keeps the rows that match and those above them; and the
+refresh in the header reads the whole tree again. A node that cannot be read
+says why, with the permission it takes.
+
 ## Requirements
 
 - Freelens >= 2.1.0
@@ -73,15 +84,32 @@ whole cluster:
 | The availability of the controllers, where the Cluster API Operator installed them              | `operator.cluster.x-k8s.io`     | `coreproviders`, `bootstrapproviders`, `controlplaneproviders`, `infrastructureproviders`, `addonproviders`, `ipamproviders`, `runtimeextensionproviders` |
 | The control plane and the infrastructure cluster that a Cluster names, of any provider          | the group of each provider      | the plural of each kind                                                                                                                                   |
 
+The tree of a Cluster reads the same kinds and these, in the namespace of its
+Cluster alone, whatever namespaces the filter selects, and its ClusterClass in
+the namespace that the class reference of the Cluster names, each needing
+`get`, `list` and `watch` there:
+
+| Read                                                                                                                                       | Group                        | Resources                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | --------------------------------------------------- |
+| The bootstrap configs of the Machines and of the MachinePools, and their templates                                                         | `bootstrap.cluster.x-k8s.io` | `kubeadmconfigs`, `kubeadmconfigtemplates`          |
+| The add-ons of the Cluster and what each applied to it                                                                                     | `addons.cluster.x-k8s.io`    | `clusterresourcesets`, `clusterresourcesetbindings` |
+| The addresses that the objects of the Cluster claim                                                                                        | `ipam.cluster.x-k8s.io`      | `ipaddressclaims`, `ipaddresses`                    |
+| The objects of the providers that the objects of the Cluster name: infrastructure machines and machine pools, templates, bootstrap configs | the group of each provider   | the plural of each kind                             |
+
 The version of the kind of a provider comes from the contract label of its
 definition. Freelens lists the definitions itself; for a user who may not list
 them, the extension reads the definition of each kind that a Cluster names by
 its name, which needs `get` on `customresourcedefinitions` of
 `apiextensions.k8s.io`, which may be limited to those names, such as
 `devclusters.infrastructure.cluster.x-k8s.io`. Without it, a reference shows as
-text and says why. A read refused in some namespaces leaves out what it could
+text and says why. The tree reads the definition of each kind of a provider
+that its objects name the same way, such as
+`devmachines.infrastructure.cluster.x-k8s.io` and
+`devmachinetemplates.infrastructure.cluster.x-k8s.io`; without it, the nodes of
+that kind say why. A read refused in some namespaces leaves out what it could
 not read and says so, with the message of the cluster and the permission it
-takes.
+takes; in the tree, the nodes of a kind that cannot be read say so, under a
+node of their kind.
 
 Freelens follows a list that it reads over the whole cluster only for a user
 who may watch every resource of the core group over the whole cluster; for any
@@ -90,8 +118,9 @@ a selection that leaves out a namespace is read and watched namespace by
 namespace. Freelens itself reads the namespaces for its filter.
 
 The extension never reads a Secret, never reads a Cluster at a version other
-than `v1beta2`, and reads no field of the spec of a KubeadmControlPlane but its
-replicas and its version.
+than `v1beta2`, reads no field of the spec of a KubeadmControlPlane but its
+replicas, its version and the reference to the template of its Machines, and
+no field of the spec of a KubeadmConfig or of its template.
 
 ## Install
 
@@ -242,7 +271,11 @@ pnpm test:integration
 
 The tests install the checkout in place, replacing any other installation of
 the extension in Freelens dev. Use a kind cluster with nothing worth keeping.
-Without Freelens dev or the cluster the tests are skipped.
+Without Freelens dev or the cluster the tests are skipped. The session of the
+tree writes to the cluster of the definitions through the scripts of the test
+environment: an annotation, a Machine and a condition of the objects of
+`healthy`, which it undoes, and a Cluster of 300 Machines in a namespace of its
+own, which it deletes.
 
 Optional variables:
 
@@ -256,6 +289,12 @@ Optional variables:
   Kubeconfig Syncs lists, where the restricted session writes the kubeconfig
   of a second identity and deletes it at its end. Without it that session is
   skipped.
+- `TEST_SCREENSHOTS_DIR`: a folder where the session of the tree and the
+  restricted session take their screenshots of the themes. Without it they
+  take none.
+- `TEST_THEME` and `TEST_THEME_VARIANT`: the theme and the variant, `dark` or
+  `light`, that the profile of Freelens dev names, which the session of the
+  tree checks that Freelens applied.
 
 The sessions that need the cluster of the real project run with
 `pnpm test:integration:real-project`; one of them installs the Sveltos

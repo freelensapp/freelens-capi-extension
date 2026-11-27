@@ -163,6 +163,58 @@ and writes nothing; what each part shows is in
    namespaces of the states in the filter. Their times move to the moment of
    the apply, so the marks of the states in flight hold for a while after it.
 
+## Walk through the tree of a Cluster
+
+The tree of a Cluster ([SPEC-0005](../specs/SPEC-0005-cluster-tree.md)) reads
+and writes nothing; what each part shows is in [DESIGN.md](DESIGN.md).
+
+1. **The way in.** Open the details of `freelens-capi-md` and press "Open the
+   tree of this Cluster" in their row Tree: the page "Cluster Tree:
+   freelens-capi-md, default". The control plane, the parts of the workers and
+   the ClusterClass of the details, and the names of the objects of Cluster API
+   in the lines of a message, open the same tree at their object, with its
+   details; so do the same buttons in the panel of the details of Freelens.
+2. **The rows.** The Cluster, then what it names and holds: its DevCluster, its
+   KubeadmControlPlane with its Machines, each with its DevMachine and its
+   KubeadmConfig, and its templates; Workers, with the MachineDeployment, its
+   MachineSets and their Machines; the ClusterClass; Add-ons, with the
+   ClusterResourceSet of kindnet and what its binding records it applied; and
+   Health checks. Each row shows its replicas, its version, its activities, its
+   health and the counts of the objects that it holds, by health, and its
+   status, each whole in its tooltip. The tree opens on the objects that need a
+   look: on `freelens-capi-mp`, the MachinePool and its Machine, whose Node is
+   not ready.
+3. **The details and the keys.** A click on a row, or Enter, opens the details
+   of its object over the tree: where it sits and why, its status, its facts,
+   and, for a DevMachine, a link to the details of Freelens. Tab reaches the
+   tree; Down and Up, Right and Left, Home, End, Page Up and Page Down move
+   through it and expand or collapse; Escape closes the details, with the row
+   of their object in view.
+4. **The search and the refresh.** The search keeps the rows whose words hold
+   the words searched, with those above them, and says how many nodes match;
+   cleared, the tree is as it was. The refresh in the header reads the tree
+   again.
+5. **The same tree from the tool of the project.** With the clusterctl of the
+   walk of the Clusters, and the flags that show every object on a row of its
+   own:
+
+   ```sh
+   state=~/.local/state/freelens-capi-extension
+   CLUSTERCTL_DISABLE_VERSIONCHECK=true \
+     "$state"/downloads/cluster-api/v1.14.4/clusterctl-linux-amd64 describe cluster freelens-capi-md \
+     --show-machinesets --show-templates --show-resourcesets --echo --grouping=false \
+     --kubeconfig "$state"/freelens-capi-management/kubeconfig
+   ```
+
+   Every row of an object that it prints is a row of the tree, under the same
+   object; the tree adds what the tool leaves out, the ClusterClass, the
+   MachineHealthChecks, the binding and the resources of the ClusterResourceSet.
+6. **Every state.** On the cluster of the definitions, the tree of the Cluster
+   of each state shows what that state holds: the objects not found of
+   `deleting`, the Paused of `paused`, the remediation of `remediation`, and,
+   in `no-status`, an IPAddressClaim of the Cluster and its address under Other
+   objects.
+
 ## Take it down
 
 ```sh
