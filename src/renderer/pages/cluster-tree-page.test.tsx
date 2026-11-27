@@ -652,6 +652,18 @@ describe("the table of the tree (P9, P13, P16)", () => {
     expect(rowOf(DEV_CLUSTER).className.split(" ")).toContain("selected");
   });
 
+  it("says in the tooltip of the replicas of Workers that a MachinePool of the Cluster has no Machines, as the list does", async () => {
+    const name = "freelens-capi-pool-without-machines";
+
+    serveTree(objectsOfStates(["machine-pool-without-machines"]));
+    render(pageOf(paramsOf(`${name}/${name}`)));
+    await settle();
+
+    expect(within(rowOf(WORKERS)).getByTestId("capi-tree-replicas-tooltip").textContent).toMatch(
+      /A MachinePool of this Cluster has no Machines: its counters count the instances of its provider/,
+    );
+  });
+
   it("holds the text of every cell, the counts included, inside the element that cuts it with an ellipsis", async () => {
     await opened(MACHINE);
 

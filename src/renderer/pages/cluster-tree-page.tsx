@@ -47,7 +47,7 @@ import { observer } from "mobx-react";
 import React, { createRef, useEffect, useLayoutEffect, useReducer, useState } from "react";
 import { addressKindRead, evaluateTree, TreeBuilds } from "../../common/views/cluster-tree";
 import { CLUSTERS_PERMISSION } from "../../common/views/cluster-view";
-import { StatusMemo } from "../../common/views/context";
+import { poolsWithoutMachinesOf, StatusMemo } from "../../common/views/context";
 import { detailsAddressOf } from "../../common/views/details-address";
 import { nodeDetailsOf, subjectNodes } from "../../common/views/node-details";
 import { treeNotices } from "../../common/views/read-state";
@@ -640,6 +640,7 @@ const TreeContent = observer((props: TreeContentProps) => {
   const statuses: ReadonlyMap<string, NodeStatus> =
     found !== undefined && index !== undefined ? evaluateTree(found, index, now, memo) : new Map();
   const counts = found === undefined ? new Map() : countsOf(found, statuses);
+  const poolsWithoutMachines = found === undefined ? 0 : poolsWithoutMachinesOf(statuses.get(found.root.id)?.context);
   const rowsState = found === undefined ? undefined : page.rowsFor(found, statuses, addressId);
   const matched: TreeSearch | undefined =
     found === undefined
@@ -841,6 +842,7 @@ const TreeContent = observer((props: TreeContentProps) => {
       counts: counts.get(node.id),
       conditions: conditionsOf(node),
       notice: noticeOf(node),
+      poolsWithoutMachines,
     });
     const selected = node.id === addressId;
     const stopPress = (event: React.MouseEvent) => event.preventDefault();

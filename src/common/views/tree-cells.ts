@@ -284,7 +284,12 @@ function counters(cell: { readonly text: string; readonly tooltip: readonly stri
   return { text: cell.text, tooltip: cell.tooltip.map(line) };
 }
 
-function replicasCell(tree: ClusterTree, node: TreeNode, conditions: ConditionsResult | undefined): WordsCell {
+function replicasCell(
+  tree: ClusterTree,
+  node: TreeNode,
+  conditions: ConditionsResult | undefined,
+  poolsWithoutMachines: number,
+): WordsCell {
   const cluster = tree.root.object as ClusterObject;
 
   switch (node.form) {
@@ -299,7 +304,9 @@ function replicasCell(tree: ClusterTree, node: TreeNode, conditions: ConditionsR
     case "reference":
       return notApplicable(node.read.state === "pending" ? "Still being read." : unreadWords(node.read));
     case "virtual":
-      if (node.role === "workers") return counters(countersCell(cluster, "workers"));
+      // The counters of the workers that the Cluster keeps, as the list shows them, with the remark on a MachinePool
+      // with no Machines, whose counters count the instances of its provider (SPEC-0004, P8).
+      if (node.role === "workers") return counters(countersCell(cluster, "workers", poolsWithoutMachines));
       if (node.role === "control-plane") return counters(countersCell(cluster, "controlPlane"));
       return notApplicable(NOT_APPLICABLE.virtual);
     case "kind":
@@ -673,6 +680,9 @@ export interface CellInputs {
   readonly conditions?: ConditionsResult;
   // The notice of the kind of the node of a kind that cannot be read (P19), whose words its cell Status holds.
   readonly notice?: Notice;
+  // How many MachinePools of the Cluster have no Machines, which the cell Replicas of Workers says, from the result of
+  // the Cluster (`poolsWithoutMachinesOf` of `context.ts`).
+  readonly poolsWithoutMachines?: number;
 }
 
 function ageOf(node: TreeNode): WordsCell | undefined {
@@ -696,7 +706,7 @@ export function treeCellsOf(tree: ClusterTree, row: TreeRow, inputs: CellInputs)
 
   return {
     name: nameCell(row),
-    replicas: replicasCell(tree, node, inputs.conditions),
+    replicas: replicasCell(tree, node, inputs.conditions, inputs.poolsWithoutMachines ?? 0),
     version: versionCellOf(tree, node),
     activity: activityView(node, inputs.status),
     condition: conditionView(node, inputs.status, inputs.counts),

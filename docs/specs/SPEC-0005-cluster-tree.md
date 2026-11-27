@@ -3378,6 +3378,12 @@ the contract label of the definition for a control plane of a provider; and
   its up to date Machines are `status.updatedReplicas`
   (internal/contract/controlplane.go:212-261). The unit object of that
   contract holds its fields alone.
+- Decided while implementing the second part, after its reviews: the cell
+  Replicas of Workers, the counters that the Cluster keeps of its workers,
+  says in its tooltip, as the list says it, that a MachinePool of the Cluster
+  has no Machines and that its counters count the instances of its provider,
+  from the result of the Cluster (`poolsWithoutMachinesOf` of `context.ts`,
+  which the list uses too; SPEC-0004, P8).
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

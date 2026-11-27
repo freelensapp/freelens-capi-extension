@@ -3,7 +3,7 @@ import { TREE_CLUSTERS } from "../../../integration/__tests__/tree-expectations"
 import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
 import { outlineText, resolved, treeSourceOf } from "../../../test/tree-sources";
 import { buildTree, evaluateTree, indexTree } from "./cluster-tree";
-import { StatusMemo } from "./context";
+import { poolsWithoutMachinesOf, StatusMemo } from "./context";
 import { treeNotices } from "./read-state";
 import { NOT_APPLICABLE, placeReasonWords, searchWordsOf, TREE_COLUMNS, treeCellsOf } from "./tree-cells";
 import { countsOf, rowsOf } from "./tree-rows";
@@ -77,7 +77,8 @@ function stateView(state: string, options: TreeSourceOptions = {}): View {
   return viewOf(setOf(state), TREE_CLUSTERS[state], options);
 }
 
-// The cells of the row of a node, by the text of its outline, with every node expanded.
+// The cells of the row of a node, by the text of its outline, with every node expanded, as the page gives them their
+// inputs.
 function cellsOf(view: View, text: string): TreeCells {
   const rows = rowsOf(view.tree, new Set(view.tree.nodes.keys()));
   const found = rows.filter((row) => outlineText(row.node) === text);
@@ -91,7 +92,12 @@ function cellsOf(view: View, text: string): TreeCells {
       ? undefined
       : view.memo.conditions(row.node.object, status.context, status.key);
 
-  return treeCellsOf(view.tree, row, { status, counts: view.counts.get(row.node.id), conditions });
+  return treeCellsOf(view.tree, row, {
+    status,
+    counts: view.counts.get(row.node.id),
+    conditions,
+    poolsWithoutMachines: poolsWithoutMachinesOf(view.statuses.get(view.tree.root.id)?.context),
+  });
 }
 
 // The words of a cell of state: its marks, its words, or the spinner.
@@ -349,6 +355,20 @@ describe("each form of what the health rests on, in the cell Status (P10)", () =
       "This MachinePool has no Machines: its counters count the instances of its provider, whatever the readiness of their Nodes.",
     );
     expect(cells.status.form === "words" ? cells.status.words.tooltip[1].text : "").toMatch(/^Ready \(deprecated\): /);
+  });
+
+  it("the workers of a Cluster with a MachinePool without Machines: their counters, and that they count the instances of its provider, as the list says it", () => {
+    const view = stateView("machine-pool-without-machines");
+    const workers = tooltipOf(cellsOf(view, "Workers").replicas.tooltip);
+
+    expect(poolsWithoutMachinesOf(view.statuses.get(view.tree.root.id)?.context)).toBe(1);
+    expect(workers.at(-1)).toBe(
+      "A MachinePool of this Cluster has no Machines: its counters count the instances of its provider, whatever the readiness of their Nodes.",
+    );
+    // A Cluster whose MachinePools have Machines has no such remark.
+    expect(tooltipOf(cellsOf(stateView("machine-pools"), "Workers").replicas.tooltip).join(" ")).not.toMatch(
+      /has no Machines/,
+    );
   });
 
   it("a MachinePool with no Machine at 0 replicas, which is Healthy, as the case writes it", () => {
