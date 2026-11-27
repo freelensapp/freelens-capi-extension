@@ -1143,7 +1143,11 @@ const ClusterContent = observer(({ source, namespace, name, cluster, host, metad
           <MetadataView cluster={cluster as unknown as Renderer.K8sApi.KubeObject} />
         </Section>
       ) : null}
-      {inTree === true ? null : <TreeRowView namespace={namespace} name={name} host={host} />}
+      {inTree === true ? null : (
+        <Section host={host} resetKey={cluster}>
+          <TreeRowView namespace={namespace} name={name} host={host} />
+        </Section>
+      )}
       <Section host={host} resetKey={cluster}>
         <StatusView details={details} links={links} />
       </Section>

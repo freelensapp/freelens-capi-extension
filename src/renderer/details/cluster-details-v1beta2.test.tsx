@@ -1214,6 +1214,29 @@ describe("an error in the details", () => {
   });
 });
 
+describe("an error in the row Tree (SPEC-0005, P3)", () => {
+  it("shows the error page in the place of the row Tree alone, inside an error boundary of its own, and keeps the sections", () => {
+    const objects = objectsOfStates(["healthy"]);
+    const item = Renderer.Component.DrawerItem.getMockImplementation();
+
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    Renderer.Component.DrawerItem.mockImplementation((props) => {
+      if (props.name === "Tree") throw new TypeError("the row Tree failed");
+      return item === undefined ? null : item(props);
+    });
+    onTestFinished(() => {
+      if (item !== undefined) Renderer.Component.DrawerItem.mockImplementation(item);
+    });
+    viewOf(sourceOf(objects), clusterOf(objects));
+
+    expect(screen.getByText("TypeError: the row Tree failed")).toBeDefined();
+    expect(screen.queryByTestId("capi-details-section-tree")).toBeNull();
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
+    expect(screen.getByTestId("capi-details-section-metadata")).toBeDefined();
+    expect(Common.logger.error).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("the states of a view of one Cluster (P25)", () => {
   it("show the spinner while the Clusters of its namespace are not read", () => {
     const objects = objectsOfStates(["healthy"]);

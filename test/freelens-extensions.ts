@@ -562,26 +562,28 @@ class Drawer extends React.Component<StubDrawerProps> {
 }
 
 // An item of the drawer with the classes that the host gives it (drawer-item.tsx): `DrawerItem` with the class of the
-// view, then its name and its value.
-function DrawerItem(props: {
-  name?: React.ReactNode;
-  hidden?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-  "data-testid"?: string;
-}) {
-  if (props.hidden) return null;
-  return React.createElement(
-    "div",
-    {
-      "data-testid": props["data-testid"],
-      "data-drawer-item": "",
-      className: ["DrawerItem", props.className].filter(Boolean).join(" "),
-    },
-    React.createElement("span", { "data-drawer-item-name": "", className: "name" }, props.name),
-    React.createElement("span", { className: "value" }, props.children),
-  );
-}
+// view, then its name and its value. Its calls are recorded, so that a case can make the item of a row throw.
+const DrawerItem = vi.fn(
+  (props: {
+    name?: React.ReactNode;
+    hidden?: boolean;
+    className?: string;
+    children?: React.ReactNode;
+    "data-testid"?: string;
+  }) => {
+    if (props.hidden) return null;
+    return React.createElement(
+      "div",
+      {
+        "data-testid": props["data-testid"],
+        "data-drawer-item": "",
+        className: ["DrawerItem", props.className].filter(Boolean).join(" "),
+      },
+      React.createElement("span", { "data-drawer-item-name": "", className: "name" }, props.name),
+      React.createElement("span", { className: "value" }, props.children),
+    );
+  },
+);
 
 function DrawerTitle(props: { children?: React.ReactNode }) {
   return React.createElement("h6", null, props.children);
