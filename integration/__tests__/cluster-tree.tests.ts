@@ -1305,6 +1305,7 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
       pending.set(`the Machine ${CREATED_MACHINE}`, deleteCreated);
       try {
         const firstBefore = await inView();
+        const listBefore = await listMetrics(tree);
         const version = cluster
           .kubectl(["create", "--output", "jsonpath={.metadata.resourceVersion}", "--filename", "-"], {
             input: JSON.stringify(createdMachine()),
@@ -1316,6 +1317,11 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
           (await drawnRows(tree)).some((row) => row.id === created),
         );
         await rendered(tree);
+        // The scroll, the height of the rows and that of the list before the Machine and once it shows: at the end of
+        // the list the scroll moves by the row of the Machine, which the height of the rows makes room for.
+        console.log(
+          `the list before the Machine of the session ${JSON.stringify(listBefore)}, and once it shows ${JSON.stringify(await listMetrics(tree))}`,
+        );
 
         const drawn = await sortedRows(tree);
         const at = drawn.findIndex((row) => row.id === created);

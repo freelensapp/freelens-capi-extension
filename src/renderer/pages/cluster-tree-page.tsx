@@ -27,8 +27,9 @@
 //   leaves half under its head at its first mount (P16; H6, H17);
 // - rows that the reads insert or remove above the first row in view leave the rows in view in place: the page reads
 //   the offset of the list before React changes the rows, since the browser clamps it to a shorter list once rows are
-//   removed, and, in the same commit, before the paint, moves the scroll from that offset by their height (P13; H18);
-//   an expansion, a collapse and a search move no row and scroll nothing.
+//   removed, and, in the same commit, before the paint, moves the scroll from that offset by their height (P13; H18),
+//   from the head of the table, which the table of the host renders in the commit in which it draws the rows, the one
+//   after the page's own; an expansion, a collapse and a search move no row and scroll nothing.
 //
 // What the page computes is computed inside the error boundary that P17 and P19 give it, so that an error leaves the
 // header, and the tree when it is in the details: the page renders its header and, inside the boundary of the tree, a
@@ -461,9 +462,12 @@ interface RowsInPlaceProps {
 // the offset of the list's element before React changes the rows, since the browser clamps that offset to the shorter
 // list once rows are removed, at the end of the list; then, once the rows are in the document and before the browser
 // paints them, it takes the first row in view from that offset, never from the offset that the browser clamped, and
-// moves the scroll from it by the height of the rows inserted or removed above that row. A class component, since only
-// one reads the document before React changes it (`getSnapshotBeforeUpdate`); it renders nothing and reads no
-// observable.
+// moves the scroll from it by the height of the rows inserted or removed above that row. It sits in the head of the
+// table, which the table of the host renders with its rows: the table of the extension API renders the props that a
+// layout effect of its own stored, so it draws the rows of a render of the page in the commit after that render, and a
+// scroll set in the commit of the page would move the rows of before, which at the end of the list hold no room for the
+// rows that arrive, and the browser would clamp it ("Notes and deviations"). A class component, since only one reads the
+// document before React changes it (`getSnapshotBeforeUpdate`); it renders nothing and reads no observable.
 class RowsInPlace extends React.Component<RowsInPlaceProps> {
   getSnapshotBeforeUpdate(): number | null {
     return this.props.list()?.scrollTop ?? null;
@@ -800,8 +804,9 @@ const TreeContent = observer((props: TreeContentProps) => {
   useLayoutEffect(() => onMatches(matches), [matches, onMatches]);
   useLayoutEffect(() => () => onMatches(undefined), [onMatches]);
 
-  // Once the rows of a render are in the document and before the browser paints them, and after `RowsInPlace` has kept
-  // the rows in view in place (P13, P16).
+  // After each render of the page and before the browser paints: the rows of the render, which the table of the host
+  // draws in the commit after it, where `RowsInPlace` keeps the rows in view in place, and the row that the list scrolls
+  // to, once a commit has drawn it, which renders the page again (`refOf`) (P13, P16).
   useLayoutEffect(() => {
     page.before = rows;
     page.change = "reads";
@@ -1048,9 +1053,9 @@ const TreeContent = observer((props: TreeContentProps) => {
                   </WithTooltip>
                 </TableCell>
               ))}
+              <RowsInPlace rows={rows} change={page.change} list={() => listElementOf(tree.current)} />
             </TableHead>
           </Table>
-          <RowsInPlace rows={rows} change={page.change} list={() => listElementOf(tree.current)} />
         </div>
       )}
       {!drawerShown(shown, outcome, page.treeShown) ? null : (

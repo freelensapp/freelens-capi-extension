@@ -696,9 +696,26 @@ interface StubTableProps {
 // table too, around the element of the list that scrolls, of the class `list`
 // (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx). The virtual list draws the rows of
 // its window, all of them here unless a test gives the window (`host.drawnRows`), and draws them again on its own when a
-// test scrolls it (`host.scrollRows`). Its calls are recorded, so that a test reads the props that a page gave at each
-// render.
-const Table = vi.fn((props: StubTableProps) => {
+// test scrolls it (`host.scrollRows`). The `Table` of the extension API is the table of the host given its
+// dependencies by `withInjectables`, which renders it with the props that a layout effect of its own stored
+// (freelens:packages/core/src/renderer/components/table/table.tsx:316-323; `withInjectables` of
+// @ogre-tools/injectable-react 27.0.0, the version of the catalog of Freelens), so the table draws what a render of a
+// page gives it in the commit after that render, and its head with its rows; so does the stub. Its calls are recorded,
+// one for each render of the page, so that a test reads the props that a page gave at each render.
+const Table = vi.fn((props: StubTableProps) => React.createElement(DrawnLater, { props }));
+
+// What the table draws: the props of the last render of the page, which a layout effect stores, drawn by a table that
+// renders again only when they change, as the table of the host, an observer, does.
+function DrawnLater({ props }: { props: StubTableProps }) {
+  const [given, setGiven] = React.useState<StubTableProps | undefined>(undefined);
+
+  React.useLayoutEffect(() => {
+    setGiven(props);
+  }, [props]);
+  return given === undefined ? null : React.createElement(DrawnTable, given);
+}
+
+const DrawnTable = React.memo((props: StubTableProps) => {
   const { children, className, selectable, virtual, items = [], getTableRow, selectedItemId } = props;
   const [, draw] = React.useReducer((count: number) => count + 1, 0);
 

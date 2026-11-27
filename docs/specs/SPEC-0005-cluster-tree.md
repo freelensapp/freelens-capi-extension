@@ -2428,18 +2428,21 @@ the tree live in `src/common/views/`, whose program has neither the DOM nor Node
   once the element has its height, for a row that a move leaves partly in view,
   and, in a layout effect, by the rows inserted or removed above the first row
   in view, on an element whose height and scroll the test gives, since the stub
-  has no layout; a search with the row of the active node out of view, which
-  gives no `selectedItemId` and sets no scroll of the list's element, seen
-  failing once against a page that brings the active node into view after a
-  search; the element of the tree with its role `treegrid`, its label, its one
-  stop of Tab and its keys, their default prevented, Page Up and Page Down
-  included; the attributes of each row read in the DOM, where the spread on
-  `TableRow` puts them, the header a `row` of `columnheader` cells and the
-  cells of every row `gridcell`, on a stub of the SDK whose `Table` draws the
-  rows of `getTableRow` inside an element of the class `VirtualList`, which the
-  page finds as it finds that of the host (freelens:virtual-list.tsx:144;
-  freelens@v2.0.0:virtual-list.tsx:131), and whose `TableRow`, `TableHead`
-  and `TableCell` spread their props as the host's do
+  has no layout, at the end of the list too, on a stub whose `Table` draws the
+  rows of a render of the page in the commit after it, as the `Table` of the
+  host does ("Notes and deviations"); a search with the row of the active node
+  out of view, which gives no `selectedItemId` and sets no scroll of the list's
+  element, seen failing once against a page that brings the active node into
+  view after a search; the element of the tree with its role `treegrid`, its
+  label, its one stop of Tab and its keys, their default prevented, Page Up and
+  Page Down included; the attributes of each row read in the DOM, where the
+  spread on `TableRow` puts them, the header a `row` of `columnheader` cells
+  and the cells of every row `gridcell`, on a stub of the SDK whose `Table`
+  draws the rows of `getTableRow` inside an element of the class `VirtualList`,
+  which the page finds as it finds that of the host
+  (freelens:virtual-list.tsx:144; freelens@v2.0.0:virtual-list.tsx:131), and
+  whose `TableRow`, `TableHead` and `TableCell` spread their props as the
+  host's do
   (`test/freelens-extensions.ts:633-647`; AGENTS.md, "Tests and tooling");
   every cell of a row, the counts of P11 included, with its text
   inside the element of the extension that cuts it with an ellipsis, found by
@@ -3824,6 +3827,36 @@ the contract label of the definition for a control plane of a provider; and
   step in 6.0 s and deleted it in 85.4 s, within their limits of 180 s and
   240 s, which stay; the step of the tests took 7.8 minutes with every session,
   three cases failing, one after a wait of 60 s.
+- Decided while implementing the third part, after the second run of its CI,
+  in place of the note of the second part that sets the scroll "in the same
+  commit", and of what P13 says of a layout effect that runs once the rows of a
+  render are in the DOM: in step 6, at the end of the list of `healthy` with
+  every node expanded, the first row in view was the row above it once the
+  Machine of the session showed, at the same top, 5 px above the window, so the
+  scroll had not moved at all, while the deletion of the same step, short of
+  the end of the list, kept its rows in place. The `Table` of the extension API
+  is the table of the host given its dependencies by `withInjectables`
+  (freelens:packages/core/src/renderer/components/table/table.tsx:316-323),
+  which renders it with the props that a layout effect of its own stored
+  (@ogre-tools/injectable-react 27.0.0, the version of the catalog of
+  Freelens), so the table and its virtual list draw the rows of a render of the
+  page in the commit after that render. The page set the scroll in its own
+  commit, on the list of before: short of its end that moved the rows of before,
+  and the next commit drew the new rows in their place; at its end the offset
+  moved by a row that arrives was past the end of the list of before, which
+  Chromium clamped. So `RowsInPlace` sits in the head of the table, which the
+  table renders with its rows, in the commit in which they change: it reads the
+  offset before that commit changes them, and moves the scroll once they are
+  in the DOM and before the paint. The `Table` of the stub of the SDK draws one
+  commit after the page as well; the case of the page test that brings a row
+  above the first row in view at the end of the list, which cuts that row by
+  5 px at its top as the session has it, failed against the page as the second
+  run had it, on that stub, and passed on the stub of before, which drew in the
+  commit of the page and so could not see it. A reproduction outside the
+  repository, React 19.3.1 and react-window 2.5.3 under a virtual list of the
+  shape of the host's, in Chromium, gave the same: the scroll held with a table
+  that draws in the commit of its parent, was clamped at the end of the list
+  with one that draws in the next commit, and held from the head of the table.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -1004,6 +1004,43 @@ describe("the table of the tree (P9, P13, P16)", () => {
     expect(after[Math.floor(list.scrollTop / ROW_HEIGHT)]).toBe(first);
   });
 
+  it("keeps the first row in view in place, cut at its top, when a row arrives above it at the end of the list, which the table of the host draws in the commit after the page", async () => {
+    const { built } = await opened(MACHINE);
+
+    nextFrame();
+
+    // A list a little shorter than three rows, scrolled to its end, the first row in view cut by 5 px at its top, as
+    // the session of the tree has it when it creates its Machine (step 6).
+    const list = layOutClamped(3 * ROW_HEIGHT - 5);
+
+    list.scrollTop = 1_000_000;
+
+    const before = rowIds();
+    const offset = list.scrollTop;
+    const first = before[Math.floor(offset / ROW_HEIGHT)];
+    const machines = ownStore("Machine", built);
+    const added = changed("Machine", `${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`, (object) => {
+      object.metadata.name = `${HEALTHY}-md-0-m9x7h-m5gtb-0aaaa`;
+    });
+
+    expect(offset % ROW_HEIGHT).toBe(5);
+
+    // A Machine that sorts before the others arrives under the MachineSet, above the first row in view, as a watch
+    // brings it: the list grows by its row, and the page scrolls by it, in the commit in which the table draws it.
+    act(() => {
+      runInAction(() => machines.items.push(added));
+    });
+
+    const after = rowIds();
+
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.indexOf(`cluster.x-k8s.io/Machine/${HEALTHY}-md-0-m9x7h-m5gtb-0aaaa`)).toBeLessThan(
+      after.indexOf(first),
+    );
+    expect(after[Math.floor(list.scrollTop / ROW_HEIGHT)]).toBe(first);
+    expect(list.scrollTop).toBe(offset + ROW_HEIGHT);
+  });
+
   it("gives no selectedItemId and sets no scroll after a search that keeps the row of the active node out of view", async () => {
     await opened(MACHINE);
 
