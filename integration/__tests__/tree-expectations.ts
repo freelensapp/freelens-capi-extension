@@ -16,6 +16,12 @@
 //
 // The claim of the set `no-status` names its Cluster in `spec.clusterName`, as the dry run that captures the set writes
 // it (SPEC-0005, P21), so its tree holds the claim and its IPAddress, under Other objects, since the claim has no owner.
+//
+// Beside the trees, what the sessions of the tree in Freelens read, written the same way (SPEC-0005, "Tests", "In
+// Freelens", "With a restricted identity"): the marks of step 1, the expansion at first and the counts of step 2, the
+// searches of step 7, the writes of step 6 and the counts after each, and the trees of the restricted cases 6 to 9.
+// `test/tree-expectations.test.ts` checks each against what the model and the tree give the fixtures, so that a session
+// that does not find them in the page finds a fault of the page.
 
 // The namespace and the name of the Cluster of each state (docs/development/TESTING.md, "The fixtures").
 export const TREE_CLUSTERS: Readonly<Record<string, string>> = {
@@ -473,3 +479,617 @@ export function outlineRows(outline: string): OutlineRow[] {
       return { depth: indentation / 2, text: line.trim() };
     });
 }
+
+// The marks that the session of the tree reads in step 1 (SPEC-0005, "Tests", "In Freelens", 1), for the objects to
+// which the table of SPEC-0003 gives a row ("The fixtures of SPEC-0002 give these results"), each found by the text of
+// its row in the outline, written by hand from that table as the session of the Clusters writes its own: the word of
+// its health, N/A for an object with none, the tones that the table allows that health at the time of the session,
+// which runs within 25 minutes of the apply of the fixtures, so within or past a threshold, its activities in their
+// order, none for a kind with no status, whose cell says N/A, the word stale, and the note of the MachinePools of
+// unknown health. The ClusterClass of `no-status` is in no tree, since its Cluster has no topology.
+export interface ExpectedMarks {
+  readonly text: string;
+  readonly health: string;
+  readonly tones: readonly string[];
+  readonly activities: readonly string[];
+  readonly stale?: boolean;
+  readonly note?: string;
+}
+
+// The tones of an activity in flight, or of a health that it sets: that of progress within its threshold, and of a
+// warning past it (SPEC-0003, P31).
+export const IN_FLIGHT: readonly string[] = ["info", "warning"];
+
+const OK: readonly string[] = ["ok"];
+const VAGUE: readonly string[] = ["vague"];
+
+// The tones of each activity of the fixtures, every one Progressing: Idle in the tone of progress, Unknown vague, Paused
+// terminated, Deleting terminated within its threshold and a warning past it, and any other in flight (SPEC-0003, P31).
+export function activityTones(word: string): readonly string[] {
+  switch (word) {
+    case "Idle":
+      return ["info"];
+    case "Unknown":
+      return VAGUE;
+    case "Paused":
+      return ["terminated"];
+    case "Deleting":
+      return ["terminated", "warning"];
+    default:
+      return IN_FLIGHT;
+  }
+}
+
+function healthyIdle(...texts: string[]): ExpectedMarks[] {
+  return texts.map((text) => ({ text, health: "Healthy", tones: OK, activities: ["Idle"] }));
+}
+
+function noStatus(...texts: string[]): ExpectedMarks[] {
+  return texts.map((text) => ({ text, health: "N/A", tones: [], activities: [] }));
+}
+
+function unknown(...texts: string[]): ExpectedMarks[] {
+  return texts.map((text) => ({ text, health: "Unknown", tones: VAGUE, activities: ["Unknown"] }));
+}
+
+function deleting(...texts: string[]): ExpectedMarks[] {
+  return texts.map((text) => ({ text, health: "N/A", tones: [], activities: ["Deleting"] }));
+}
+
+const POOL_NOTE = "1 MachinePool of unknown health";
+
+export const EXPECTED_MARKS: Readonly<Record<string, readonly ExpectedMarks[]>> = {
+  provisioning: [
+    {
+      text: "Cluster freelens-capi-provisioning",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning"],
+    },
+    {
+      text: "KubeadmControlPlane freelens-capi-provisioning-5cqww",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning"],
+    },
+    {
+      text: "DevMachine freelens-capi-provisioning-5cqww-6fcc7 (infrastructure machine)",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Idle"],
+    },
+    { text: "ClusterResourceSet cni-kindnet", health: "Unhealthy", tones: IN_FLIGHT, activities: ["Idle"] },
+    ...healthyIdle(
+      "MachineHealthCheck freelens-capi-provisioning-5cqww",
+      "MachineHealthCheck freelens-capi-provisioning-md-0-5cs96",
+    ),
+  ],
+  healthy: [
+    ...healthyIdle(
+      "Cluster freelens-capi-healthy",
+      "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      "Machine freelens-capi-healthy-d2lgq-zqlcx",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+      "KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx",
+      "KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      "KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+    ),
+    ...noStatus(
+      "DevMachineTemplate freelens-capi-healthy-rclml (template)",
+      "DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)",
+      "KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v",
+      "ClusterResourceSetBinding freelens-capi-healthy",
+    ),
+  ],
+  "machine-without-node": [
+    {
+      text: "Machine freelens-capi-without-node-without-node-h5zrd",
+      health: "Unknown",
+      tones: VAGUE,
+      activities: ["Provisioning"],
+    },
+    {
+      text: "MachineSet freelens-capi-without-node-without-node",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning"],
+    },
+    ...healthyIdle("Cluster freelens-capi-without-node"),
+  ],
+  "rolling-out": [
+    ...["MachineDeployment freelens-capi-rolling-out-md-0-t96dp", "Cluster freelens-capi-rolling-out"].map((text) => ({
+      text,
+      health: "Degraded",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Rolling out", "Scaling down"],
+    })),
+    ...healthyIdle(
+      "Machine freelens-capi-rolling-out-md-0-t96dp-xkg62-kkdsc",
+      "Machine freelens-capi-rolling-out-md-0-t96dp-xkg62-tfl6d",
+      "MachineSet freelens-capi-rolling-out-md-0-t96dp-xkg62",
+    ),
+  ],
+  "scaling-up-held": [
+    ...[
+      "MachineDeployment freelens-capi-scaling-up-held-md-0-fn7vm",
+      "MachineSet freelens-capi-scaling-up-held-md-0-fn7vm-v7kvn",
+    ].map((text) => ({ text, health: "Unhealthy", tones: IN_FLIGHT, activities: ["Scaling up"] })),
+    {
+      text: "Cluster freelens-capi-scaling-up-held",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Upgrading", "Rolling out", "Scaling up", "Scaling down"],
+    },
+  ],
+  "scaling-up": [
+    {
+      text: "MachineDeployment freelens-capi-scaling-up-md-0-474jl",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning"],
+    },
+    {
+      text: "Cluster freelens-capi-scaling-up",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Scaling up"],
+    },
+  ],
+  "scaling-down": [
+    ...["MachineDeployment freelens-capi-scaling-down-md-0-97cl7", "Cluster freelens-capi-scaling-down"].map(
+      (text) => ({ text, health: "Degraded", tones: IN_FLIGHT, activities: ["Scaling down"] }),
+    ),
+    ...deleting("Machine freelens-capi-scaling-down-md-0-97cl7-8p6v4-lt8mz"),
+  ],
+  paused: [
+    ...[
+      "Cluster freelens-capi-paused",
+      "DevCluster freelens-capi-paused-mb7z2 (infrastructure cluster)",
+      "KubeadmControlPlane freelens-capi-paused-q6kg9",
+      "Machine freelens-capi-paused-q6kg9-lsjbh",
+      "DevMachine freelens-capi-paused-q6kg9-lsjbh (infrastructure machine)",
+      "KubeadmConfig freelens-capi-paused-q6kg9-lsjbh",
+      "MachineDeployment freelens-capi-paused-md-0-vzf8f",
+      "MachineSet freelens-capi-paused-md-0-vzf8f-62l5g",
+      "Machine freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm",
+      "DevMachine freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm (infrastructure machine)",
+      "KubeadmConfig freelens-capi-paused-md-0-vzf8f-62l5g-w9zwm",
+      "MachineHealthCheck freelens-capi-paused-md-0-vzf8f",
+      "MachineHealthCheck freelens-capi-paused-q6kg9",
+    ].map((text) => ({ text, health: "Healthy", tones: OK, activities: ["Paused"], stale: true })),
+    ...healthyIdle("ClusterClass quick-start", "ClusterResourceSet cni-kindnet"),
+  ],
+  deleting: deleting("Cluster freelens-capi-deleting", "MachineDeployment freelens-capi-deleting-md-0-8dcql"),
+  upgrading: ["Cluster freelens-capi-upgrading", "KubeadmControlPlane freelens-capi-upgrading-52g8b"].map((text) => ({
+    text,
+    health: "Degraded",
+    tones: IN_FLIGHT,
+    activities: ["Provisioning", "Upgrading", "Rolling out", "Scaling down"],
+  })),
+  "without-topology": healthyIdle("Cluster freelens-capi-without-topology"),
+  "machine-pools": [
+    { text: "Cluster freelens-capi-machine-pools", health: "Degraded", tones: IN_FLIGHT, activities: ["Provisioning"] },
+    {
+      text: "MachinePool freelens-capi-machine-pools-mp-0-s48vb",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Unknown"],
+    },
+  ],
+  "machine-pool-without-machines": [
+    {
+      text: "MachinePool freelens-capi-pool-without-machines-mp-0-s48vb",
+      health: "Unknown",
+      tones: VAGUE,
+      activities: ["Unknown"],
+    },
+    {
+      text: "Cluster freelens-capi-pool-without-machines",
+      health: "Degraded",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning"],
+      note: POOL_NOTE,
+    },
+  ],
+  remediation: [
+    {
+      text: "Machine freelens-capi-remediation-md-0-qrjs5-t4crs-bd642",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Remediating"],
+    },
+    ...[
+      "MachineSet freelens-capi-remediation-md-0-qrjs5-t4crs",
+      "MachineDeployment freelens-capi-remediation-md-0-qrjs5",
+    ].map((text) => ({
+      text,
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Remediating", "Replacing"],
+    })),
+    ...deleting("Machine freelens-capi-remediation-md-0-qrjs5-t4crs-4g8dq"),
+    {
+      text: "MachineHealthCheck freelens-capi-remediation-md-0-qrjs5",
+      health: "Degraded",
+      tones: ["warning"],
+      activities: ["Idle"],
+    },
+    {
+      text: "Cluster freelens-capi-remediation",
+      health: "Unhealthy",
+      tones: IN_FLIGHT,
+      activities: ["Provisioning", "Remediating"],
+    },
+  ],
+  "no-status": [
+    { ...unknown("Cluster freelens-capi-no-status")[0], note: POOL_NOTE },
+    ...unknown(
+      "Machine freelens-capi-no-status-machine-0",
+      "MachinePool freelens-capi-no-status-mp-0",
+      "KubeadmControlPlane freelens-capi-no-status-control-plane",
+      "KubeadmConfig freelens-capi-no-status-machine-0",
+      "KubeadmConfig freelens-capi-no-status-mp-0",
+      "MachineDeployment freelens-capi-no-status-md-0",
+      "MachineSet freelens-capi-no-status-set",
+      "MachineHealthCheck freelens-capi-no-status-md-0",
+      "ClusterResourceSet freelens-capi-no-status",
+      "IPAddressClaim freelens-capi-no-status",
+    ),
+    ...noStatus(
+      "DevMachineTemplate freelens-capi-no-status-control-plane (template)",
+      "DevMachineTemplate freelens-capi-no-status-md-0 (template)",
+      "KubeadmConfigTemplate freelens-capi-no-status-md-0",
+      "ClusterResourceSetBinding freelens-capi-no-status",
+      "IPAddress freelens-capi-no-status",
+    ),
+  ],
+};
+
+// The rows that the tree of a Cluster shows when it opens, by the expansion at first (P13), as an outline, the rows
+// that it shows collapsed, every other row with rows under it being expanded, and the counts that each row that holds
+// objects shows, by its text (P11), for the three states of step 2 of the session. Each text is the row of one node in
+// these rows.
+export interface FirstExpansion {
+  readonly outline: string;
+  readonly collapsed: readonly string[];
+  readonly counts: Readonly<Record<string, string>>;
+}
+
+export const FIRST_EXPANSIONS: Readonly<Record<string, FirstExpansion>> = {
+  healthy: {
+    outline: `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+  Workers
+  ClusterClass quick-start
+  Add-ons
+  Health checks
+`,
+    collapsed: ["KubeadmControlPlane freelens-capi-healthy-d2lgq", "Workers", "Add-ons", "Health checks"],
+    counts: {
+      "Cluster freelens-capi-healthy": "21 objects: 17 Healthy, 4 with no health",
+      "KubeadmControlPlane freelens-capi-healthy-d2lgq": "4 objects: 3 Healthy, 1 with no health",
+      Workers: "10 objects: 8 Healthy, 2 with no health",
+      "Add-ons": "2 objects: 1 Healthy, 1 with no health",
+      "Health checks": "2 objects: 2 Healthy",
+    },
+  },
+  "rolling-out": {
+    outline: `
+Cluster freelens-capi-rolling-out
+  DevCluster freelens-capi-rolling-out-c8hvj (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-rolling-out-hsfpd
+  Workers
+    MachineDeployment freelens-capi-rolling-out-md-0-t96dp
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-k525t
+        Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+          DevMachine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n (infrastructure machine)
+          KubeadmConfig freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-xkg62
+      Templates
+  ClusterClass quick-start
+  Add-ons
+  Health checks
+`,
+    collapsed: [
+      "KubeadmControlPlane freelens-capi-rolling-out-hsfpd",
+      "MachineSet freelens-capi-rolling-out-md-0-t96dp-xkg62",
+      "Templates",
+      "Add-ons",
+      "Health checks",
+    ],
+    counts: {
+      "Cluster freelens-capi-rolling-out": "25 objects: 2 Unhealthy, 1 Degraded, 18 Healthy, 4 with no health",
+      "KubeadmControlPlane freelens-capi-rolling-out-hsfpd": "4 objects: 3 Healthy, 1 with no health",
+      Workers: "14 objects: 2 Unhealthy, 1 Degraded, 9 Healthy, 2 with no health",
+      "MachineDeployment freelens-capi-rolling-out-md-0-t96dp": "13 objects: 2 Unhealthy, 9 Healthy, 2 with no health",
+      "MachineSet freelens-capi-rolling-out-md-0-t96dp-k525t": "3 objects: 1 Unhealthy, 2 Healthy",
+      "Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n": "2 objects: 2 Healthy",
+      "MachineSet freelens-capi-rolling-out-md-0-t96dp-xkg62": "6 objects: 6 Healthy",
+      Templates: "2 objects: 2 with no health",
+      "Add-ons": "2 objects: 1 Healthy, 1 with no health",
+      "Health checks": "2 objects: 2 Healthy",
+    },
+  },
+  deleting: {
+    outline: `
+Cluster freelens-capi-deleting
+  DevCluster freelens-capi-deleting-n2jlv (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-deleting-4kcdh
+  Workers
+    MachineDeployment freelens-capi-deleting-md-0-8dcql
+      MachineSet freelens-capi-deleting-md-0-8dcql-vp49h
+        Machine freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+          DevMachine freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw (infrastructure machine)
+          KubeadmConfig freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw
+      Templates
+        DevMachineTemplate freelens-capi-deleting-md-0-gq8t7 (template) [not found]
+        KubeadmConfigTemplate freelens-capi-deleting-md-0-nddmd [not found]
+  ClusterClass quick-start
+  Health checks
+`,
+    collapsed: ["KubeadmControlPlane freelens-capi-deleting-4kcdh", "Health checks"],
+    counts: {
+      "Cluster freelens-capi-deleting": "15 objects: 2 not found, 9 Healthy, 4 with no health",
+      "KubeadmControlPlane freelens-capi-deleting-4kcdh": "4 objects: 3 Healthy, 1 with no health",
+      Workers: "7 objects: 2 not found, 2 Healthy, 3 with no health",
+      "MachineDeployment freelens-capi-deleting-md-0-8dcql": "6 objects: 2 not found, 2 Healthy, 2 with no health",
+      "MachineSet freelens-capi-deleting-md-0-8dcql-vp49h": "3 objects: 2 Healthy, 1 with no health",
+      "Machine freelens-capi-deleting-md-0-8dcql-vp49h-nwsqw": "2 objects: 2 Healthy",
+      Templates: "2 objects: 2 not found",
+      "Health checks": "1 object: 1 Healthy",
+    },
+  },
+};
+
+// The searches of step 7 of the session, on the tree of `rolling-out` as it opens (P15): the words, how many nodes
+// match, those whose own words hold them, never those whose counts alone do, and the rows that the search shows, the
+// rows that match and the rows above them.
+export interface ExpectedSearch {
+  readonly words: string;
+  readonly matches: number;
+  readonly outline: string;
+}
+
+export const ROLLING_OUT_SEARCHES: readonly ExpectedSearch[] = [
+  {
+    words: "Unhealthy",
+    matches: 2,
+    outline: `
+Cluster freelens-capi-rolling-out
+  Workers
+    MachineDeployment freelens-capi-rolling-out-md-0-t96dp
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-k525t
+        Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+`,
+  },
+  {
+    words: "v1.37.0",
+    matches: 10,
+    outline: `
+Cluster freelens-capi-rolling-out
+  KubeadmControlPlane freelens-capi-rolling-out-hsfpd
+    Machine freelens-capi-rolling-out-hsfpd-87hrn
+  Workers
+    MachineDeployment freelens-capi-rolling-out-md-0-t96dp
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-k525t
+        Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-xkg62
+        Machine freelens-capi-rolling-out-md-0-t96dp-xkg62-kkdsc
+        Machine freelens-capi-rolling-out-md-0-t96dp-xkg62-tfl6d
+`,
+  },
+  {
+    words: "freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n",
+    matches: 3,
+    outline: `
+Cluster freelens-capi-rolling-out
+  Workers
+    MachineDeployment freelens-capi-rolling-out-md-0-t96dp
+      MachineSet freelens-capi-rolling-out-md-0-t96dp-k525t
+        Machine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+          DevMachine freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n (infrastructure machine)
+          KubeadmConfig freelens-capi-rolling-out-md-0-t96dp-k525t-b5t8n
+`,
+  },
+];
+
+// The trees of the Cluster of `healthy` that the restricted session reads with a kind that the identity may not read
+// in the namespace of `healthy`, or a definition that it may not get (SPEC-0005, "With a restricted identity", 6 to
+// 9), every node expanded: the KubeadmConfigs refused, read under their Machines as not read and with the node of their
+// kind under the Cluster, with no row under it; the Machines refused, the node of their kind holding the Machines that
+// own the KubeadmConfigs of the set, each with its KubeadmConfig, and no DevMachine, whose kind only the Machines name;
+// the ClusterResourceSetBindings refused, the node of their kind under the Cluster and the resource of the
+// ClusterResourceSet not read; and the definition of the DevMachines refused, their nodes not read and the node of the
+// kind, which stands for the DevMachines that no Machine names.
+export const RESTRICTED_TREES: Readonly<Record<string, string>> = {
+  "kubeadmconfigs-refused": `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+    Machine freelens-capi-healthy-d2lgq-zqlcx
+      DevMachine freelens-capi-healthy-d2lgq-zqlcx (infrastructure machine)
+      KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx [not read]
+    Templates
+      DevMachineTemplate freelens-capi-healthy-rclml (template)
+  Workers
+    MachineDeployment freelens-capi-healthy-md-0-m9x7h
+      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg [not read]
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 (infrastructure machine)
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 [not read]
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+  ClusterClass quick-start
+  Add-ons
+    ClusterResourceSet cni-kindnet
+      ConfigMap cni-kindnet [applied]
+    ClusterResourceSetBinding freelens-capi-healthy
+  Health checks
+    MachineHealthCheck freelens-capi-healthy-d2lgq
+    MachineHealthCheck freelens-capi-healthy-md-0-m9x7h
+  KubeadmConfigs [not read]
+`,
+  "machines-refused": `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+    Templates
+      DevMachineTemplate freelens-capi-healthy-rclml (template)
+  Workers
+    MachineDeployment freelens-capi-healthy-md-0-m9x7h
+      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+  ClusterClass quick-start
+  Add-ons
+    ClusterResourceSet cni-kindnet
+      ConfigMap cni-kindnet [applied]
+    ClusterResourceSetBinding freelens-capi-healthy
+  Health checks
+    MachineHealthCheck freelens-capi-healthy-d2lgq
+    MachineHealthCheck freelens-capi-healthy-md-0-m9x7h
+  Machines [not read]
+    Machine freelens-capi-healthy-d2lgq-zqlcx [not read]
+      KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx
+    Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg [not read]
+      KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+    Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 [not read]
+      KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+`,
+  "bindings-refused": `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+    Machine freelens-capi-healthy-d2lgq-zqlcx
+      DevMachine freelens-capi-healthy-d2lgq-zqlcx (infrastructure machine)
+      KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx
+    Templates
+      DevMachineTemplate freelens-capi-healthy-rclml (template)
+  Workers
+    MachineDeployment freelens-capi-healthy-md-0-m9x7h
+      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 (infrastructure machine)
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+  ClusterClass quick-start
+  Add-ons
+    ClusterResourceSet cni-kindnet
+      ConfigMap cni-kindnet [not read]
+  Health checks
+    MachineHealthCheck freelens-capi-healthy-d2lgq
+    MachineHealthCheck freelens-capi-healthy-md-0-m9x7h
+  ClusterResourceSetBindings [not read]
+`,
+  "machine-definition-refused": `
+Cluster freelens-capi-healthy
+  DevCluster freelens-capi-healthy-8fgcf (infrastructure cluster)
+  KubeadmControlPlane freelens-capi-healthy-d2lgq
+    Machine freelens-capi-healthy-d2lgq-zqlcx
+      DevMachine freelens-capi-healthy-d2lgq-zqlcx (infrastructure machine) [not read]
+      KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx
+    Templates
+      DevMachineTemplate freelens-capi-healthy-rclml (template)
+  Workers
+    MachineDeployment freelens-capi-healthy-md-0-m9x7h
+      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine) [not read]
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg
+        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9 (infrastructure machine) [not read]
+          KubeadmConfig freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9
+      Templates
+        DevMachineTemplate freelens-capi-healthy-md-0-xp9c7 (template)
+        KubeadmConfigTemplate freelens-capi-healthy-md-0-2wh2v
+  ClusterClass quick-start
+  Add-ons
+    ClusterResourceSet cni-kindnet
+      ConfigMap cni-kindnet [applied]
+    ClusterResourceSetBinding freelens-capi-healthy
+  Health checks
+    MachineHealthCheck freelens-capi-healthy-d2lgq
+    MachineHealthCheck freelens-capi-healthy-md-0-m9x7h
+  DevMachine objects [not read]
+`,
+};
+
+// The writes of step 6 of the session, on the objects of `healthy` (SPEC-0005, "Tests", "In Freelens", 6), and what the
+// tree of its Cluster says after each: the annotation `cluster.x-k8s.io/paused` on a worker Machine, which makes it
+// Paused and stale, and the objects above it count it stale; a Machine with the labels of the Cluster and of its
+// control plane and no owner, named to sort before `freelens-capi-healthy-d2lgq-zqlcx`, the Machine of the control
+// plane of the set, whose infrastructure machine is not there; and the condition `Ready` `False` on another worker
+// Machine, which makes it Unhealthy, and the objects above it count it.
+export const LIVE_NAMESPACE = "freelens-capi-healthy";
+export const PAUSED_WORKER = "freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg";
+export const NOT_READY_WORKER = "freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9";
+export const CREATED_MACHINE = "freelens-capi-healthy-d2lgq-a0000";
+
+// The Machine that step 6 creates, as kubectl creates it.
+export function createdMachine(): {
+  apiVersion: string;
+  kind: string;
+  metadata: { name: string; namespace: string; labels: Record<string, string> };
+  spec: Record<string, unknown>;
+} {
+  return {
+    apiVersion: "cluster.x-k8s.io/v1beta2",
+    kind: "Machine",
+    metadata: {
+      name: CREATED_MACHINE,
+      namespace: LIVE_NAMESPACE,
+      labels: { "cluster.x-k8s.io/cluster-name": TREE_CLUSTERS.healthy, "cluster.x-k8s.io/control-plane": "" },
+    },
+    spec: {
+      clusterName: TREE_CLUSTERS.healthy,
+      bootstrap: { dataSecretName: CREATED_MACHINE },
+      infrastructureRef: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "DevMachine", name: CREATED_MACHINE },
+      version: "v1.37.0",
+    },
+  };
+}
+
+// The rows that the created Machine adds, first under the KubeadmControlPlane (P7, P14), by their texts.
+export const CREATED_ROWS: readonly string[] = [
+  `Machine ${CREATED_MACHINE}`,
+  `DevMachine ${CREATED_MACHINE} (infrastructure machine) [not found]`,
+];
+
+// The condition `Ready` that step 6 writes on NOT_READY_WORKER through the status subresource, in place of its own.
+export const NOT_READY = {
+  type: "Ready",
+  status: "False",
+  reason: "NotReady",
+  message: "Ready set to False by the session of the tree",
+} as const;
+
+// The counts of the nodes above a worker Machine (P11), by the texts of their rows: with the annotation on
+// PAUSED_WORKER, and with the condition on NOT_READY_WORKER.
+export const PAUSED_COUNTS: Readonly<Record<string, string>> = {
+  "Cluster freelens-capi-healthy": "21 objects: 17 Healthy (1 stale), 4 with no health",
+  Workers: "10 objects: 8 Healthy (1 stale), 2 with no health",
+  "MachineDeployment freelens-capi-healthy-md-0-m9x7h": "9 objects: 7 Healthy (1 stale), 2 with no health",
+  "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb": "6 objects: 6 Healthy (1 stale)",
+};
+
+export const NOT_READY_COUNTS: Readonly<Record<string, string>> = {
+  "Cluster freelens-capi-healthy": "21 objects: 1 Unhealthy, 16 Healthy, 4 with no health",
+  Workers: "10 objects: 1 Unhealthy, 7 Healthy, 2 with no health",
+  "MachineDeployment freelens-capi-healthy-md-0-m9x7h": "9 objects: 1 Unhealthy, 6 Healthy, 2 with no health",
+  "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb": "6 objects: 1 Unhealthy, 5 Healthy",
+};
