@@ -32,11 +32,14 @@ import {
   workloadContainerIds,
 } from "../e2e/scripts/checks.mts";
 import {
+  applyObjects,
   COMMAND_NAMES,
   DOWN_WORKLOADS,
   onceItSucceeds,
+  ownNamespaceProblem,
   parseCommand,
   providersAgainstPins,
+  removeObjects,
   takeDown,
 } from "../e2e/scripts/commands.mts";
 import { everyPinnedFile, pinnedContent, sveltosChart, sveltosExtensionPackage } from "../e2e/scripts/downloads.mts";
@@ -93,7 +96,13 @@ import {
 } from "../e2e/scripts/states.mts";
 import { parseDocuments, plainAllowed, stringifyDocuments } from "../e2e/scripts/yaml.mts";
 
-import type { DownOperations, InventoryProvider, Tier, Workload } from "../e2e/scripts/commands.mts";
+import type {
+  DefinitionsSession,
+  DownOperations,
+  InventoryProvider,
+  Tier,
+  Workload,
+} from "../e2e/scripts/commands.mts";
 import type { Fetch, PinnedFile } from "../e2e/scripts/downloads.mts";
 import type { KubeObject } from "../e2e/scripts/fixtures.mts";
 
@@ -2271,6 +2280,49 @@ describe("the states of the fixtures", () => {
       if (name === "healthy") expect(notHealthy(objects)).toBeUndefined();
     },
   );
+});
+
+describe("the objects that a session applies to a namespace of its own", () => {
+  it("go to a namespace of the scripts that is no namespace of a state of the fixtures, whose objects they would replace", () => {
+    expect(ownNamespaceProblem("freelens-capi-tree-large")).toBeUndefined();
+    for (const state of FIXTURE_STATES) {
+      expect(ownNamespaceProblem(state.namespace)).toBe(
+        `${state.namespace} is the namespace of the fixtures of ${state.name}`,
+      );
+    }
+    for (const namespace of ["default", "kube-system", "freelens-capi-", "freelens-capi-Large", "freelens-capi-x-"]) {
+      expect(ownNamespaceProblem(namespace), namespace).toBe(
+        `${namespace} is not a namespace of the scripts, freelens-capi- and a name`,
+      );
+    }
+    expect(ownNamespaceProblem(`freelens-capi-${"x".repeat(49)}`)).toBeUndefined();
+    expect(ownNamespaceProblem(`freelens-capi-${"x".repeat(50)}`)).toMatch(/is not a namespace of the scripts/);
+  });
+
+  it("are refused, before any request, in the namespace of a state, outside the namespaces of the scripts, or in another namespace than theirs", () => {
+    const requests: string[][] = [];
+    // A session whose kubectl records what it is asked, and answers nothing.
+    const session = {
+      kubectl: (args: string[]) => {
+        requests.push(args);
+        return "";
+      },
+    } as unknown as DefinitionsSession;
+    const elsewhere = {
+      apiVersion: "v1",
+      kind: "ConfigMap",
+      metadata: { name: "x", namespace: "freelens-capi-other" },
+    };
+
+    expect(() => applyObjects(session, "freelens-capi-healthy", [])).toThrow(
+      "freelens-capi-healthy is the namespace of the fixtures of healthy: the objects of a session go to a namespace of their own",
+    );
+    expect(() => removeObjects(session, "default")).toThrow(/^default is not a namespace of the scripts/);
+    expect(() => applyObjects(session, "freelens-capi-tree-large", [elsewhere])).toThrow(
+      /is not in the namespace of the namespace freelens-capi-tree-large/,
+    );
+    expect(requests).toEqual([]);
+  });
 });
 
 describe("the fixture sets of the repository", () => {
