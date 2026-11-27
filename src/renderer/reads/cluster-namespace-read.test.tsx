@@ -92,7 +92,7 @@ function own(namespace = NAMESPACE, name = NAME) {
     <SourcedClusterView
       namespace={namespace}
       name={name}
-      host={{ extension: EXTENSION, openCluster: vi.fn() }}
+      host={{ extension: EXTENSION, openCluster: vi.fn(), openTree: vi.fn() }}
       metadata={true}
     />
   );
@@ -271,6 +271,7 @@ describe("a view of one Cluster whose namespace the page does not read (P31)", (
         object={objects.find((object) => object.kind === "Cluster") as unknown as Cluster}
         extension={EXTENSION}
         openCluster={vi.fn()}
+        openTree={vi.fn()}
       />,
     );
     await act(async () => undefined);
@@ -297,6 +298,7 @@ describe("a view of one Cluster whose namespace the page does not read (P31)", (
         object={objects.find((object) => object.kind === "Cluster") as unknown as Cluster}
         extension={EXTENSION}
         openCluster={vi.fn()}
+        openTree={vi.fn()}
       />,
     );
     await act(async () => undefined);
@@ -462,6 +464,7 @@ describe("the kinds of a view of one Cluster (SPEC-0005, P6)", () => {
         object={objectsOfStates(["healthy"]).find((object) => object.kind === "Cluster") as unknown as Cluster}
         extension={EXTENSION}
         openCluster={vi.fn()}
+        openTree={vi.fn()}
       />,
     );
     await settle();
@@ -504,6 +507,7 @@ describe("the kinds of a view of one Cluster (SPEC-0005, P6)", () => {
         object={hostObjects(objects).find((object) => object.kind === "Cluster") as unknown as Cluster}
         extension={EXTENSION}
         openCluster={vi.fn()}
+        openTree={vi.fn()}
       />,
     );
     await settle();
@@ -1308,3 +1312,4 @@ describe("the first loads of the read of the tree (SPEC-0005, P13)", () => {
     stop();
   });
 });
+

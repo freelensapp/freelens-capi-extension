@@ -75,6 +75,12 @@
   word-break: break-word;
 }
 
+// An annotation, `key=value`, as the host writes the labels and the annotations of its metadata, wrapped anywhere in a
+// value that the row does not hold (SPEC-0005, P20).
+.annotation {
+  overflow-wrap: anywhere;
+}
+
 .note,
 .remark {
   margin: 0.25em 0 0;

@@ -45,13 +45,19 @@ const SECTIONS = [
 
 type Fields = Record<string, any>;
 
-function viewOf(source: ClusterSource, cluster: HostObject, metadata = true, openCluster = vi.fn()) {
+function viewOf(
+  source: ClusterSource,
+  cluster: HostObject,
+  metadata = true,
+  openCluster = vi.fn(),
+  openTree = vi.fn(),
+) {
   return render(
     <ClusterView
       source={source}
       namespace={cluster.getNs() ?? ""}
       name={cluster.getName()}
-      host={{ extension: EXTENSION, openCluster }}
+      host={{ extension: EXTENSION, openCluster, openTree }}
       metadata={metadata}
     />,
   );
@@ -654,50 +660,143 @@ describe("the workers (SPEC-0004, The details, 3; P17)", () => {
   });
 });
 
-describe("the references between the objects of a Cluster (P18, P32)", () => {
-  // A reference to an object of Cluster API: plain text, with no element of the role link, and a click on it opens
-  // nothing.
+describe("the references between the objects of a Cluster (P18, P32; SPEC-0005, P3, P5)", () => {
+  // A reference to an object of Cluster API of the Cluster: a button that opens the tree of the Cluster at its node,
+  // with its details, as the maintainer decided for the KubeadmControlPlane, the MachineDeployments, the MachinePools
+  // and the ClusterClass, and as SPEC-0005 proposes for the MachineSets, the worker Machines and a name in a message
+  // (P5); never a link, and never the details of the host.
+  // A name that opens nothing: plain text, with no element of the role link, and a click on it opens nothing.
   function expectText(element: HTMLElement) {
     expect(within(element).queryByRole("link")).toBeNull();
+    expect(within(element).queryByRole("button")).toBeNull();
     expect(element.closest("a")).toBeNull();
     fireEvent.click(element);
     expect(host.navigate).not.toHaveBeenCalled();
     expect(host.showDetails).not.toHaveBeenCalled();
   }
 
-  it("show the KubeadmControlPlane, the parts of the workers and the ClusterClass as plain text", () => {
+  function expectTreeButton(element: HTMLElement, openTree: ReturnType<typeof vi.fn>, cluster: string, node: string) {
+    expect(within(element).queryByRole("link")).toBeNull();
+    expect(element.closest("a")).toBeNull();
+    fireEvent.click(within(element).getByRole("button"));
+    expect(openTree).toHaveBeenLastCalledWith(cluster, cluster, node);
+    expect(host.navigate).not.toHaveBeenCalled();
+    expect(host.showDetails).not.toHaveBeenCalled();
+  }
+
+  it("show the KubeadmControlPlane, the parts of the workers and the ClusterClass as buttons that open the tree at their node", () => {
     const openCluster = vi.fn();
+    const openTree = vi.fn();
+    const cluster = "freelens-capi-without-node";
     // The parts: a MachineDeployment, a MachineSet and a stand-alone worker Machine that the Cluster owns.
     const objects = variantOf("machine-without-node", () => undefined, [standAloneMachine()]);
 
-    viewOf(sourceOf(objects), clusterOf(objects), true, openCluster);
+    viewOf(sourceOf(objects), clusterOf(objects), true, openCluster, openTree);
 
-    expectText(screen.getByTestId("capi-details-control-plane-reference"));
+    expectTreeButton(
+      screen.getByTestId("capi-details-control-plane-reference"),
+      openTree,
+      cluster,
+      "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-without-node-glvg7",
+    );
     expect(screen.getAllByTestId("capi-details-part-name").map((name) => name.textContent)).toEqual([
       "freelens-capi-without-node-md-0-glbqj",
       "freelens-capi-without-node-without-node",
       "freelens-capi-without-node-stand-alone",
     ]);
-    for (const name of screen.getAllByTestId("capi-details-part-name")) expectText(name);
-    expectText(screen.getByTestId("capi-details-class"));
+
+    const [deployment, set, machine] = screen.getAllByTestId("capi-details-part-name");
+
+    expectTreeButton(
+      deployment,
+      openTree,
+      cluster,
+      "cluster.x-k8s.io/MachineDeployment/freelens-capi-without-node-md-0-glbqj",
+    );
+    expectTreeButton(set, openTree, cluster, "cluster.x-k8s.io/MachineSet/freelens-capi-without-node-without-node");
+    expectTreeButton(machine, openTree, cluster, "cluster.x-k8s.io/Machine/freelens-capi-without-node-stand-alone");
+    expectTreeButton(
+      screen.getByTestId("capi-details-class"),
+      openTree,
+      cluster,
+      "cluster.x-k8s.io/ClusterClass/quick-start",
+    );
     expect(openCluster).not.toHaveBeenCalled();
   });
 
-  it("show a MachinePool among the parts and a Machine named in a message as plain text", () => {
+  it("open the ClusterClass that the Cluster names in another namespace at its node, by that namespace and its name", () => {
+    const openTree = vi.fn();
+    const objects = variantOf("healthy", (cluster) => {
+      ((cluster.spec as Fields).topology as { classRef: { namespace?: string } }).classRef.namespace =
+        "freelens-capi-classes";
+    });
+
+    viewOf(sourceOf(objects), clusterOf(objects), true, vi.fn(), openTree);
+
+    expect(screen.getByTestId("capi-details-class").textContent).toMatch(/freelens-capi-classes\/quick-start/);
+    expectTreeButton(
+      screen.getByTestId("capi-details-class"),
+      openTree,
+      "freelens-capi-healthy",
+      "cluster.x-k8s.io/ClusterClass/freelens-capi-classes/quick-start",
+    );
+  });
+
+  it("show a MachinePool among the parts and a Machine named in a message as buttons that open the tree at their node", () => {
     const openCluster = vi.fn();
+    const openTree = vi.fn();
+    const cluster = "freelens-capi-machine-pools";
     const objects = objectsOfStates(["machine-pools"]);
 
-    viewOf(sourceOf(objects), clusterOf(objects), true, openCluster);
+    viewOf(sourceOf(objects), clusterOf(objects), true, openCluster, openTree);
 
-    for (const name of screen.getAllByTestId("capi-details-part-name")) expectText(name);
+    const [pool] = screen.getAllByTestId("capi-details-part-name");
+
+    expectTreeButton(pool, openTree, cluster, `cluster.x-k8s.io/MachinePool/${pool.textContent}`);
 
     const line = screen
       .getAllByTestId("capi-details-line")
       .find((element) => element.textContent?.startsWith("* Machine freelens-capi-machine-pools-"));
+    const machine = /^\* Machine (\S+):/.exec(line?.textContent ?? "")?.[1] ?? "";
 
     expect(line).toBeDefined();
-    expectText(line as HTMLElement);
+    expectTreeButton(line as HTMLElement, openTree, cluster, `cluster.x-k8s.io/Machine/${machine}`);
     expect(openCluster).not.toHaveBeenCalled();
+  });
+
+  it("open the page of the tree from the row Tree, before the Status, in the details and in the panel", () => {
+    const openTree = vi.fn();
+    const objects = objectsOfStates(["healthy"]);
+
+    viewOf(sourceOf(objects), clusterOf(objects), true, vi.fn(), openTree);
+
+    const sections = [...document.querySelectorAll("[data-testid^='capi-details-section-']")].map((section) =>
+      section.getAttribute("data-testid"),
+    );
+
+    expect(sections.indexOf("capi-details-section-tree")).toBe(sections.indexOf("capi-details-section-status") - 1);
+    expect(screen.getByTestId("capi-details-open-tree").textContent).toBe("Open the tree of this Cluster");
+    fireEvent.click(screen.getByTestId("capi-details-open-tree"));
+    expect(openTree).toHaveBeenCalledWith("freelens-capi-healthy", "freelens-capi-healthy");
+  });
+
+  it("leave the row Tree out of the details of the root of the tree, which the tree is under (SPEC-0005, P3)", () => {
+    const objects = objectsOfStates(["healthy"]);
+    const cluster = clusterOf(objects);
+
+    render(
+      <ClusterView
+        source={sourceOf(objects)}
+        namespace={cluster.getNs() ?? ""}
+        name={cluster.getName()}
+        host={{ extension: EXTENSION, openCluster: vi.fn(), openTree: vi.fn() }}
+        metadata={true}
+        inTree
+      />,
+    );
+
+    expect(screen.queryByTestId("capi-details-section-tree")).toBeNull();
+    expect(screen.getByTestId("capi-details-section-status")).toBeDefined();
   });
 
   it("show a Cluster named in a message as a button that opens its details only when the view read it", () => {
@@ -824,19 +923,21 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
       (part) => part.getAttribute("data-fields") ?? part.getAttribute("data-testid"),
     );
 
-    // The metadata of the host in three parts, each with the fields that it shows in the order of the host, the
-    // namespace after the name and the owners after the finalizers, in rows of their own; none shows the namespace,
-    // the owners, or the three fields that the host hides by default.
+    // The metadata of the host in four parts, each with the fields that it shows in the order of the host, the
+    // namespace after the name, the annotations after the labels and the owners after the finalizers, in rows of their
+    // own; none shows the namespace, the owners, the annotations, or the three fields that the host hides by default.
+    // A Cluster with no annotation shows no row of them (SPEC-0005, P20).
     expect(parts).toEqual([
       "creationTimestamp deletionTimestamp name",
       "capi-details-namespace",
-      "labels annotations finalizers",
+      "labels",
+      "finalizers",
       "capi-details-owners",
       "managedFields",
     ]);
-    for (const [props] of Renderer.Component.KubeObjectMeta.mock.calls.slice(-3)) {
+    for (const [props] of Renderer.Component.KubeObjectMeta.mock.calls.slice(-4)) {
       expect(props.hideFields).toEqual(
-        expect.arrayContaining(["uid", "resourceVersion", "selfLink", "namespace", "ownerReferences"]),
+        expect.arrayContaining(["uid", "resourceVersion", "selfLink", "namespace", "ownerReferences", "annotations"]),
       );
     }
     expect(within(metadata).queryAllByRole("link")).toEqual([]);
@@ -844,6 +945,48 @@ describe("the references between the objects of a Cluster (P18, P32)", () => {
       "freelens-capi-healthy",
     );
     expect(valueOf(screen.getByTestId("capi-details-owners"))).toBe("Owner owner-of-it");
+  });
+});
+
+describe("what the details of a Cluster never show (SPEC-0005, P20)", () => {
+  it("show the annotations in a row of their own, the one that kubectl apply writes held and not shown", () => {
+    const applied = JSON.stringify({ spec: { topology: { variables: [{ name: "token", value: "s3cr3t" }] } } });
+    const objects = variantOf("healthy", (cluster) => {
+      cluster.metadata.annotations = {
+        "example.com/owner": "team-a",
+        "kubectl.kubernetes.io/last-applied-configuration": applied,
+      };
+    });
+
+    viewOf(sourceOf(objects), clusterOf(objects));
+
+    const row = screen.getByTestId("capi-details-annotations");
+
+    expect(valueOf(row)).toMatch(/^example\.com\/owner=team-a/);
+    expect(screen.getByTestId("capi-details-annotation-held").textContent).toMatch(
+      /^kubectl\.kubernetes\.io\/last-applied-configuration: held, and not shown/,
+    );
+    expect(document.body.textContent).not.toMatch(/s3cr3t/);
+    // The metadata of the host show no annotation: every part leaves them out.
+    for (const [props] of Renderer.Component.KubeObjectMeta.mock.calls.slice(-4)) {
+      expect(props.hideFields).toContain("annotations");
+    }
+  });
+
+  it("name the variables of the topology, never their values", () => {
+    const objects = objectsOfStates(["healthy"]);
+    const cluster = fixtureSet("healthy").find((object) => object.kind === "Cluster") as unknown as {
+      spec: { topology: { variables?: { name: string; value: unknown }[] } };
+    };
+    const names = (cluster.spec.topology.variables ?? []).map((variable) => variable.name);
+
+    viewOf(sourceOf(objects), clusterOf(objects));
+
+    expect(names.length).toBeGreaterThan(0);
+    expect(valueOf(screen.getByTestId("capi-details-variables"))).toBe(names.join(", "));
+    for (const variable of cluster.spec.topology.variables ?? []) {
+      expect(document.body.textContent).not.toContain(JSON.stringify(variable.value));
+    }
   });
 });
 
@@ -1056,7 +1199,7 @@ describe("an error in the details", () => {
           source={sourceOf(objects)}
           namespace="freelens-capi-healthy"
           name="freelens-capi-healthy"
-          host={{ extension: EXTENSION, openCluster: vi.fn() }}
+          host={{ extension: EXTENSION, openCluster: vi.fn(), openTree: vi.fn() }}
           metadata={true}
         />
         <p>the list</p>
@@ -1089,7 +1232,7 @@ describe("the states of a view of one Cluster (P25)", () => {
         source={sourceOf(objects)}
         namespace="freelens-capi-healthy"
         name="gone"
-        host={{ extension: EXTENSION, openCluster: vi.fn() }}
+        host={{ extension: EXTENSION, openCluster: vi.fn(), openTree: vi.fn() }}
         metadata={true}
       />,
     );
@@ -1162,7 +1305,14 @@ describe("the states of a view of one Cluster (P25)", () => {
 
 describe("the panel in the details of the host (P16, P31)", () => {
   function panel(object: HostObject) {
-    return render(<ClusterPanel object={object as unknown as Cluster} extension={EXTENSION} openCluster={vi.fn()} />);
+    return render(
+      <ClusterPanel
+        object={object as unknown as Cluster}
+        extension={EXTENSION}
+        openCluster={vi.fn()}
+        openTree={vi.fn()}
+      />,
+    );
   }
 
   // The objects that the stores of the extension's own class read, by the base of their API.
