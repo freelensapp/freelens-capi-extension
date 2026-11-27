@@ -746,12 +746,13 @@ describe("the details of the extension (P6, P13, P15)", () => {
     expect(screen.queryByTestId("capi-cluster-details")).toBeNull();
   });
 
-  it("open the page of the tree of a Cluster from the row Tree of its details, by the parameters of that page (SPEC-0005, P3)", async () => {
+  it("open the page of the tree of a Cluster from the row Tree of its details, by the parameters of that page, with one entry of the history, so that one Back brings the details again (SPEC-0005, P3)", async () => {
     await opened(ADDRESS);
 
     fireEvent.click(screen.getByTestId("capi-details-open-tree"));
 
-    expect(host.navigateExtension).toHaveBeenCalledWith("cluster-tree", { cluster: ADDRESS, details: "" });
+    expect(host.navigateExtension.mock.calls).toStrictEqual([["cluster-tree", { cluster: ADDRESS }]]);
+    expect(host.history).toEqual([`/cluster-tree?cluster=${encodeURIComponent(ADDRESS)}`]);
   });
 
   it("say that a value that is not <namespace>/<name> names no Cluster, as written, and read nothing for it", async () => {

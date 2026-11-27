@@ -30,10 +30,12 @@ describe("the parameter cluster (P2)", () => {
     expect(parseTreeCluster(value)).toEqual({ state: "invalid", value });
   });
 
-  it("is written by the parameters of the page, with no details or with a node", () => {
-    expect(treeParams("freelens-capi-healthy", "freelens-capi-healthy")).toEqual({
+  it("is written by the parameters of the page, with no parameter details for the root, and with a node", () => {
+    expect(treeParams("freelens-capi-healthy", "freelens-capi-healthy")).toStrictEqual({
       cluster: "freelens-capi-healthy/freelens-capi-healthy",
-      details: "",
+    });
+    expect(treeParams("freelens-capi-healthy", "freelens-capi-healthy", "")).toStrictEqual({
+      cluster: "freelens-capi-healthy/freelens-capi-healthy",
     });
     expect(
       treeParams("freelens-capi-healthy", "freelens-capi-healthy", "cluster.x-k8s.io/Machine/freelens-capi-healthy-a"),

@@ -103,7 +103,8 @@ export default class CapiRenderer extends Renderer.LensExtension {
   };
 
   // Opens the tree of a Cluster, at a node with its details when one is named (SPEC-0005, P2, P3, P5). The navigation
-  // of the extension builds the address of the page from these parameters alone.
+  // of the extension builds the address of the page from these parameters alone, with no empty one, which the history
+  // of the host would add once more without it (`treeParams`).
   readonly openTree = (namespace: string, name: string, node = ""): void => {
     void this.navigate(TREE_PAGE, treeParams(namespace, name, node));
   };

@@ -97,7 +97,24 @@ export const host = {
   // The navigations of the frame: to an address, to the details of the host, and to a page of the extension.
   navigate: vi.fn<(location: string) => void>(),
   showDetails: vi.fn<(selfLink: string, resetSelected?: boolean) => void>(),
-  navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async () => undefined),
+  navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async (pageId, params = {}) => {
+    host.pushExtensionPage(pageId, params);
+  }),
+  // The entries that the navigations to a page of the extension add to the history of the frame, as the host adds
+  // them: the address of the page with every parameter given, an empty one included, as the navigation of the
+  // extension writes it (freelens:packages/core/src/extensions/lens-renderer-extension.ts:108-139), and, when one is
+  // empty, the same address once more without it, which the observable history of the host pushes as it keeps the
+  // parameters of its address without the empty ones (freelens:packages/routing/src/observable-history.ts:157-189;
+  // freelens:packages/routing/src/search-params.ts:9-13). One Back goes to the entry before the last.
+  history: [] as string[],
+  pushExtensionPage(pageId: string | undefined, params: object) {
+    const search = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+    const kept = new URLSearchParams([...search].filter(([, value]) => value !== ""));
+    const address = (query: URLSearchParams) => `/${pageId ?? ""}${query.size > 0 ? `?${query.toString()}` : ""}`;
+
+    host.history.push(address(search));
+    if (kept.size !== search.size) host.history.push(address(kept));
+  },
   // The parameters of the address of the frame, by their names, which a page parameter that the extension creates
   // reads, as `kube-details`, the parameter of the details of the host.
   params: observable.map<string, string>({}, { deep: false }),
@@ -147,6 +164,7 @@ export const host = {
     host.navigate.mockReset();
     host.showDetails.mockReset();
     host.navigateExtension.mockClear();
+    host.history.length = 0;
     runInAction(() => host.params.clear());
     host.hideDetails.mockClear();
     host.drawnRows = undefined;

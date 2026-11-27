@@ -724,20 +724,39 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
           .waitFor(viewTimeout);
       };
 
+      // The address of the frame, with its parameters, and the length of the history of its window.
+      const whereFrameIs = async () => {
+        const url = new URL(frame.url());
+
+        return `${url.pathname}${url.search}, the history ${await frame.evaluate(() => window.history.length)} entries long`;
+      };
+
       await selectNamespaces(frame, [namespace]);
 
-      // The row Tree of the details of the extension opens the tree of the Cluster, with no details; one Back brings
-      // the details of the Cluster again, its list holding no search.
+      // The row Tree of the details of the extension opens the tree of the Cluster, with no details, in one entry of the
+      // history; one Back brings the details of the Cluster again, its list holding no search. The addresses of the
+      // frame before the click, after it and after the Back are logged, whatever the step finds.
       await openClusterDetails();
-      await clusterDetails.getByTestId("capi-details-open-tree").click();
-      await treeShows("");
-      expect(await titleOf(treeDetails)).toBeNull();
-      expect(await clusterDetails.count()).toBe(0);
-      await frame.evaluate(() => window.history.back());
-      await until(
-        "the details of the Cluster after one Back",
-        async () => (await titleOf(clusterDetails)) === `Cluster: ${name}`,
-      );
+
+      const beforeClick = await whereFrameIs();
+      let afterClick = "not read";
+
+      try {
+        await clusterDetails.getByTestId("capi-details-open-tree").click();
+        await treeShows("");
+        afterClick = await whereFrameIs();
+        expect(await titleOf(treeDetails)).toBeNull();
+        expect(await clusterDetails.count()).toBe(0);
+        await frame.evaluate(() => window.history.back());
+        await until(
+          "the details of the Cluster after one Back",
+          async () => (await titleOf(clusterDetails)) === `Cluster: ${name}`,
+        );
+      } finally {
+        console.log(
+          `the way back from the row Tree: the frame at ${beforeClick} before the click, at ${afterClick} after it, and at ${await whereFrameIs().catch(() => "no address")} after one Back`,
+        );
+      }
       expect(new URL(frame.url()).pathname).toBe(clustersPage);
       expect(new URL(frame.url()).searchParams.get("details")).toBe(`${namespace}/${name}`);
 

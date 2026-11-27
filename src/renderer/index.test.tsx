@@ -229,8 +229,8 @@ describe("the registrations of the renderer", () => {
       "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
     );
 
-    expect(host.navigateExtension.mock.calls).toEqual([
-      [TREE_PAGE, { cluster: "freelens-capi-healthy/freelens-capi-healthy", details: "" }],
+    expect(host.navigateExtension.mock.calls).toStrictEqual([
+      [TREE_PAGE, { cluster: "freelens-capi-healthy/freelens-capi-healthy" }],
       [
         TREE_PAGE,
         {
@@ -238,6 +238,27 @@ describe("the registrations of the renderer", () => {
           details: "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
         },
       ],
+    ]);
+  });
+
+  // The history of the host adds an address that holds an empty parameter once more without it, so a way to the tree
+  // that gave an empty `details` took two Backs to come back, where one is the way back of a page (SPEC-0005, "Notes and
+  // deviations").
+  it("open the tree of a Cluster at its root with one entry of the history of the frame, so that one Back comes back (SPEC-0005, P3)", () => {
+    const renderer = extension() as Renderer.LensExtension & {
+      openTree(namespace: string, name: string, node?: string): void;
+    };
+
+    renderer.openTree("freelens-capi-healthy", "freelens-capi-healthy");
+    renderer.openTree(
+      "freelens-capi-healthy",
+      "freelens-capi-healthy",
+      "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+    );
+
+    expect(host.history).toEqual([
+      `/${TREE_PAGE}?cluster=freelens-capi-healthy%2Ffreelens-capi-healthy`,
+      `/${TREE_PAGE}?cluster=freelens-capi-healthy%2Ffreelens-capi-healthy&details=controlplane.cluster.x-k8s.io%2FKubeadmControlPlane%2Ffreelens-capi-healthy-d2lgq`,
     ]);
   });
 

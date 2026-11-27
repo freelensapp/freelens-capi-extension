@@ -3565,6 +3565,30 @@ the contract label of the definition for a control plane of a provider; and
   the page of the Clusters and the details of the Cluster again. The extra
   entry is of the host, after a search of any of its lists, and the extension
   does not work around it.
+- A fact of the host read in its sources at `v2.1.0`, after the first run of the
+  CI of the third part, in which one Back from the tree that the row Tree had
+  opened, from a list that held no search, did not bring the details of the
+  Cluster again: the navigation of an extension writes in the address every
+  parameter that it is given, an empty one included
+  (freelens:packages/core/src/extensions/lens-renderer-extension.ts:108-139),
+  and the observable history of the host keeps the parameters of its address
+  without the empty ones, and pushes the address that it keeps when it differs
+  (freelens:packages/routing/src/observable-history.ts:157-189;
+  freelens:packages/routing/src/search-params.ts:9-13). The row Tree gave
+  `details` empty, so the host added the address of the tree twice, with that
+  parameter and without it, and one Back gave the tree again. A `PageParam.set`
+  pushes too, unless it is given `replaceHistory`
+  (freelens:packages/core/src/renderer/navigation/page-param.ts:69-74).
+  Decided while implementing: the parameters that open the tree at its root are
+  `cluster` alone (`treeParams` of `tree-address.ts`), so that the way in adds
+  one entry and one Back comes back. The page of the tree, its drawer and the
+  details write no parameter as they mount; a click, a key and the closing of
+  the details write `details`, and add an entry each, as the details of the
+  page of the Clusters do (SPEC-0004, P6). A case of `index.test.tsx` and one
+  of `clusters-page-v1beta2.test.tsx` read the entries that the stub of the
+  navigation adds, as the host adds them; step 3 logs the address of the frame
+  and the length of the history of its window before the click, after it and
+  after the Back.
 - Decided while implementing the third part, for step 4: the drawer is over the
   page and the dock when it spans the whole height of the frame, from 480 px,
   and the details of the host are over those of a node when the drawer at the
