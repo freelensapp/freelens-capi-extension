@@ -3,7 +3,15 @@ import { EXPECTED_TREES, outlineRows, TREE_CLUSTERS } from "../../../integration
 import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { resolved, treeKeyOf, treeOutline, treeSourceOf } from "../../../test/tree-sources";
 import { statusOf } from "../status/index";
-import { buildTree, evaluateTree, indexTree, kindWords, TreeBuilds, unreadWords } from "./cluster-tree";
+import {
+  addressKindRead,
+  buildTree,
+  evaluateTree,
+  indexTree,
+  kindWords,
+  TreeBuilds,
+  unreadWords,
+} from "./cluster-tree";
 import { clusterContextOf, StatusMemo } from "./context";
 import * as objectFields from "./objects";
 import * as references from "./references";
@@ -1605,6 +1613,93 @@ describe("a node that cannot be read (P12)", () => {
       expect(statuses.get(id)?.pending, id).toBe(true);
     }
     expect(treeOutline(tree).filter((row) => /^(Other objects|KubeadmConfig |Machines)/.test(row.text))).toEqual([]);
+  });
+});
+
+describe("the reads of the kind of an address whose node the tree does not hold (P19, P23)", () => {
+  const CORE = "cluster.x-k8s.io";
+  const CLASSES = "freelens-capi-classes";
+  const OTHER = "freelens-capi-other-classes";
+
+  // The indexes and the tree of the Cluster of a state, from the reads that the case gives.
+  function sourced(state: string, objects: readonly Writable[], options: TreeSourceOptions = {}) {
+    const name = TREE_CLUSTERS[state];
+    const source = treeSourceOf(objects as unknown as KubeObjectData[], {
+      cluster: { namespace: name, name },
+      ...options,
+    });
+    const index = indexTree(source.clusters, source.objects);
+    const outcome = buildTree(index, name, name);
+
+    if (outcome.state !== "found") throw new Error(`No tree of ${name}`);
+    return { index, tree: outcome.tree };
+  }
+
+  // healthy, with the class reference of its Cluster naming a namespace of its own, which holds the class.
+  function classIn(namespace: string): Writable[] {
+    const objects = setOf("healthy");
+
+    named(objects, "Cluster").spec.topology.classRef.namespace = namespace;
+    named(objects, "ClusterClass").metadata.namespace = namespace;
+    return objects;
+  }
+
+  it("are pending while the first load of the kind runs in the namespace where the tree reads it, for the spinner of the details", () => {
+    const { index, tree } = sourced("healthy", setOf("healthy"), {
+      pending: ["infrastructure.cluster.x-k8s.io/DevMachine"],
+    });
+
+    expect(addressKindRead(index, tree, "infrastructure.cluster.x-k8s.io", "DevMachine", HEALTHY)).toEqual({
+      state: "pending",
+    });
+    expect(addressKindRead(index, tree, CORE, "Machine", HEALTHY)).toEqual({ state: "read" });
+    // A kind that the reads never tried is not being read.
+    expect(addressKindRead(index, tree, "infrastructure.example.test", "ExampleMachine", HEALTHY)).toEqual({
+      state: "read",
+    });
+  });
+
+  it("are never pending in a namespace where the tree does not read the kind, out of the filter of the reads or in it, as the namespace of the class is", () => {
+    // The read of the tree holds the namespace of its class in its filter, and loads the Machines in the namespace of
+    // the Cluster alone.
+    const { index, tree } = sourced("healthy", classIn(CLASSES), { namespaces: [HEALTHY], filter: [CLASSES, HEALTHY] });
+
+    expect(index.objects.reads.filter?.namespaces).toEqual([CLASSES, HEALTHY]);
+    expect(addressKindRead(index, tree, CORE, "Machine", "other-namespace")).toEqual({
+      state: "not-read",
+      noun: "Machines",
+    });
+    expect(addressKindRead(index, tree, CORE, "Machine", CLASSES)).toEqual({ state: "not-read", noun: "Machines" });
+    expect(addressKindRead(index, tree, CORE, "Machine", HEALTHY)).toEqual({ state: "read" });
+  });
+
+  it("are never pending for the class in a namespace that its reference no longer names, and pending in the one that it names now while that loads", () => {
+    // The class reference moved from the namespace CLASSES to OTHER, whose ClusterClasses still load.
+    const { index, tree } = sourced("healthy", classIn(OTHER), {
+      classNamespace: OTHER,
+      pending: ["cluster.x-k8s.io/ClusterClass"],
+    });
+
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", CLASSES)).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", HEALTHY)).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", OTHER)).toEqual({ state: "pending" });
+  });
+
+  it("read no ClusterClass anywhere for a Cluster that names no class", () => {
+    const state = "without-topology";
+    const { index, tree } = sourced(state, setOf(state));
+
+    expect(tree.classNamespace).toBeUndefined();
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", TREE_CLUSTERS[state])).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
   });
 });
 

@@ -41,7 +41,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { observer } from "mobx-react";
 import React, { createRef, useEffect, useLayoutEffect, useReducer, useState } from "react";
-import { evaluateTree, kindPending, TreeBuilds } from "../../common/views/cluster-tree";
+import { addressKindRead, evaluateTree, TreeBuilds } from "../../common/views/cluster-tree";
 import { CLUSTERS_PERMISSION } from "../../common/views/cluster-view";
 import { StatusMemo } from "../../common/views/context";
 import { detailsAddressOf } from "../../common/views/details-address";
@@ -946,8 +946,18 @@ function drawerContent(
 
   if (node === tree.root) return { state: "root" };
   if (node?.form === "object" || node?.form === "reference") return { state: "node", details: detailsOf(node) };
-  if (kindPending(index, address.group, address.kind, address.namespace ?? namespace)) return { state: "loading" };
-  return { state: "absent", gone: page.seen.has(address.id) };
+
+  // A namespace in which the tree does not read the kind of the node is never loading: the object is not read there,
+  // or is no longer in the tree, for one that was there, as the class whose reference names another namespace now
+  // (P19, P23).
+  const read = addressKindRead(index, tree, address.group, address.kind, address.namespace ?? namespace);
+
+  if (read.state === "pending") return { state: "loading" };
+  return {
+    state: "absent",
+    gone: page.seen.has(address.id),
+    ...(read.state === "not-read" ? { notRead: { noun: read.noun, namespace: address.namespace ?? namespace } } : {}),
+  };
 }
 
 export interface ClusterTreePageProps extends Common.Types.PageComponentProps {

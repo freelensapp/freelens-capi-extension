@@ -618,13 +618,37 @@ function kindReadOf(index: TreeIndex, kind: TreeKind | undefined, namespace: str
   return { state: "pending" };
 }
 
-// Whether the tree still reads a kind of an address in a namespace: its first load, or the definition of a kind of a
-// provider, so that the details of a node that the tree does not hold yet show the spinner, and never that it is not in
-// the tree (P19). A kind that the reads never tried is not being read.
-export function kindPending(index: TreeIndex, group: string, kind: string, namespace: string): boolean {
+// The namespace in which the tree reads the objects of a kind (P6): that of the Cluster, or, for the ClusterClasses, the
+// one that the class reference of the Cluster names, and no other; none for the ClusterClasses of a Cluster that names
+// no class.
+function readNamespaceOf(tree: ClusterTree, kind: TreeKind): string | undefined {
+  return kind.where === "class" ? tree.classNamespace : tree.root.namespace;
+}
+
+// How the reads of the tree stand on the kind of an address in the namespace that it names, for the details of a node
+// that the tree does not hold (P19, P23).
+export type AddressKindRead =
+  // The tree reads that kind in that namespace, and its first load, or the definition of a kind of a provider, still
+  // runs: the details show the spinner, and never that the node is not in the tree.
+  | { readonly state: "pending" }
+  // The tree reads that kind in another namespace alone, or not at all, as the ClusterClasses of a Cluster that names no
+  // class: an object named there is not read, and its read is never pending.
+  | { readonly state: "not-read"; readonly noun: string }
+  // The tree read it there, or could not, or the reads never tried the kind: no such object is in the tree.
+  | { readonly state: "read" };
+
+export function addressKindRead(
+  index: TreeIndex,
+  tree: ClusterTree,
+  group: string,
+  kind: string,
+  namespace: string,
+): AddressKindRead {
   const known = index.kinds.get(kindId(group, kind));
 
-  return known !== undefined && kindReadOf(index, known, namespace).state === "pending";
+  if (known === undefined) return { state: "read" };
+  if (readNamespaceOf(tree, known) !== namespace) return { state: "not-read", noun: known.noun };
+  return kindReadOf(index, known, namespace).state === "pending" ? { state: "pending" } : { state: "read" };
 }
 
 // Whether the objects of a kind cannot be read in a namespace, as an owner row or a kind node says it (P12): its read

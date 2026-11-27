@@ -15,7 +15,8 @@
 // The details of the root are those of a Cluster (SPEC-0004), from the read of the tree, with no row Tree; those of any
 // other node, read or not, are those of `object-details.tsx`. A value that names no node says so, as written; a node
 // that the tree does not hold says that no such object is in the tree of the Cluster, or that it is no longer, for one
-// that was there, and shows the spinner while its kind loads (P19).
+// that was there, or that the tree does not read its kind in the namespace that the address names, and shows the
+// spinner while its kind loads in the namespace where the tree reads it (P19, P23).
 //
 // The host gives the focus nowhere when the drawer closes (H11): the page gives it back to the element of the tree
 // once the row of the node is in view. A click outside closes the drawer from a listener on the window, after the press
@@ -48,8 +49,13 @@ export type DrawerContent =
   | { readonly state: "loading" }
   | { readonly state: "root" }
   | { readonly state: "node"; readonly details: NodeDetails }
-  // The tree does not hold the node: never there, or no longer, for one that was there in this mount of the page.
-  | { readonly state: "absent"; readonly gone: boolean };
+  // The tree does not hold the node: never there, or no longer, for one that was there in this mount of the page; and,
+  // for a node in a namespace where the tree does not read its kind, the noun of that kind and that namespace.
+  | {
+      readonly state: "absent";
+      readonly gone: boolean;
+      readonly notRead?: { readonly noun: string; readonly namespace: string };
+    };
 
 export interface TreeDetailsDrawerProps {
   readonly address: NodeAddress;
@@ -87,14 +93,19 @@ function DrawerBody({ address, contentOf, namespace, name, source, host, links, 
   switch (content.state) {
     case "loading":
       return <Spinner center data-testid="capi-tree-details-loading" />;
-    case "absent":
+    case "absent": {
+      const object = `${address.kind} ${address.namespace === undefined ? address.name : `${address.namespace}/${address.name}`}`;
+
       return (
         <div className={styles.state} role="status" data-testid="capi-tree-details-absent">
           {content.gone
-            ? `No such object is in the tree of the Cluster ${namespace}/${name} any longer: ${address.kind} ${address.name} was there, and is gone.`
-            : `No such object is in the tree of the Cluster ${namespace}/${name}, which was read: ${address.kind} ${address.name}.`}
+            ? `No such object is in the tree of the Cluster ${namespace}/${name} any longer: ${object} was there, and is gone.`
+            : content.notRead === undefined
+              ? `No such object is in the tree of the Cluster ${namespace}/${name}, which was read: ${object}.`
+              : `Not read: the tree of the Cluster ${namespace}/${name} reads no ${content.notRead.noun} in the namespace ${content.notRead.namespace}: ${object}.`}
         </div>
       );
+    }
     case "root":
       return <ClusterView source={source} namespace={namespace} name={name} host={host} metadata={true} inTree />;
     case "node":

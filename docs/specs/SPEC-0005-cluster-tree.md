@@ -3291,6 +3291,18 @@ the contract label of the definition for a control plane of a provider; and
   there leaves the tree, and takes its title from the address alone; it goes
   with the tree when the tree fails. Two cases plant a throw, one in the tree
   and one in the details of a node.
+- Decided while implementing the second part, after its reviews, where P19
+  and P23 do not say in which namespace a node that the tree does not hold can
+  still be loading: in the one where the tree reads its kind alone, that of
+  the Cluster, or, for the ClusterClasses, the one that the class reference of
+  the Cluster names now, and in no other (P6). There the details show the
+  spinner while the first load of that kind runs. In any other namespace they
+  never do: an object named there is not read, "Not read: the tree of the
+  Cluster `<namespace>/<name>` reads no `<noun of the kind>` in the namespace
+  `<namespace>`", or, for one that was there, as the class whose reference
+  names another namespace now, no longer in the tree (`addressKindRead` of
+  `cluster-tree.ts`). They name the object as its row would, with its
+  namespace for an address of four parts.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -1133,6 +1133,131 @@ describe("the details of a node (P15, P17)", () => {
   });
 });
 
+describe("the details of a node that the tree does not hold (P19, P23)", () => {
+  const CLASSES = "freelens-capi-classes";
+  const OTHER = "freelens-capi-other-classes";
+  const CLASS = `cluster.x-k8s.io/ClusterClass/${CLASSES}/quick-start`;
+
+  it("say that an object named in a namespace where the tree does not read its kind is not read, never loading", async () => {
+    await opened(`cluster.x-k8s.io/Machine/other-namespace/${HEALTHY}-x`);
+    await settle();
+
+    expect(screen.queryByTestId("capi-tree-details-loading")).toBeNull();
+    expect(drawerTitle()).toBe(`Machine: other-namespace/${HEALTHY}-x`);
+    expect(screen.getByTestId("capi-tree-details-absent").textContent).toBe(
+      `Not read: the tree of the Cluster ${HEALTHY}/${HEALTHY} reads no Machines in the namespace other-namespace: Machine other-namespace/${HEALTHY}-x.`,
+    );
+  });
+
+  it("say that the class is no longer in the tree once the class reference of the Cluster names another namespace, never loading", async () => {
+    // healthy, its class in two namespaces of their own, and the class reference of its Cluster naming the first.
+    const objects = structuredClone(fixtureSet("healthy")) as unknown as Writable[];
+    const cluster = objects.find((object) => object.kind === "Cluster") as Writable;
+    const clusterClass = objects.find((object) => object.kind === "ClusterClass") as Writable;
+    const copyIn = (namespace: string) => {
+      const copy = structuredClone(clusterClass);
+
+      delete copy.metadata.uid;
+      copy.metadata.namespace = namespace;
+      return copy;
+    };
+
+    cluster.spec.topology.classRef.namespace = CLASSES;
+
+    const built = host.builtStores.length;
+
+    serveTree([
+      ...objects.filter((object) => object.kind !== "ClusterClass").map(hostObject),
+      hostObject(copyIn(CLASSES)),
+      hostObject(copyIn(OTHER)),
+    ]);
+    render(pageOf(paramsOf(ADDRESS, CLASS)));
+    await settle();
+
+    expect(drawerTitle()).toBe(`ClusterClass: ${CLASSES}/quick-start`);
+    expect(screen.getByTestId("capi-node-details")).toBeDefined();
+
+    // The class reference names another namespace, as a watch brings the Cluster.
+    const clusters = ownStore("Cluster", built);
+
+    act(() => {
+      runInAction(() => {
+        const moved = structuredClone(cluster);
+
+        moved.spec.topology.classRef.namespace = OTHER;
+        moved.metadata.resourceVersion = "2";
+        clusters.items.replace([
+          hostObject({ ...moved, metadata: { ...moved.metadata, uid: clusters.items[0].getId() } }),
+        ]);
+      });
+    });
+    await settle();
+
+    expect(rowIds()).toContain(`cluster.x-k8s.io/ClusterClass/${OTHER}/quick-start`);
+    expect(screen.queryByTestId("capi-tree-details-loading")).toBeNull();
+    expect(screen.getByTestId("capi-tree-details-absent").textContent).toBe(
+      `No such object is in the tree of the Cluster ${HEALTHY}/${HEALTHY} any longer: ClusterClass ${CLASSES}/quick-start was there, and is gone.`,
+    );
+  });
+
+  it("show the spinner while the kind of the node loads in the namespace where the tree reads it, then say that it is not in the tree", async () => {
+    // healthy, then a Machine of its Cluster that names an infrastructure machine of a kind that no other object names,
+    // ExampleMachine, as a watch brings it; the details name another object of that kind.
+    const kind = "ExampleMachine";
+    const examples = {
+      kind,
+      apiVersionWithGroup: "infrastructure.example.test/v1beta2",
+      apiBase: "/apis/infrastructure.example.test/v1beta2/examplemachines",
+      isNamespaced: true,
+    };
+    const built = host.builtStores.length;
+
+    serveTree(objectsOfStates(["healthy"]));
+    runInAction(() => {
+      host.crdStore.items = [
+        ...host.crdStore.items,
+        definition("examplemachines.infrastructure.example.test", "infrastructure.example.test", kind, {
+          "cluster.x-k8s.io/v1beta2": "v1beta2",
+        }),
+      ];
+    });
+    host.registerApi(examples);
+    host.cluster.set(examples.apiBase, { items: [], failures: [] });
+    render(pageOf(paramsOf(ADDRESS, `infrastructure.example.test/${kind}/other`)));
+    await settle();
+
+    // No object names the kind yet: the reads never tried it, and the object is not in the tree.
+    expect(screen.getByTestId("capi-tree-details-absent")).toBeDefined();
+
+    const release = host.deferLoads();
+    const machines = ownStore("Machine", built);
+
+    act(() => {
+      runInAction(() =>
+        machines.items.push(
+          changed("Machine", `${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`, (object) => {
+            object.metadata.name = `${HEALTHY}-added`;
+            object.spec.infrastructureRef = { apiGroup: "infrastructure.example.test", kind, name: "added" };
+          }),
+        ),
+      );
+    });
+    await settle();
+
+    expect(ownStore(kind, built)).toBeDefined();
+    expect(screen.getByTestId("capi-tree-details-loading")).toBeDefined();
+    expect(screen.queryByTestId("capi-tree-details-absent")).toBeNull();
+
+    release();
+    await settle();
+
+    expect(screen.queryByTestId("capi-tree-details-loading")).toBeNull();
+    expect(screen.getByTestId("capi-tree-details-absent").textContent).toBe(
+      `No such object is in the tree of the Cluster ${HEALTHY}/${HEALTHY}, which was read: ${kind} other.`,
+    );
+  });
+});
+
 describe("the search (P15)", () => {
   it("is the search of the host with autoFocus false, says how many nodes match, and an Escape in it clears its words", async () => {
     await opened();
