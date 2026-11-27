@@ -3443,8 +3443,9 @@ the contract label of the definition for a control plane of a provider; and
   page of the Clusters, and reads in the address of the frame the page of the
   tree and its parameters, the Cluster and the node of the KubeadmControlPlane,
   then the title of that page, the title of its drawer and the details of that
-  node; the history of the frame then brings back the page of the Clusters with
-  the details of the Cluster (H12), on which the step checks the badge of the
+  node; it then opens the page of the Clusters and the details of the Cluster
+  again, as at its start, never through the history of the frame (the note
+  below on the way back), and checks on them the badge of the
   namespace. The node that each other button opens stays with the unit tests of
   the details, and the way in from the panel in the details of the host with
   the session of the third part (Tests, "In Freelens", 3). Its step 5 expects
@@ -3469,6 +3470,18 @@ the contract label of the definition for a control plane of a provider; and
   opens in the details of the host (SPEC-0004, P18). A kind of a provider that
   the pluralizer writes otherwise, as one that ends in `y`, is found under the
   kind alone.
+- A fact of the host seen in a run in CI on Freelens 2.1.0, in the session of
+  the Clusters: after the navigation from a reference of the details of a
+  Cluster, on the page of the Clusters, to the page of the tree,
+  `history.back()` of the frame did not bring back the details of the Cluster
+  within the wait of the session; the run does not say whether the page of the
+  Clusters came back without them or did not come back. H12 covered the way
+  back to the page of the tree from another page. The session no longer relies
+  on the history for this way back: its step 4 opens the page of the Clusters
+  and the details of the Cluster again (the note above on that session). A
+  probe of the session of the screenshots, on a branch that is no part of this
+  spec, looks at this way back, through the history of the frame and through
+  the back arrow of the top bar of the host.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -1293,9 +1293,11 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       expect(await cluster.getByTestId(DETAILS).count()).toBe(0);
       expect(await hostDetails.count()).toBe(0);
 
-      // The history of the frame brings the page of the Clusters back, with the details of the Cluster open, as it
-      // brings back the parameters of a page of the extension (SPEC-0005, H12), for the rest of the step.
-      await cluster.evaluate(() => window.history.back());
+      // The page of the Clusters and the details of the Cluster open again, as at the start of the step, for the rest
+      // of it. The step does not go back through the history of the frame: after this navigation, `history.back()` did
+      // not bring the details of the Cluster back within the wait of the session in a run in CI on Freelens 2.1.0
+      // (SPEC-0005, "Notes and deviations").
+      await nameOf(await rowOf(await openPage(), rollingOut.name)).click();
       await detailsOf(rollingOut.name);
       await drawer.getByTestId("capi-details-namespace").waitFor(viewTimeout);
       expect(addressOf().details).toBe(rollingOut.address);

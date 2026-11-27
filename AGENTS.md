@@ -1239,7 +1239,7 @@ logged by either process:
   the workers, the class and the names of a message that name the
   MachineDeployment are each one button, never a link, of which the control
   plane opens the page of the tree of the Cluster at its node, as the address
-  says, and the history of the frame brings the details back, and the namespace
+  says, after which the session opens the details again, and the namespace
   is the badge of the host, which selects it alone in the filter (P18, P32;
   SPEC-0005, P3, P5); that the details of the states that have sections of their
   own show them, the row Tree among them; that a label which it sets with
