@@ -9,9 +9,11 @@ import {
   countsOf,
   countWords,
   firstExpansion,
+  NO_REVEALS,
   needsLook,
   nodeWords,
   revealed,
+  revealedInSearch,
   rowsOf,
   rowsStateOf,
   scrollOffset,
@@ -19,13 +21,14 @@ import {
   searchTree,
   toggled,
   toggledInSearch,
+  withReveals,
 } from "./tree-rows";
 
 import type { TreeSourceOptions } from "../../../test/tree-sources";
 import type { KubeObjectData } from "../status/index";
 import type { ClusterTree, NodeStatus, ObjectNode, ReferenceNode, TreeNode } from "./cluster-tree";
 import type { ReadFailure } from "./read-state";
-import type { RowsState, TreeRow } from "./tree-rows";
+import type { RowsState, TreeRow, TreeSearch } from "./tree-rows";
 
 // The cases of SPEC-0005, "Tests", "Unit", `tree-rows.test.ts` (P11, P13 to P16): the expansion at first of the states
 // of the fixtures, and of the changes that a case makes to them, each said in its case; the state of the rows after it;
@@ -716,6 +719,90 @@ describe("what the user expands or collapses during a search (P15)", () => {
 
     // The expansions of the user are not changed, and are the rows once the search is cleared.
     expect(outline(rowsOf(view.tree, state.expanded))).toEqual(user);
+  });
+});
+
+describe("a node that the address names during a search (P2, P5, P15)", () => {
+  // healthy, searched for "Workers", which matches the virtual node alone: the rows show the Cluster and Workers.
+  const view = stateView("healthy");
+  const found = searchTree(view.tree, "Workers", (node) => nodeWords(view.tree, node, view.statuses.get(node.id)));
+  const state = rowsStateOf(undefined, view.tree, view.statuses);
+  const devMachine = "infrastructure.cluster.x-k8s.io/DevMachine/freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg";
+  const path = [
+    "Cluster freelens-capi-healthy",
+    "  Workers",
+    "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+    "      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+    "        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+    "          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)",
+  ];
+  const rowsWith = (toggles: ReadonlySet<string>, reveals = NO_REVEALS) =>
+    outline(rowsOf(view.tree, state.expanded, withReveals(found as TreeSearch, reveals), toggles));
+
+  it("is shown with the nodes above it, those that the search hid expanded as the search expands the nodes above a match, and the matches stay the search's own", () => {
+    expect(rowsWith(new Set())).toEqual(["Cluster freelens-capi-healthy", "  Workers"]);
+
+    const next = revealedInSearch(view.tree, found as TreeSearch, new Set(), NO_REVEALS, devMachine);
+
+    expect(next.toggles).toEqual(new Set());
+    expect(rowsWith(next.toggles, next.reveals)).toEqual(path);
+    expect(withReveals(found as TreeSearch, next.reveals).matches).toBe(found?.matches);
+    expect(found?.matches).toEqual(new Set([idOf(view.tree, "Workers")]));
+
+    // A node under a node that the search expands and does not show, the ClusterClass under the Cluster: shown alone,
+    // after the nodes that the search shows.
+    const clusterClass = idOf(view.tree, "ClusterClass quick-start");
+    const other = revealedInSearch(view.tree, found as TreeSearch, new Set(), NO_REVEALS, clusterClass);
+
+    expect(rowsWith(other.toggles, other.reveals)).toEqual([
+      "Cluster freelens-capi-healthy",
+      "  Workers",
+      "  ClusterClass quick-start",
+    ]);
+
+    // Both, the second named after the first.
+    const both = revealedInSearch(view.tree, found as TreeSearch, next.toggles, next.reveals, clusterClass);
+
+    expect(rowsWith(both.toggles, both.reveals)).toEqual([...path, "  ClusterClass quick-start"]);
+  });
+
+  it("expands again a node above it that the user collapsed during the search, and leaves one that the user expanded as the user left it, with every node under it", () => {
+    const workers = idOf(view.tree, "Workers");
+    const collapsed = toggledInSearch(new Set(), view.tree.root.id);
+
+    expect(rowsWith(collapsed)).toEqual(["Cluster freelens-capi-healthy"]);
+
+    const again = revealedInSearch(view.tree, found as TreeSearch, collapsed, NO_REVEALS, devMachine);
+
+    expect(again.toggles).toEqual(new Set());
+    expect(rowsWith(again.toggles, again.reveals)).toEqual(path);
+
+    // Workers, expanded by the user, shows every node under it; the nodes below it that the rows hid are expanded as
+    // the search expands, with what they show.
+    const expanded = toggledInSearch(new Set(), workers);
+    const kept = revealedInSearch(view.tree, found as TreeSearch, expanded, NO_REVEALS, devMachine);
+
+    expect(kept.toggles).toEqual(new Set([workers]));
+    expect(kept.reveals.expanded.has(workers)).toBe(false);
+    expect(rowsWith(kept.toggles, kept.reveals)).toEqual(path);
+    expect(rowsOf(view.tree, state.expanded, withReveals(found as TreeSearch, kept.reveals), kept.toggles)[1]).toEqual(
+      expect.objectContaining({ expanded: true }),
+    );
+  });
+
+  it("changes nothing for a node that the tree does not hold, and the search with nothing added is the search", () => {
+    const toggles = new Set<string>();
+    const unchanged = revealedInSearch(
+      view.tree,
+      found as TreeSearch,
+      toggles,
+      NO_REVEALS,
+      "cluster.x-k8s.io/Machine/gone",
+    );
+
+    expect(unchanged.toggles).toBe(toggles);
+    expect(unchanged.reveals).toBe(NO_REVEALS);
+    expect(withReveals(found as TreeSearch, NO_REVEALS)).toBe(found);
   });
 });
 

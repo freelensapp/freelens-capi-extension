@@ -1475,6 +1475,42 @@ describe("the search (P15)", () => {
     expect(rowIds()).toEqual(before);
   });
 
+  it("shows a node that a link names during a search, the nodes above it that the search hid expanded, active and scrolled to, the matches the search's own", async () => {
+    const { params } = await opened();
+
+    fireEvent.change(search(), { target: { value: "Workers" } });
+    expect(rowIds()).toEqual([ROOT, WORKERS]);
+
+    // A link of the details names the DevMachine, as it sets the address.
+    act(() => params.details.set(DEV_MACHINE));
+    await settle();
+
+    expect(rowIds()).toEqual([ROOT, WORKERS, DEPLOYMENT, MACHINE_SET, MACHINE, DEV_MACHINE]);
+    expect(lastTable().selectedItemId).toBe(DEV_MACHINE);
+    expect(screen.getByTestId("capi-tree-matches").textContent).toBe("1 node matches");
+    expect(drawerTitle()).toBe(`DevMachine: ${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`);
+    nextFrame();
+    expect(lastTable().selectedItemId).toBeUndefined();
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(DEV_MACHINE));
+
+    // Cleared, the search gives back the rows of the user, which show the node as well, still active.
+    fireEvent.change(search(), { target: { value: "" } });
+    expect(rowIds()).toContain(DEV_MACHINE);
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(DEV_MACHINE));
+  });
+
+  it("starts other words with nothing added for a node that a link named during the search before them", async () => {
+    const { params } = await opened();
+
+    fireEvent.change(search(), { target: { value: "Workers" } });
+    act(() => params.details.set(DEV_MACHINE));
+    await settle();
+    expect(rowIds()).toContain(DEV_MACHINE);
+
+    fireEvent.change(search(), { target: { value: "Worker" } });
+    expect(rowIds()).toEqual([ROOT, WORKERS]);
+  });
+
   it("leaves the details open, those of the node and those of the host, on an Escape in it with words, which clears them", async () => {
     const { params } = await opened(DEV_CLUSTER);
 

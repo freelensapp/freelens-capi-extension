@@ -12,7 +12,8 @@
 //   collapses, and a node that the address names later is shown, the nodes above it expanded (P2, P13);
 // - the rows that the table shows, each node under the nodes expanded above it, in the order of the tree (P14, P16);
 // - the search: the words that a row shows, the nodes that match them and the nodes above them, expanded, while the
-//   expansions of the user stay as they were (P15);
+//   expansions of the user stay as they were, and a node that the address names during a search, shown with the nodes
+//   above it (P2, P15);
 // - the offset of the scroll that keeps the first row in view in place when the reads insert or remove rows above it
 //   (P13).
 //
@@ -420,6 +421,59 @@ export function searchTree(
     }
   }
   return { matches, shown: new Set([...matches, ...expanded]), expanded };
+}
+
+// What the page adds to a search for the nodes that the address names while the search holds its words, as a link of
+// the details names them (P2, P5, P15): the nodes that the search then shows, each such node and the nodes above it, and
+// the nodes that it then expands, those above it that the rows hid. Other words start a search with nothing added.
+export interface SearchReveals {
+  readonly shown: ReadonlySet<string>;
+  readonly expanded: ReadonlySet<string>;
+}
+
+export const NO_REVEALS: SearchReveals = { shown: new Set(), expanded: new Set() };
+
+// The search with what the page added to it: the nodes that it shows and those that it expands, the count of its
+// matches its own.
+export function withReveals(search: TreeSearch, reveals: SearchReveals): TreeSearch {
+  if (reveals.shown.size === 0) return search;
+  return {
+    matches: search.matches,
+    shown: new Set([...search.shown, ...reveals.shown]),
+    expanded: new Set([...search.expanded, ...reveals.expanded]),
+  };
+}
+
+// A node that the address names while the search holds words: it is shown, with the nodes above it, whose hidden ones
+// join the nodes that the search expands, as the nodes above a match do, and a node above it that the user collapsed
+// during this search is expanded again (`toggles`); the nodes above it that the rows show expanded stay as they are, so
+// that nothing that the user expanded closes (P2, P5, P15).
+export function revealedInSearch(
+  tree: ClusterTree,
+  search: TreeSearch,
+  toggles: ReadonlySet<string>,
+  reveals: SearchReveals,
+  id: string,
+): { readonly toggles: ReadonlySet<string>; readonly reveals: SearchReveals } {
+  if (!tree.nodes.has(id)) return { toggles, reveals };
+
+  const bySearch = withReveals(search, reveals).expanded;
+  // The nodes above it that the user collapsed during this search, whose toggles go.
+  const reopened = new Set<string>();
+  const shown = new Set([...reveals.shown, id]);
+  const expanded = new Set(reveals.expanded);
+
+  for (const above of ancestorsOf(tree, id)) {
+    shown.add(above);
+    // Expanded in the rows already, by the search or by the user.
+    if (bySearch.has(above) !== toggles.has(above)) continue;
+    if (toggles.has(above)) reopened.add(above);
+    else expanded.add(above);
+  }
+  return {
+    toggles: reopened.size === 0 ? toggles : new Set([...toggles].filter((each) => !reopened.has(each))),
+    reveals: { shown, expanded },
+  };
 }
 
 // The scroll (P13)

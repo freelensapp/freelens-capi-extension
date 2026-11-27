@@ -3411,6 +3411,18 @@ the contract label of the definition for a control plane of a provider; and
   of that tree. The owners in the details of every other node link to their
   nodes when the tree holds them, as P5 says, and an owner that is the Cluster
   to the root (the note above on P5 and P17).
+- Decided while implementing the second part, after its reviews, where P2 and
+  P15 are silent on a node that the address names while the search holds
+  words, as a link of the details names it: it is shown among the rows of the
+  search, active and scrolled to, with the nodes above it, those that the
+  search hid joining the nodes that it expands, as the nodes above a match do,
+  and one that the user collapsed during the search expanded again; the nodes
+  above it that the rows show expanded stay as they are, so nothing that the
+  user expanded closes, the count of the matches stays the search's own, and
+  other words start a search with nothing added (`revealedInSearch` and
+  `withReveals` of `tree-rows.ts`). Before, the node was shown in the
+  expansions of the user alone, which the search does not show: its details
+  opened with no row, and the first match of the search became the active node.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -587,7 +587,10 @@ tree of a Cluster does (SPEC-0005):
   expansions of the user back once it is cleared, and takes no focus when the
   page opens; what the user expands or collapses while it holds words acts on
   what it shows, at once, every node under a node expanded and none under one
-  collapsed, for those words alone; an Escape in it clears its words, or, when
+  collapsed, for those words alone; a node that the address names while it
+  holds words, as a link of the details names it, shows among its rows with
+  the nodes above it, those that it hid expanded as it expands the nodes above
+  a match, for those words alone; an Escape in it clears its words, or, when
   it holds none, closes the details, those of the host first while they are
   open over those of a node (SPEC-0005, P15, "Notes and deviations").
 - **The scroll.** The view scrolls the list on a key move, an address, the

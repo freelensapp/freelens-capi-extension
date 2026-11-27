@@ -42,7 +42,8 @@
 // expand take no stop of Tab and no focus on a press of the mouse, whose default is prevented: their click, and that of
 // a row, give the focus to the element of the tree, which keeps it through every scroll (P18; H7, H13). While the search
 // holds words, what the user expands or collapses acts on what the search shows, at once, and leaves the expansions of
-// the user as they were (P15).
+// the user as they were, and a node that the address names, as a link of the details names it, is shown among the rows
+// of the search, the nodes above it that the search hid joining those that it expands (P2, P5, P15).
 
 import { Renderer } from "@freelensapp/extensions";
 import { observer } from "mobx-react";
@@ -70,14 +71,17 @@ import {
 import {
   ancestorsOf,
   countsOf,
+  NO_REVEALS,
   ROW_HEIGHT,
   revealed,
+  revealedInSearch,
   rowsOf,
   rowsStateOf,
   scrollOffset,
   searchTree,
   toggled,
   toggledInSearch,
+  withReveals,
 } from "../../common/views/tree-rows";
 import { ErrorBoundary } from "../components/error-boundary";
 import { Instant, MarkLine, MarkNote, MarksCell, MarkView } from "../components/marks";
@@ -100,7 +104,7 @@ import type { NodeDetails } from "../../common/views/node-details";
 import type { Notice } from "../../common/views/read-state";
 import type { NodeAddress } from "../../common/views/tree-address";
 import type { ConditionView, StatusView, TooltipLine, TreeCells, WordsCell } from "../../common/views/tree-cells";
-import type { RowsChange, RowsState, TreeRow, TreeSearch } from "../../common/views/tree-rows";
+import type { RowsChange, RowsState, SearchReveals, TreeRow, TreeSearch } from "../../common/views/tree-rows";
 import type { MessageLinks, ViewHost } from "../details/cluster-details-v1beta2";
 import type { DrawerContent } from "../details/tree-details-drawer";
 
@@ -310,6 +314,9 @@ class TreePage {
   // What the user expanded or collapsed while the search holds its words, against what the search expands; a change of
   // the words starts with none (P15).
   searchToggles: ReadonlySet<string> = new Set();
+  // What the page added to the search for the nodes that the address named while it held its words, each shown with
+  // the nodes above it; a change of the words starts with none (P2, P15).
+  searchReveals: SearchReveals = NO_REVEALS;
   // The nodes above the active node in the tree of the last render, nearest first, for when the reads remove it (P18).
   activeAbove: readonly string[] = [];
   // The nodes of the tree seen in this mount, for the details of one that is gone.
@@ -365,15 +372,24 @@ class TreePage {
   // The state of the rows for this render: the expansion at first, once, with the node that the address names shown and
   // scrolled to in the first render of the tree; and a node that the address names later, as one that appears later or
   // that a link names, shown and scrolled to as it is first found, unless the page set the address itself from its
-  // row (P2, P13, P16).
-  rowsFor(tree: ClusterTree, statuses: ReadonlyMap<string, NodeStatus>, address: string | undefined): RowsState {
+  // row (P2, P13, P16). While the search holds words, the node is shown among the rows of the search as well, the nodes
+  // above it that the search hid joining those that it expands (P15).
+  rowsFor(
+    tree: ClusterTree,
+    statuses: ReadonlyMap<string, NodeStatus>,
+    address: string | undefined,
+    search: TreeSearch | undefined,
+  ): RowsState {
     const cluster = `${tree.root.namespace}/${tree.root.name}`;
     const named = address !== undefined && tree.nodes.has(address) ? address : undefined;
 
     if (named !== undefined) this.seen.add(named);
     if (this.rows === undefined || this.rows.cluster !== cluster) {
       this.rows = rowsStateOf(undefined, tree, statuses, named);
-      if (named !== undefined) this.#showNode(named);
+      if (named !== undefined) {
+        this.#revealInSearch(tree, search, named);
+        this.#showNode(named);
+      }
       this.revealedAddress = named;
       return this.rows;
     }
@@ -381,11 +397,29 @@ class TreePage {
       this.revealedAddress = named;
       if (named !== this.openedByRow) {
         this.rows = revealed(this.rows, tree, named);
+        this.#revealInSearch(tree, search, named);
         this.#showNode(named);
       }
     }
     if (address === undefined) this.revealedAddress = undefined;
     return this.rows;
+  }
+
+  #revealInSearch(tree: ClusterTree, search: TreeSearch | undefined, id: string): void {
+    if (search === undefined) return;
+
+    const next = revealedInSearch(tree, search, this.searchToggles, this.searchReveals, id);
+
+    this.searchToggles = next.toggles;
+    this.searchReveals = next.reveals;
+  }
+
+  // The words of the search change: what the user expanded or collapsed and what the page added for an address start
+  // again, with none (P15).
+  searchChanged(): void {
+    this.change = "search";
+    this.searchToggles = new Set();
+    this.searchReveals = NO_REVEALS;
   }
 
   #showNode(id: string): void {
@@ -560,8 +594,7 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
             value={search}
             autoFocus={false}
             onChange={(value) => {
-              page.change = "search";
-              page.searchToggles = new Set();
+              page.searchChanged();
               setSearch(value);
             }}
             onKeyDown={onSearchKey}
@@ -643,15 +676,20 @@ const TreeContent = observer((props: TreeContentProps) => {
     found !== undefined && index !== undefined ? evaluateTree(found, index, now, memo) : new Map();
   const counts = found === undefined ? new Map() : countsOf(found, statuses);
   const poolsWithoutMachines = found === undefined ? 0 : poolsWithoutMachinesOf(statuses.get(found.root.id)?.context);
-  const rowsState = found === undefined ? undefined : page.rowsFor(found, statuses, addressId);
   const matched: TreeSearch | undefined =
     found === undefined
       ? undefined
       : searchTree(found, search, (node) => searchWordsOf(found, node, statuses.get(node.id)));
+  const rowsState = found === undefined ? undefined : page.rowsFor(found, statuses, addressId, matched);
   const rows =
     found === undefined || rowsState === undefined
       ? []
-      : rowsOf(found, rowsState.expanded, matched, page.searchToggles);
+      : rowsOf(
+          found,
+          rowsState.expanded,
+          matched === undefined ? undefined : withReveals(matched, page.searchReveals),
+          page.searchToggles,
+        );
   const active =
     found === undefined ? undefined : activeOf(found, rows, page.active ?? found.root.id, matched, page.activeAbove);
   const notices = shown ? treeNotices(read.reads, read.kinds()) : [];
