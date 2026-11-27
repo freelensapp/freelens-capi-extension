@@ -66,6 +66,7 @@ import {
   windowRows,
 } from "../../common/views/tree-keys";
 import {
+  ancestorsOf,
   countsOf,
   ROW_HEIGHT,
   revealed,
@@ -307,6 +308,8 @@ class TreePage {
   // What the user expanded or collapsed while the search holds its words, against what the search expands; a change of
   // the words starts with none (P15).
   searchToggles: ReadonlySet<string> = new Set();
+  // The nodes above the active node in the tree of the last render, nearest first, for when the reads remove it (P18).
+  activeAbove: readonly string[] = [];
   // The nodes of the tree seen in this mount, for the details of one that is gone.
   readonly seen = new Set<string>();
   // The rows drawn, from a reference to an element of each row, which the virtual list mounts and unmounts with it.
@@ -646,7 +649,8 @@ const TreeContent = observer((props: TreeContentProps) => {
     found === undefined || rowsState === undefined
       ? []
       : rowsOf(found, rowsState.expanded, matched, page.searchToggles);
-  const active = found === undefined ? undefined : activeOf(found, rows, page.active ?? found.root.id, matched);
+  const active =
+    found === undefined ? undefined : activeOf(found, rows, page.active ?? found.root.id, matched, page.activeAbove);
   const notices = shown ? treeNotices(read.reads, read.kinds()) : [];
   const next = [...statuses.values()]
     .map((status) => status.status.changesAt)
@@ -658,6 +662,7 @@ const TreeContent = observer((props: TreeContentProps) => {
   const matches = matched?.matches.size;
 
   page.active = active;
+  page.activeAbove = found === undefined || active === undefined ? [] : ancestorsOf(found, active);
 
   // The node of the address, the details of the host and the focus.
   const focusTree = () => page.focusTree();

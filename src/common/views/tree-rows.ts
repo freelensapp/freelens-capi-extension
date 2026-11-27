@@ -190,7 +190,7 @@ export function needsLook(node: TreeNode, status: NodeStatus | undefined): boole
 }
 
 // The nodes above a node, from its parent up to the Cluster.
-function ancestorsOf(tree: ClusterTree, id: string): string[] {
+export function ancestorsOf(tree: ClusterTree, id: string): string[] {
   const ancestors: string[] = [];
 
   for (let parent = tree.parents.get(id); parent !== undefined; parent = tree.parents.get(parent)) {

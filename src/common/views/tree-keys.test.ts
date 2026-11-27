@@ -19,7 +19,7 @@ import {
   TREE_KEYS,
   windowRows,
 } from "./tree-keys";
-import { firstExpansion, rowsOf, searchTree } from "./tree-rows";
+import { ancestorsOf, firstExpansion, rowsOf, searchTree } from "./tree-rows";
 
 import type { KubeObjectData } from "../status/index";
 import type { ClusterTree, NodeStatus } from "./cluster-tree";
@@ -46,6 +46,7 @@ function stateView(state: string): View {
   return { tree: outcome.tree, statuses: evaluateTree(outcome.tree, index, CAPTURE, new StatusMemo()) };
 }
 
+const HEALTHY = "freelens-capi-healthy";
 const healthy = stateView("healthy");
 // Every node of healthy expanded: 28 rows.
 const all = rowsOf(healthy.tree, new Set(healthy.tree.nodes.keys()));
@@ -213,6 +214,37 @@ describe("the active node (P18)", () => {
     expect(textOf(activeOf(healthy.tree, rows, idOf(all, MACHINE), undefined) ?? "")).toBe("Workers");
     expect(activeOf(healthy.tree, rows, "cluster.x-k8s.io/Machine/gone", undefined)).toBe(healthy.tree.root.id);
     expect(activeOf(healthy.tree, [], undefined, undefined)).toBeUndefined();
+  });
+
+  it("is the nearest node above it that the rows show once the reads remove it, in the tree in which it was last shown", () => {
+    // healthy, then its other worker Machine gone, with its DevMachine and its KubeadmConfig, as the watches bring
+    // their deletion.
+    const name = "freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9";
+    const gone = `cluster.x-k8s.io/Machine/${name}`;
+    const objects = (fixtureSet("healthy") as unknown as KubeObjectData[]).filter(
+      (object) => object.metadata.name !== name,
+    );
+    const source = treeSourceOf(objects, { cluster: { namespace: HEALTHY, name: HEALTHY } });
+    const outcome = buildTree(indexTree(source.clusters, source.objects), HEALTHY, HEALTHY);
+
+    if (outcome.state !== "found") throw new Error("No tree");
+
+    const after = outcome.tree;
+    const rows = rowsOf(after, new Set(after.nodes.keys()));
+
+    expect(after.nodes.has(gone)).toBe(false);
+    expect(textOf(activeOf(after, rows, gone, undefined, ancestorsOf(healthy.tree, gone)) ?? "")).toBe(
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+    );
+    // With the MachineDeployment collapsed, the node above it that the rows show.
+    const collapsed = rowsOf(
+      after,
+      new Set([...after.nodes.keys()].filter((id) => !id.includes("MachineDeployment/"))),
+    );
+
+    expect(textOf(activeOf(after, collapsed, gone, undefined, ancestorsOf(healthy.tree, gone)) ?? "")).toBe(
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+    );
   });
 });
 

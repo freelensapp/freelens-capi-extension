@@ -13,10 +13,11 @@
 //   details are open; each of its cells the role `gridcell`; the header row the role `row`, and its cells
 //   `columnheader`;
 // - the active node is kept by its identity; when the rows no longer show it, a search gives it to the first node that
-//   matches, and a collapse or a change of the reads to the nearest node above it that is shown;
+//   matches, and a collapse or a change of the reads to the nearest node above it that is shown, above it in the tree in
+//   which it was last shown for a node that the reads removed;
 // - a move brings its row fully into view, by the scroll of the list, when the list leaves it partly in view.
 
-import { ROW_HEIGHT } from "./tree-rows";
+import { ancestorsOf, ROW_HEIGHT } from "./tree-rows";
 
 import type { ClusterTree } from "./cluster-tree";
 import type { TreeRow, TreeSearch } from "./tree-rows";
@@ -151,25 +152,25 @@ export function keyAction(
 }
 
 // The active node among the rows shown: the one that was, by its identity, while the rows show it; once they do not,
-// the first node that a search matches, with no scroll (P18), and otherwise, after a collapse or a change of the reads,
-// the nearest node above it that the rows show, else the Cluster.
+// the first node that a search matches, with no scroll (P18), and otherwise the nearest node above it that the rows
+// show, else the Cluster: above it in this tree after a collapse, and, once a change of the reads removed it from the
+// tree, above it in the tree in which the page last showed it, whose nodes above it, nearest first, the page keeps
+// (`above`), so that the next key move starts where it was.
 export function activeOf(
   tree: ClusterTree,
   rows: readonly TreeRow[],
   active: string | undefined,
   search: TreeSearch | undefined,
+  above: readonly string[] = [],
 ): string | undefined {
   if (rows.length === 0) return undefined;
   if (active !== undefined && rows.some((row) => row.node.id === active)) return active;
   if (search !== undefined) return (rows.find((row) => search.matches.has(row.node.id)) ?? rows[0]).node.id;
 
   const shown = new Set(rows.map((row) => row.node.id));
+  const nearest = active !== undefined && tree.nodes.has(active) ? ancestorsOf(tree, active) : above;
 
-  for (let parent = active === undefined ? undefined : tree.parents.get(active); parent !== undefined; ) {
-    if (shown.has(parent)) return parent;
-    parent = tree.parents.get(parent);
-  }
-  return rows[0].node.id;
+  return nearest.find((id) => shown.has(id)) ?? rows[0].node.id;
 }
 
 // The row that `aria-activedescendant` names: that of the active node once it is drawn, and none while it is not, since

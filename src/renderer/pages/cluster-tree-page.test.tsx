@@ -1040,6 +1040,30 @@ describe("the keys and the focus of the tree (P18)", () => {
     expect(owned()).toEqual(rowIds().map(rowDomId));
   });
 
+  it("makes the nearest node above the active node active once the reads remove it, never the Cluster, and the next key moves from there", async () => {
+    const { built } = await opened(OTHER_MACHINE);
+
+    nextFrame();
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(OTHER_MACHINE));
+
+    // The Machine goes, with its infrastructure machine and its bootstrap config, as the watches bring their deletion.
+    act(() => {
+      runInAction(() => {
+        for (const kind of ["Machine", "DevMachine", "KubeadmConfig"]) {
+          const store = ownStore(kind, built);
+
+          store.items.replace(store.items.filter((object) => object.getName() !== `${HEALTHY}-md-0-m9x7h-m5gtb-5pzv9`));
+        }
+      });
+    });
+
+    expect(rowIds()).not.toContain(OTHER_MACHINE);
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(MACHINE_SET));
+    fireEvent.keyDown(tree(), { key: "ArrowDown" });
+    nextFrame();
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(MACHINE));
+  });
+
   it("names no row in aria-activedescendant while the row of the active node is not drawn", async () => {
     await opened();
 

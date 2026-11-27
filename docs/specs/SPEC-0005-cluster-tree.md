@@ -3359,6 +3359,12 @@ the contract label of the definition for a control plane of a provider; and
   and the header a row of columnheaders (Tests, "In Freelens", step 5), is
   left to the session of the third part, which also says whether the element
   with the role `list`, left with no row, stays in that tree.
+- Decided while implementing the second part, after its reviews, so that the
+  code follows the note above on P18: once a change of the reads removes the
+  active node from the tree, the nearest node above it that the rows show
+  becomes active, above it in the tree in which the page last showed it, whose
+  nodes above the active node the page keeps from one render to the next, and
+  the next key move starts there; the code gave the root.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
