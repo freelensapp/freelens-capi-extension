@@ -207,6 +207,18 @@ describe("the marks and the words of the details", () => {
     });
     expect(subjectTarget(details, "KubeadmControlPlane", "another")).toEqual({ form: "text" });
   });
+
+  it("leave as text a KubeadmControlPlane that the Cluster names and that the view did not read (SPEC-0005, P5)", () => {
+    // healthy, the control plane reference of its Cluster naming a KubeadmControlPlane that its namespace does not
+    // hold, as the case writes it.
+    const gone = "freelens-capi-healthy-gone";
+    const details = detailsOf(["healthy"], (cluster) => {
+      cluster.spec.controlPlaneRef.name = gone;
+    });
+
+    expect(details.controlPlane?.reference?.name).toBe(gone);
+    expect(subjectTarget(details, "KubeadmControlPlane", gone)).toEqual({ form: "text" });
+  });
 });
 
 describe("the sections of the details", () => {
