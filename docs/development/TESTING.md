@@ -306,7 +306,8 @@ applies a state, with `applyObjects` of `e2e/scripts/commands.mts`, and removes
 them as `pnpm e2e:fixtures:down` removes one, with `removeObjects`, both through
 the session that `openDefinitions` gives, with the target checked before every
 request, and both refusing, before any request, a namespace that is not one of
-the scripts or that is the namespace of a state. The step that applies it has
+the scripts, that is the namespace of a state, or that is the namespace of the
+second identity of the restricted session. The step that applies it has
 180 s and the hook that deletes it 240 s, three times what a local kind cluster
 took; the session logs both times, and the time of its step. It deletes the
 namespace at its end, also when a step failed, as it deletes first one that a

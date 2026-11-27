@@ -1377,7 +1377,10 @@ function removeFixtures(state: FixtureState): void {
 // through the status subresource; then the deletion of each deleting object, which the finalizers hold.
 function applyObjectsTo(run: TierKubectl, namespace: string, objects: readonly KubeObject[], what: string): string {
   for (const object of objects) {
-    ensure(object.metadata.namespace === namespace, `${objectKey(object)} is not in the namespace of ${what}`);
+    ensure(
+      object.metadata.namespace === namespace,
+      `${objectKey(object)} is not in ${namespace}, the namespace of ${what}`,
+    );
   }
   removeNamespaceObjects(run, namespace);
 
@@ -1443,11 +1446,19 @@ function applyFixtures(state: FixtureState): string {
   return applyObjectsTo(definitions, state.namespace, readFixtureSet(folderOf(state)), state.name);
 }
 
+// The namespace of the second identity of the restricted session in Freelens, which holds its ServiceAccount
+// (`integration/__tests__/restricted-access.ts`; SPEC-0004, P23).
+export const IDENTITY_NAMESPACE = "freelens-capi-restricted";
+
 // A namespace that a session of a test may fill with objects of its own on the cluster of the definitions: one of the
-// scripts, `freelens-capi-` and a name, and none of the states of the fixtures, whose objects it would replace.
+// scripts, `freelens-capi-` and a name; none of the states of the fixtures, whose objects it would replace; and not that
+// of the second identity of the restricted session, whose ServiceAccount it would delete.
 export function ownNamespaceProblem(namespace: string): string | undefined {
   if (!/^freelens-capi-[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(namespace) || namespace.length > 63) {
     return `${namespace} is not a namespace of the scripts, freelens-capi- and a name`;
+  }
+  if (namespace === IDENTITY_NAMESPACE) {
+    return `${namespace} is the namespace of the second identity of the restricted session`;
   }
   const state = FIXTURE_STATES.find((each) => each.namespace === namespace);
 
@@ -1457,16 +1468,16 @@ export function ownNamespaceProblem(namespace: string): string | undefined {
 // Applies the objects that a session of a test makes, such as the large Cluster of the session of the tree
 // (SPEC-0005, P22), to a namespace of their own on the cluster of the definitions, as `pnpm e2e:fixtures:up` applies a
 // state, with the target checked before every request, and returns the moment of the run, to which their times move.
-// It refuses a namespace of a state of the fixtures, and an object in another namespace.
+// It refuses, before any request, a namespace that `ownNamespaceProblem` refuses, and an object in another namespace.
 export function applyObjects(session: DefinitionsSession, namespace: string, objects: readonly KubeObject[]): string {
   const problem = ownNamespaceProblem(namespace);
 
   ensure(problem === undefined, `${problem}: the objects of a session go to a namespace of their own`);
-  return applyObjectsTo(session.kubectl, namespace, objects, `the namespace ${namespace}`);
+  return applyObjectsTo(session.kubectl, namespace, objects, "a session");
 }
 
 // Removes what `applyObjects` applied: every finalizer of the objects of the namespace, then the namespace, waiting until
-// it is gone. It refuses a namespace of a state of the fixtures.
+// it is gone. It refuses, before any request, a namespace that `ownNamespaceProblem` refuses.
 export function removeObjects(session: DefinitionsSession, namespace: string): void {
   const problem = ownNamespaceProblem(namespace);
 

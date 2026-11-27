@@ -15,13 +15,15 @@
 // over the whole cluster, as the frame of a cluster lists them, and what the start page of the host reads in
 // `default`, so that no other read of the session is refused. Every role grants `get`, `list` and `watch` alone.
 
+import { IDENTITY_NAMESPACE } from "../../e2e/scripts/commands.mts";
 import { printedObjects } from "../../e2e/scripts/fixtures.mts";
 import { statesOf } from "../../e2e/scripts/states.mts";
 
 // The objects of the identity on the cluster of the definitions, the name of its kubeconfig file, and the label of
 // every object that the session makes, by which it finds them again, also those that a run that was killed left.
 export const IDENTITY = {
-  namespace: "freelens-capi-restricted",
+  // The scripts refuse to fill or to remove it as the namespace of the objects of a session (`ownNamespaceProblem`).
+  namespace: IDENTITY_NAMESPACE,
   serviceAccount: "freelens-capi-restricted",
   // The name of the cluster, of the user and of the context of its kubeconfig: the name of the cluster in the catalog
   // of Freelens.

@@ -35,6 +35,7 @@ import {
   applyObjects,
   COMMAND_NAMES,
   DOWN_WORKLOADS,
+  IDENTITY_NAMESPACE,
   onceItSucceeds,
   ownNamespaceProblem,
   parseCommand,
@@ -49,6 +50,7 @@ import {
   cleanObject,
   creationLevels,
   FIXTURE_FINALIZER,
+  FIXTURE_RESOURCES,
   FIXTURES_FOLDER,
   fixtureFiles,
   HOST_BOOT_ID,
@@ -2283,13 +2285,16 @@ describe("the states of the fixtures", () => {
 });
 
 describe("the objects that a session applies to a namespace of its own", () => {
-  it("go to a namespace of the scripts that is no namespace of a state of the fixtures, whose objects they would replace", () => {
+  it("go to a namespace of the scripts that is no namespace of a state of the fixtures, whose objects they would replace, nor that of the restricted identity", () => {
     expect(ownNamespaceProblem("freelens-capi-tree-large")).toBeUndefined();
     for (const state of FIXTURE_STATES) {
       expect(ownNamespaceProblem(state.namespace)).toBe(
         `${state.namespace} is the namespace of the fixtures of ${state.name}`,
       );
     }
+    expect(ownNamespaceProblem(IDENTITY_NAMESPACE)).toBe(
+      "freelens-capi-restricted is the namespace of the second identity of the restricted session",
+    );
     for (const namespace of ["default", "kube-system", "freelens-capi-", "freelens-capi-Large", "freelens-capi-x-"]) {
       expect(ownNamespaceProblem(namespace), namespace).toBe(
         `${namespace} is not a namespace of the scripts, freelens-capi- and a name`,
@@ -2318,10 +2323,54 @@ describe("the objects that a session applies to a namespace of its own", () => {
       "freelens-capi-healthy is the namespace of the fixtures of healthy: the objects of a session go to a namespace of their own",
     );
     expect(() => removeObjects(session, "default")).toThrow(/^default is not a namespace of the scripts/);
+    expect(() => removeObjects(session, IDENTITY_NAMESPACE)).toThrow(
+      "freelens-capi-restricted is the namespace of the second identity of the restricted session: the objects of a session go to a namespace of their own",
+    );
     expect(() => applyObjects(session, "freelens-capi-tree-large", [elsewhere])).toThrow(
-      /is not in the namespace of the namespace freelens-capi-tree-large/,
+      "/ConfigMap/freelens-capi-other/x is not in freelens-capi-tree-large, the namespace of a session",
     );
     expect(requests).toEqual([]);
+  });
+
+  it("are applied once what the namespace held is removed, the finalizers of its objects first, then the namespace, which the apply creates again", () => {
+    const namespace = "freelens-capi-tree-large";
+    const resources = FIXTURE_RESOURCES.join(",");
+    const held = {
+      apiVersion: "cluster.x-k8s.io/v1beta2",
+      kind: "Machine",
+      metadata: { name: "m", namespace, finalizers: ["machine.cluster.x-k8s.io"] },
+    };
+    const requests: string[][] = [];
+    // A session whose kubectl records what it is asked, and answers as a namespace that holds one object with a
+    // finalizer until the apply creates it again, empty.
+    const session = {
+      kubectl: (args: string[]) => {
+        requests.push(args);
+        if (args[0] === "get" && args[1] === "namespace") return `namespace/${namespace}\n`;
+        if (args[0] === "get" && args[1] === resources) {
+          const created = requests.some((request) => request[0] === "create" && request[1] === "namespace");
+
+          return JSON.stringify({ items: created ? [] : [held] });
+        }
+        return "";
+      },
+    } as unknown as DefinitionsSession;
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      applyObjects(session, namespace, []);
+    } finally {
+      log.mockRestore();
+    }
+    expect(requests.map((args) => args.slice(0, 3).join(" "))).toEqual([
+      `get namespace ${namespace}`,
+      `get ${resources} --namespace`,
+      "patch machine.v1beta2.cluster.x-k8s.io m",
+      `delete namespace ${namespace}`,
+      `create namespace ${namespace}`,
+      `get ${resources} --namespace`,
+    ]);
   });
 });
 

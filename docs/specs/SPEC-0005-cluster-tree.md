@@ -3755,7 +3755,11 @@ the contract label of the definition for a control plane of a provider; and
   of the workers its counts and its 300 targets. The scripts export
   `applyObjects` and `removeObjects` beside `openDefinitions`, which refuse,
   before any request, a namespace that is not one of the scripts,
-  `freelens-capi-` and a name, or that is the namespace of a state.
+  `freelens-capi-` and a name, or that is the namespace of a state; and, after
+  the reviews of the third part, the namespace of the second identity of the
+  restricted session, whose ServiceAccount `removeObjects` would delete
+  (`ownNamespaceProblem`). An object in another namespace than the one given is
+  refused as not in that namespace, the namespace of a session.
 - Decided while implementing the third part, for the capture of P21: the claim
   of `no-status` names its Cluster in its file as the dry run of the real
   project answers it: the webhook of the claims of the release admits any claim
