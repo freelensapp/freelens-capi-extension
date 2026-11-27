@@ -1400,9 +1400,10 @@ loses the report of the sessions after it, which a run of one file gives
 again. A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
-loads a second time when it did not render and the dev file route of Freelens
-failed a request meanwhile (see below); that failure is of Freelens dev, not of
-a test.
+and `reloadClusterFrame` load a second time when it did not render and the dev
+file route of Freelens failed a request meanwhile, or Chromium refused requests
+of its modules for lack of resources (see below); that failure is of Freelens
+dev, not of a test.
 
 The sessions reach the app through its renderer only; the main process, and
 with it the application menu, is out of reach of CDP. They navigate the root
@@ -1450,6 +1451,17 @@ module belongs to the cluster frame, such as one of Freelens's own
 stylesheets, the frame does not render its sidebar, and `openKindCluster`,
 after its timeout, loads the frame again once, only if the main log has a
 failed request since the cluster was opened.
+
+Chromium refuses a request with `net::ERR_INSUFFICIENT_RESOURCES` when the
+renderer that sends it holds as many requests at once as Chromium lets one
+process hold, and a load of the cluster frame, which asks the dev server for
+each module of the renderer, thousands of them, can meet that limit: Chromium
+logs `Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES` for each module
+that it refused, under `/@fs/`, `/@id/`, `/@vite/` or `/node_modules/`, and
+the frame does not start. `openKindCluster` and `reloadClusterFrame` then load
+the frame again once, at once, and leave those refusals out of the errors once
+it rendered (`isRefusedModuleLoad` of `expected-refusals.ts`); a refusal of any
+other request, and one of a frame that rendered without a second load, counts.
 
 The list of the host for a custom resource keys its columns by the names of
 the printer columns of the CRD, and at `v1beta2` the CRDs of MachineDeployment

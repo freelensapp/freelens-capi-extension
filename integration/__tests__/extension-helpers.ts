@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { chromium } from "playwright";
-import { API_KUBE_PREFIX, isExpectedRefusal, isExpectedThrottling } from "./expected-refusals";
+import { API_KUBE_PREFIX, isExpectedRefusal, isExpectedThrottling, isRefusedModuleLoad } from "./expected-refusals";
 
 import type { Browser, ConsoleMessage, Frame, Locator, Page, Request } from "playwright";
 
@@ -110,6 +110,16 @@ export interface AppSession {
   errors(): Promise<string[]>;
   /** The paths of the requests that the dev file route failed so far, in order, one entry per failure. */
   devFileRouteFailures(): string[];
+  /**
+   * How many requests of a module of the dev server Chromium refused so far for lack of resources (`isRefusedModuleLoad`),
+   * which the errors hold until they are left out.
+   */
+  refusedModuleLoads(): number;
+  /**
+   * Leaves out of the errors the requests of modules that Chromium refused, the first ones up to a count: those of a load
+   * of the frame of a cluster that did not start, which a helper made again, and which then rendered.
+   */
+  leaveOutRefusedModuleLoads(count: number): void;
   /**
    * Leaves out of the errors the refusals that a step of a session expects, from now until the returned function is
    * called (`expected-refusals.ts`); each refusal left out is kept, which `refusalsLeftOut` gives.
@@ -231,6 +241,10 @@ function collectErrors(window: Page) {
   const badGatewayErrors: { path: string; text: string }[] = [];
   // The paths of the requests that the dev file route failed.
   const devFileRouteFailures: string[] = [];
+  // The requests of modules of the dev server that Chromium refused for lack of resources, kept apart, and how many of
+  // the first ones are left out, those of a load of a frame that a helper made again and that then rendered.
+  const refusedModuleLoads: string[] = [];
+  let refusedModuleLoadsLeftOut = 0;
   // The refusals and the throttling that a step of the session expects, while it runs, and those left out.
   const expectedRefusals = new Set<readonly ExpectedRefusal[]>();
   const expectedThrottling = new Set<readonly ExpectedThrottling[]>();
@@ -284,6 +298,12 @@ function collectErrors(window: Page) {
 
       if (url && badGatewayPattern.test(text)) {
         badGatewayErrors.push({ path: urlPath(url), text: `[renderer] ${text}${location}` });
+
+        return;
+      }
+
+      if (url && isRefusedModuleLoad(text, url)) {
+        refusedModuleLoads.push(`[renderer] ${text}${location}`);
 
         return;
       }
@@ -434,8 +454,13 @@ function collectErrors(window: Page) {
       return [
         ...errorLogs.filter((text) => text !== undefined),
         ...unexplainedBadGateways,
+        ...refusedModuleLoads.slice(refusedModuleLoadsLeftOut),
         ...(failedPaths.size ? [] : workerLoadErrors),
       ];
+    },
+    refusedModuleLoads: () => refusedModuleLoads.length,
+    leaveOutRefusedModuleLoads: (count: number) => {
+      refusedModuleLoadsLeftOut = Math.max(refusedModuleLoadsLeftOut, Math.min(count, refusedModuleLoads.length));
     },
     devFileRouteFailures: () => {
       readMainLog();
@@ -512,6 +537,8 @@ export async function connectApp(): Promise<AppSession> {
         return collector.errors();
       },
       devFileRouteFailures: collector.devFileRouteFailures,
+      refusedModuleLoads: collector.refusedModuleLoads,
+      leaveOutRefusedModuleLoads: collector.leaveOutRefusedModuleLoads,
       expectRefusals: collector.expectRefusals,
       expectThrottling: collector.expectThrottling,
       refusalsLeftOut: collector.refusalsLeftOut,
@@ -763,11 +790,12 @@ export async function openKindCluster(session: AppSession): Promise<Frame> {
  * its frame shows its sidebar. The catalog lists the cluster once the
  * kubeconfig sync of the profile has read the file that holds it. A frame that
  * did not render, after the dev file route of Freelens dev failed a request,
- * is loaded again once.
+ * or because Chromium refused requests of its modules for lack of resources,
+ * is loaded again once (`untilFrameRenders`).
  */
 export async function openCluster(session: AppSession, name: string): Promise<Frame> {
   const { window } = session;
-  const failuresBefore = session.devFileRouteFailures().length;
+  const before = { failures: session.devFileRouteFailures().length, refused: session.refusedModuleLoads() };
   const found = await window.waitForFunction(
     (name) =>
       globalThis.FreelensExtensionApi.Renderer?.Catalog.catalogEntities
@@ -788,19 +816,75 @@ export async function openCluster(session: AppSession, name: string): Promise<Fr
     throw new Error(`The cluster ${name} has no frame`);
   }
 
-  try {
-    await frame.waitForSelector("[data-testid=cluster-sidebar]", clusterTimeout);
-  } catch (error) {
-    if (session.devFileRouteFailures().length === failuresBefore) {
-      throw error;
-    }
-
-    console.log(`the frame of ${name} did not render after a failed request of the dev file route: loading it again`);
+  await untilFrameRenders(session, frame, "[data-testid=cluster-sidebar]", before, async () => {
     await frame.evaluate(() => globalThis.location.reload());
-    await frame.waitForSelector("[data-testid=cluster-sidebar]", clusterTimeout);
-  }
+  });
 
   return frame;
+}
+
+const pause = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/**
+ * Waits until the frame of a cluster that loads shows the element of a
+ * selector, its sidebar, and loads it again once when it does not: at once
+ * when Chromium refused requests of its modules for lack of resources since
+ * the load started, which a frame of Freelens dev, with a request for each of
+ * its modules, can meet, and after which the frame does not start; and when
+ * the dev file route of Freelens dev failed a request meanwhile, once the time
+ * ran out. The refusals of the first load are left out of the errors once the
+ * second load rendered; a second load that does not render fails.
+ */
+async function untilFrameRenders(
+  session: AppSession,
+  frame: Frame,
+  selector: string,
+  before: { failures: number; refused: number },
+  loadAgain: () => Promise<void>,
+) {
+  const deadline = Date.now() + clusterTimeout.timeout;
+
+  for (;;) {
+    if (
+      await frame
+        .locator(selector)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return;
+    }
+
+    if (session.refusedModuleLoads() > before.refused) {
+      // The other refusals of the same load arrive with the first.
+      await pause(2000);
+
+      const refused = session.refusedModuleLoads();
+
+      console.log(
+        `the frame did not start: Chromium refused ${refused - before.refused} requests of its modules for lack of resources: loading it again`,
+      );
+      await loadAgain();
+      await frame.waitForSelector(selector, clusterTimeout);
+      session.leaveOutRefusedModuleLoads(refused);
+
+      return;
+    }
+
+    if (Date.now() > deadline) {
+      if (session.devFileRouteFailures().length === before.failures) {
+        throw new Error(`Waited ${clusterTimeout.timeout / 1000} s for ${selector} in the frame of the cluster`);
+      }
+
+      console.log("the frame did not render after a failed request of the dev file route: loading it again");
+      await loadAgain();
+      await frame.waitForSelector(selector, clusterTimeout);
+
+      return;
+    }
+
+    await pause(250);
+  }
 }
 
 /**
@@ -846,31 +930,29 @@ export async function catalogLists({ window }: AppSession, name: string): Promis
  * and the APIs of the host with them, while the cluster stays connected. The
  * old document is marked, so that the sidebar it still shows is not taken for
  * the new one. A frame that did not render, after the dev file route of
- * Freelens dev failed a request, is loaded again once, as `openCluster` does.
+ * Freelens dev failed a request, or because Chromium refused requests of its
+ * modules for lack of resources, is loaded again once, as `openCluster` does.
  * The frame shows what the host makes of its address as it starts, which may be
  * its start page: a session opens the page that it reads itself.
  */
 export async function reloadClusterFrame(session: AppSession, frame: Frame) {
-  const failuresBefore = session.devFileRouteFailures().length;
+  const before = { failures: session.devFileRouteFailures().length, refused: session.refusedModuleLoads() };
   const reload = async () => {
     await frame.evaluate(() => {
       document.documentElement.dataset.capiReloading = "";
       setTimeout(() => globalThis.location.reload(), 0);
     });
-    await frame.waitForSelector("html:not([data-capi-reloading]) [data-testid=cluster-sidebar]", clusterTimeout);
   };
 
   console.log("load the frame of the cluster again");
-  try {
-    await reload();
-  } catch (error) {
-    if (session.devFileRouteFailures().length === failuresBefore) {
-      throw error;
-    }
-
-    console.log("the frame did not render after a failed request of the dev file route: loading it again");
-    await reload();
-  }
+  await reload();
+  await untilFrameRenders(
+    session,
+    frame,
+    "html:not([data-capi-reloading]) [data-testid=cluster-sidebar]",
+    before,
+    reload,
+  );
 }
 
 /**

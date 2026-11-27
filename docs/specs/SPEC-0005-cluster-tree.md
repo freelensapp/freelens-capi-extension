@@ -3703,6 +3703,28 @@ the contract label of the definition for a control plane of a provider; and
   those of the providers of the fixtures, and the access of the definitions by
   their names grants, beside the two of SPEC-0004, those of the DevMachines and
   of the DevMachineTemplates, which the tree of `healthy` reads.
+- A fact of Freelens dev on Chromium, seen in the first run of the branch of the
+  screenshots of the third part, in its job of the theme `freelens` dark: the
+  restricted session loaded the frame of its cluster again for case 5, the
+  fourth time it did so in that run, and the frame did not start. Chromium had
+  refused 350 requests of its modules with `net::ERR_INSUFFICIENT_RESOURCES`,
+  each a module that the dev server serves, under `/@fs/` or `/@id/`, and every
+  case after it waited for a page that never came. Chromium refuses a request
+  when the renderer that sends it holds as many requests at once as Chromium
+  lets one process hold, and a frame of a cluster in Freelens dev asks the dev
+  server for each module of the renderer, thousands of them, so a load of the
+  frame meets that limit or not by how many of its requests are outstanding at
+  once. It does not follow from the session of the tree, which ran before: the
+  other three jobs of the themes ran the same two sessions in the same order
+  and their restricted session passed, and the job of the pull request loaded
+  that frame eight times with no refusal. Decided while implementing:
+  `openCluster` and `reloadClusterFrame` of `extension-helpers.ts` load such a
+  frame again once, as soon as a refusal arrives, and leave the refusals of the
+  first load out of the errors once the second rendered
+  (`isRefusedModuleLoad` of `expected-refusals.ts`), as they load a frame again
+  after a failed request of the dev file route (AGENTS.md, "Workflows"); a
+  refusal of any other request, or one of a frame that rendered with no second
+  load, counts.
 - Decided while implementing the third part, for the session on the real
   project: the condition that the health of a node rests on is read from the
   summary of its details, opened at the address of the node, and the condition
