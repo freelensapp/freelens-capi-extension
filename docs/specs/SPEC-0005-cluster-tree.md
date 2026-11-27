@@ -3432,6 +3432,23 @@ the contract label of the definition for a control plane of a provider; and
   `withReveals` of `tree-rows.ts`). Before, the node was shown in the
   expansions of the user alone, which the search does not show: its details
   opened with no row, and the first match of the search became the active node.
+- Decided while implementing the second part, after the first run of its CI,
+  in which the session of the Clusters of SPEC-0004 still expected what its
+  "Tests", "In Freelens", 4 and 5 say: that session follows P3 and P5. Its
+  step 4, on `rolling-out`, checks that the control plane, each part of the
+  workers, the class and each name of the subjects of the lines that name the
+  MachineDeployment are one button and no link, that no line of a message
+  holds a link, and that the metadata holds none, with the namespace the badge
+  of the host; it clicks the control plane alone, since each button leaves the
+  page of the Clusters, and reads in the address of the frame the page of the
+  tree and its parameters, the Cluster and the node of the KubeadmControlPlane,
+  then the title of that page, the title of its drawer and the details of that
+  node; the history of the frame then brings back the page of the Clusters with
+  the details of the Cluster (H12), on which the step checks the badge of the
+  namespace. The node that each other button opens stays with the unit tests of
+  the details, and the way in from the panel in the details of the host with
+  the session of the third part (Tests, "In Freelens", 3). Its step 5 expects
+  the row Tree after the metadata and before the status (P3).
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

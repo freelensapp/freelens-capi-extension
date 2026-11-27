@@ -1235,13 +1235,18 @@ logged by either process:
   the panel with no reload while the host keeps the Cluster as it first read it
   (P16, P31); that the infrastructure cluster opens the details of the host of
   its object over those of the extension, which the close icon of the host shows
-  again and one Escape closes with them, while the other references are text,
-  and the namespace the badge of the host, which selects it alone in the filter
-  (P18, P32); that the details of the states that have sections of their own
-  show them; that a label which it sets with kubectl reaches the search of the
-  list and the details of a Cluster whose namespace the page does not read,
-  with no reload, also in a namespace that the filter adds; and that the Custom
-  Resources tree of the host has no entry for the Clusters. It records the
+  again and one Escape closes with them, while the control plane, the parts of
+  the workers, the class and the names of a message that name the
+  MachineDeployment are each one button, never a link, of which the control
+  plane opens the page of the tree of the Cluster at its node, as the address
+  says, and the history of the frame brings the details back, and the namespace
+  is the badge of the host, which selects it alone in the filter (P18, P32;
+  SPEC-0005, P3, P5); that the details of the states that have sections of their
+  own show them, the row Tree among them; that a label which it sets with
+  kubectl reaches the search of the list and the details of a Cluster whose
+  namespace the page does not read, with no reload, also in a namespace that the
+  filter adds; and that the Custom Resources tree of the host has no entry for
+  the Clusters. It records the
   requests of the renderer, and fails when one to the groups that the view
   reads is not a GET, or when an object of the fixtures has another version
   after the session than before, or than the one that the answer to the last

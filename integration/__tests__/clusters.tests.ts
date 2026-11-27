@@ -31,6 +31,7 @@ import {
   appReady,
   connectApp,
   disconnectKindCluster,
+  extensionPageAddress,
   hostLists,
   installExtension,
   kubectl,
@@ -297,11 +298,13 @@ function conditionOf(cluster: KubeObject, type: string): Fields | undefined {
 }
 
 // The sections of the details of a Cluster, in their order (SPEC-0004, "The details"), each shown when it has
-// something to show, from its fixture as written: the metadata and the status always, the control plane and the
-// infrastructure with their reference or a status, the workers with their counters or a part to count, the topology
-// and the network with their fields of the spec, and the conditions with one.
+// something to show, from its fixture as written: the metadata, the row Tree, which opens the tree of the Cluster
+// before the status (SPEC-0005, P3), and the status always, the control plane and the infrastructure with their
+// reference or a status, the workers with their counters or a part to count, the topology and the network with their
+// fields of the spec, and the conditions with one.
 const SECTIONS = [
   "metadata",
+  "tree",
   "status",
   "control-plane",
   "workers",
@@ -317,6 +320,7 @@ function sectionsOf({ cluster, objects }: FixtureCluster): string[] {
   const parts = objects.some((object) => object.kind === "MachineDeployment" || object.kind === "MachinePool");
   const shown: Record<string, boolean> = {
     metadata: true,
+    tree: true,
     status: true,
     "control-plane": spec?.controlPlaneRef !== undefined || status !== undefined,
     workers: status?.workers !== undefined || parts,
@@ -653,6 +657,19 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
     const params = new URL(opened().url()).searchParams;
 
     return { details: params.get("details"), kubeDetails: params.get("kube-details") };
+  }
+
+  // The address of the frame as the page of the tree of a Cluster reads it (SPEC-0005, P2): the path of the page, its
+  // parameters `cluster`, the Cluster, and `details`, the node whose details are open, and `kube-details` of the host.
+  function treeAddressOf(): { page: string; cluster: string | null; details: string | null; kubeDetails: string } {
+    const url = new URL(opened().url());
+
+    return {
+      page: url.pathname,
+      cluster: url.searchParams.get("cluster"),
+      details: url.searchParams.get("details"),
+      kubeDetails: url.searchParams.get("kube-details") ?? "",
+    };
   }
 
   // The drawer that shows at the middle of the details of the extension: theirs, or those of the host over them.
@@ -1148,7 +1165,7 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
   );
 
   it(
-    "opens the details of the host of the infrastructure cluster from its link, and shows the other references as text (4; P18, P32, S2)",
+    "opens the details of the host of the infrastructure cluster from its link, and the tree of the Cluster from the other references, at the node of the control plane from its own (4; P18, P32, S2; SPEC-0005, P3, P5)",
     async () => {
       const cluster = opened();
       const keyboard = cluster.page().keyboard;
@@ -1207,9 +1224,12 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       await closed();
       expect(addressOf().details).toBeNull();
 
-      // The control plane, the parts of the workers, the class and the names in the lines of a message are text; the
-      // metadata has no link, its namespace being the badge of the host (P32); and a click on one opens nothing. No
-      // Cluster of the fixtures has an owner, so the owners are left to the unit test.
+      // The control plane, the parts of the workers, the class and the names of the subjects of the lines of a message
+      // that name the MachineDeployment are each one control, a button that opens the tree of the Cluster at the node
+      // of its object, with its details, and never a link, which would open the details of the host, with their menu
+      // (SPEC-0005, P3, P5; SPEC-0001, A7); no line of a message holds such a link; the metadata has no link, its
+      // namespace being the badge of the host (P32). No Cluster of the fixtures has an owner, so the owners are left to
+      // the unit test.
       await nameOf(row).click();
       await detailsOf(rollingOut.name);
 
@@ -1218,16 +1238,35 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
       const clusterClass = drawer.getByTestId("capi-details-class");
       const lines = drawer.getByTestId("capi-details-line");
       const [deployment] = rollingOut.objects.filter((object) => object.kind === "MachineDeployment");
-      const named = lines.filter({ hasText: deployment.metadata.name });
-      const controls = (locator: Locator) => locator.locator("a, button").count();
+      // The lines whose subject is the MachineDeployment, `* MachineDeployment <name>:`, and not those of its Machines,
+      // whose names start with its own.
+      const named = lines.filter({ hasText: `MachineDeployment ${deployment.metadata.name}:` });
+      // The texts of the buttons of each element that a locator finds, and how many links each holds.
+      const controlsOf = (locator: Locator) =>
+        locator.evaluateAll((elements) =>
+          elements.map((element) => ({
+            buttons: [...element.querySelectorAll("button")].map((button) => button.textContent ?? ""),
+            links: element.querySelectorAll("a").length,
+          })),
+        );
+      const className = String(fields(fields(spec?.topology)?.classRef)?.name);
 
       await parts.first().waitFor(viewTimeout);
       expect((await controlPlaneReference.textContent())?.trim()).toBe(`${controlPlane?.kind} ${controlPlane?.name}`);
-      expect(await controls(controlPlaneReference)).toBe(0);
-      expect(await controls(parts)).toBe(0);
-      expect(await controls(clusterClass)).toBe(0);
-      expect(await named.count()).toBeGreaterThan(0);
-      expect(await controls(lines)).toBe(0);
+      expect(await controlsOf(controlPlaneReference)).toEqual([{ buttons: [String(controlPlane?.name)], links: 0 }]);
+
+      const partControls = await controlsOf(parts);
+
+      expect(partControls.length).toBeGreaterThan(0);
+      expect(partControls.filter((part) => part.buttons.length !== 1 || part.links !== 0)).toEqual([]);
+      expect(partControls.map((part) => part.buttons[0])).toContain(deployment.metadata.name);
+      expect(await controlsOf(clusterClass)).toEqual([{ buttons: [className], links: 0 }]);
+
+      const namedControls = await controlsOf(named);
+
+      expect(namedControls.length).toBeGreaterThan(0);
+      expect(namedControls).toEqual(namedControls.map(() => ({ buttons: [deployment.metadata.name], links: 0 })));
+      expect(await lines.locator("a").count()).toBe(0);
       expect(rollingOut.cluster.metadata.ownerReferences).toBeUndefined();
       expect(await drawer.getByTestId("capi-details-owners").count()).toBe(0);
       expect(await drawer.getByTestId("capi-details-section-metadata").locator("a").count()).toBe(0);
@@ -1235,16 +1274,33 @@ describe.skipIf(!(await appReady({ cluster: true, namespace: namespaces[0] })))(
         rollingOut.namespace,
       );
 
-      for (const target of [controlPlaneReference, parts.first(), clusterClass, named.first()]) {
-        const text = (await target.textContent()) ?? "";
+      // One click, on the control plane, opens the page of the tree of the Cluster, whose parameters name the Cluster
+      // and the node of the KubeadmControlPlane, with the details of that node, in place of the page of the Clusters
+      // (SPEC-0005, P2, P5). Each other button leaves the page the same way, at its own node, which the unit tests of
+      // the details check.
+      const node = `${String(controlPlane?.apiGroup)}/${String(controlPlane?.kind)}/${String(controlPlane?.name)}`;
+      const tree = extensionPageAddress("cluster-tree");
+      const treeDetails = cluster.getByTestId("capi-tree-details");
+      const treeTitle = cluster.getByTestId("capi-tree-title");
 
-        await target.click();
-        await frames();
-        expect(addressOf().details, text).toBe(rollingOut.address);
-        expect(addressOf().kubeDetails ?? "", text).toBe("");
-        expect(await hostDetails.count(), text).toBe(0);
-        expect(await titleOf(drawer), text).toBe(`Cluster: ${rollingOut.name}`);
-      }
+      await controlPlaneReference.getByRole("button").click();
+      await expect.poll(() => treeAddressOf().page, viewTimeout).toBe(tree);
+      expect(treeAddressOf()).toEqual({ page: tree, cluster: rollingOut.address, details: node, kubeDetails: "" });
+      await treeTitle.waitFor(viewTimeout);
+      expect(await treeTitle.textContent()).toBe(`Cluster Tree: ${rollingOut.name}, ${rollingOut.namespace}`);
+      await expect.poll(() => titleOf(treeDetails), viewTimeout).toBe(`${controlPlane?.kind}: ${controlPlane?.name}`);
+      await treeDetails.getByTestId("capi-node-details").waitFor(viewTimeout);
+      expect(await cluster.getByTestId(DETAILS).count()).toBe(0);
+      expect(await hostDetails.count()).toBe(0);
+
+      // The history of the frame brings the page of the Clusters back, with the details of the Cluster open, as it
+      // brings back the parameters of a page of the extension (SPEC-0005, H12), for the rest of the step.
+      await cluster.evaluate(() => window.history.back());
+      await detailsOf(rollingOut.name);
+      await drawer.getByTestId("capi-details-namespace").waitFor(viewTimeout);
+      expect(addressOf().details).toBe(rollingOut.address);
+      expect(addressOf().kubeDetails ?? "").toBe("");
+      expect(await cluster.getByTestId("capi-tree-page").count()).toBe(0);
 
       // The namespace is the badge of the host, which selects that namespace alone in the filter (P32): plain text
       // would leave both namespaces selected.
