@@ -266,6 +266,12 @@ export function searched(state: RowsState, search: string): RowsState {
   return { ...state, search };
 }
 
+// The user expands or collapses a node while the search holds words: against what the search expands, for that search
+// alone, which the rows show at once, while the expansions of the user stay as they were for when it is cleared (P15).
+export function toggledInSearch(toggles: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  return toggles.has(id) ? new Set([...toggles].filter((each) => each !== id)) : new Set([...toggles, id]);
+}
+
 // A node that the address names once the expansion at first is computed, as one that appears later, or that a link
 // of the details names (P2, P5): the nodes above it are expanded, so that it is shown; nothing else changes.
 export function revealed(state: RowsState, tree: ClusterTree, id: string): RowsState {
@@ -295,22 +301,33 @@ export interface TreeSearch {
   readonly expanded: ReadonlySet<string>;
 }
 
+const NO_TOGGLES: ReadonlySet<string> = new Set();
+
 // The rows that the table shows: depth first, in the order of the tree, each node under the nodes expanded above it;
-// or, while the search holds words, the nodes that it shows, those above a match expanded.
-export function rowsOf(tree: ClusterTree, expanded: ReadonlySet<string>, search?: TreeSearch): TreeRow[] {
+// or, while the search holds words, the nodes that it shows, those above a match expanded, and what the user expands
+// or collapses during that search, against what the search expands (`toggles`): a node that the user expands shows
+// every node under it, and one that the user collapses none (P15).
+export function rowsOf(
+  tree: ClusterTree,
+  expanded: ReadonlySet<string>,
+  search?: TreeSearch,
+  toggles: ReadonlySet<string> = NO_TOGGLES,
+): TreeRow[] {
   const rows: TreeRow[] = [];
-  const visit = (node: TreeNode, depth: number): void => {
-    if (search !== undefined && !search.shown.has(node.id)) return;
+  const visit = (node: TreeNode, depth: number, every: boolean): void => {
+    if (search !== undefined && !every && !search.shown.has(node.id)) return;
 
     const expandable = node.children.length > 0;
-    const open = expandable && (search === undefined ? expanded.has(node.id) : search.expanded.has(node.id));
+    const bySearch = search !== undefined && search.expanded.has(node.id);
+    const open = expandable && (search === undefined ? expanded.has(node.id) : bySearch !== toggles.has(node.id));
 
     rows.push({ node, depth, expandable, expanded: open });
     if (!open) return;
-    for (const child of node.children) visit(child, depth + 1);
+    // Under a node that the search expands, the nodes that it shows; under one that the user expands, every node.
+    for (const child of node.children) visit(child, depth + 1, !bySearch);
   };
 
-  visit(tree.root, 0);
+  visit(tree.root, 0, false);
   return rows;
 }
 

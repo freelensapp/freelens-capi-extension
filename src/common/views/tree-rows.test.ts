@@ -18,6 +18,7 @@ import {
   searched,
   searchTree,
   toggled,
+  toggledInSearch,
 } from "./tree-rows";
 
 import type { TreeSourceOptions } from "../../../test/tree-sources";
@@ -682,6 +683,39 @@ describe("the search (P15)", () => {
 
     expect(search(view, cleared.search)).toBeUndefined();
     expect(outline(rowsOf(view.tree, cleared.expanded, search(view, cleared.search)))).toEqual(before);
+  });
+});
+
+describe("what the user expands or collapses during a search (P15)", () => {
+  it("shows at once every node under a node that the user expands, none under one that the user collapses, and leaves the expansions of the user as they were", () => {
+    const view = stateView("healthy");
+    const workers = idOf(view.tree, "Workers");
+    const state = rowsStateOf(undefined, view.tree, view.statuses);
+    const user = outline(rowsOf(view.tree, state.expanded));
+    const found = searchTree(view.tree, "Workers", (node) => nodeWords(view.tree, node, view.statuses.get(node.id)));
+
+    expect(outline(rowsOf(view.tree, state.expanded, found))).toEqual(["Cluster freelens-capi-healthy", "  Workers"]);
+
+    // The user expands Workers, which the search shows and does not expand: every node under it shows.
+    const expanded = toggledInSearch(new Set(), workers);
+
+    expect(outline(rowsOf(view.tree, state.expanded, found, expanded))).toEqual([
+      "Cluster freelens-capi-healthy",
+      "  Workers",
+      "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+    ]);
+    expect(rowsOf(view.tree, state.expanded, found, expanded)[1].expanded).toBe(true);
+
+    // Then the Cluster, which the search expands, collapsed: no node under it.
+    expect(outline(rowsOf(view.tree, state.expanded, found, toggledInSearch(expanded, view.tree.root.id)))).toEqual([
+      "Cluster freelens-capi-healthy",
+    ]);
+
+    // Workers collapsed again: the rows of the search as they were.
+    expect(toggledInSearch(expanded, workers)).toEqual(new Set());
+
+    // The expansions of the user are not changed, and are the rows once the search is cleared.
+    expect(outline(rowsOf(view.tree, state.expanded))).toEqual(user);
   });
 });
 

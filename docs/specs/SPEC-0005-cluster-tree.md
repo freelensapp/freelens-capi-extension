@@ -3321,6 +3321,16 @@ the contract label of the definition for a control plane of a provider; and
   Taken from the clamped offset, rows removed while the user sits at the
   bottom of the tree moved the rows in view a second time, which a case of the
   page shows on a list that clamps its scroll as Chromium does.
+- Decided while implementing the second part, after its reviews, where P15 is
+  silent on what the user expands or collapses during a search: it acts on what
+  the search shows, at once, against what the search expands, so that a node
+  that the user expands shows every node under it, those that match or not,
+  and one that the user collapses none (`toggledInSearch` and `rowsOf` of
+  `tree-rows.ts`); the expansions of the user are not changed, and come back
+  as they were once the search is cleared, and other words start a search of
+  their own, with nothing expanded or collapsed by the user. Before, a click on
+  the button of a node, Right or Left changed the expansions of the user
+  alone, which nothing showed until the search was cleared.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

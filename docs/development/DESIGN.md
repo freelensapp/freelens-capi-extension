@@ -585,9 +585,11 @@ tree of a Cluster does (SPEC-0005):
   no row shows, the namespace that every row shares and the counts left out,
   with the nodes above them, expanded, says how many match, gives the
   expansions of the user back once it is cleared, and takes no focus when the
-  page opens; an Escape in it clears its words, or, when it holds none, closes
-  the details, those of the host first while they are open over those of a
-  node (SPEC-0005, P15).
+  page opens; what the user expands or collapses while it holds words acts on
+  what it shows, at once, every node under a node expanded and none under one
+  collapsed, for those words alone; an Escape in it clears its words, or, when
+  it holds none, closes the details, those of the host first while they are
+  open over those of a node (SPEC-0005, P15, "Notes and deviations").
 - **The scroll.** The view scrolls the list on a key move, an address, the
   closing of the details, and to keep the rows in view in place when rows are
   inserted or removed above them, and never otherwise, so the active node may

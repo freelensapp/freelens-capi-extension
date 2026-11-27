@@ -1355,6 +1355,37 @@ describe("the search (P15)", () => {
     expect(rowIds()).toEqual(before);
   });
 
+  it("shows at once what the user expands or collapses during a search, by a click and by the keys, and gives the expansions of the user back once it is cleared", async () => {
+    await opened();
+
+    const before = rowIds();
+
+    fireEvent.change(search(), { target: { value: "Workers" } });
+    expect(rowIds()).toEqual([ROOT, WORKERS]);
+
+    // A click on the button of Workers, which the search shows and does not expand: every node under it shows.
+    fireEvent.click(within(rowOf(WORKERS)).getByTestId("capi-tree-expander"));
+    expect(rowIds()).toEqual([ROOT, WORKERS, DEPLOYMENT]);
+    expect(rowOf(WORKERS).getAttribute("aria-expanded")).toBe("true");
+
+    // Right on the MachineDeployment expands it, and Left collapses it, at once.
+    fireEvent.keyDown(tree(), { key: "ArrowDown" });
+    nextFrame();
+    expect(tree().getAttribute("aria-activedescendant")).toBe(rowDomId(DEPLOYMENT));
+    fireEvent.keyDown(tree(), { key: "ArrowRight" });
+    expect(rowIds()).toEqual([ROOT, WORKERS, DEPLOYMENT, MACHINE_SET, `virtual:templates:${DEPLOYMENT}`]);
+    fireEvent.keyDown(tree(), { key: "ArrowLeft" });
+    expect(rowIds()).toEqual([ROOT, WORKERS, DEPLOYMENT]);
+
+    // Other words start a search of their own, with nothing that the user expanded or collapsed.
+    fireEvent.change(search(), { target: { value: "Worker" } });
+    expect(rowIds()).toEqual([ROOT, WORKERS]);
+
+    // Cleared, the search gives back the expansions of the user as they were.
+    fireEvent.change(search(), { target: { value: "" } });
+    expect(rowIds()).toEqual(before);
+  });
+
   it("closes, on an Escape in it with no words, the details of the host while kube-details holds a value, else the details of the node", async () => {
     const { params } = await opened(DEV_CLUSTER);
 

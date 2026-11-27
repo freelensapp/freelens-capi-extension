@@ -70,6 +70,7 @@ import {
   scrollOffset,
   searchTree,
   toggled,
+  toggledInSearch,
 } from "../../common/views/tree-rows";
 import { ErrorBoundary } from "../components/error-boundary";
 import { Instant, MarkLine, MarkNote, MarksCell, MarkView } from "../components/marks";
@@ -299,6 +300,9 @@ class TreePage {
   openedByRow: string | undefined;
   before: readonly TreeRow[] | undefined;
   change: RowsChange = "reads";
+  // What the user expanded or collapsed while the search holds its words, against what the search expands; a change of
+  // the words starts with none (P15).
+  searchToggles: ReadonlySet<string> = new Set();
   // The nodes of the tree seen in this mount, for the details of one that is gone.
   readonly seen = new Set<string>();
   // The rows drawn, from a reference to an element of each row, which the virtual list mounts and unmounts with it.
@@ -522,6 +526,7 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
             autoFocus={false}
             onChange={(value) => {
               page.change = "search";
+              page.searchToggles = new Set();
               setSearch(value);
             }}
             onKeyDown={onSearchKey}
@@ -607,7 +612,10 @@ const TreeContent = observer((props: TreeContentProps) => {
     found === undefined
       ? undefined
       : searchTree(found, search, (node) => searchWordsOf(found, node, statuses.get(node.id)));
-  const rows = found === undefined || rowsState === undefined ? [] : rowsOf(found, rowsState.expanded, matched);
+  const rows =
+    found === undefined || rowsState === undefined
+      ? []
+      : rowsOf(found, rowsState.expanded, matched, page.searchToggles);
   const active = found === undefined ? undefined : activeOf(found, rows, page.active ?? found.root.id, matched);
   const notices = shown ? treeNotices(read.reads, read.kinds()) : [];
   const next = [...statuses.values()]
@@ -632,10 +640,15 @@ const TreeContent = observer((props: TreeContentProps) => {
     page.openedByRow = undefined;
     details?.set(id);
   };
-  const toggle = (id: string) => {
-    if (page.rows === undefined) return;
-    page.rows = toggled(page.rows, id);
+  // The user expands or collapses a node: during a search, what the search shows, at once, and otherwise the expansions
+  // of the user (P15).
+  const expandOrCollapse = (id: string) => {
+    if (search !== "") page.searchToggles = toggledInSearch(page.searchToggles, id);
+    else if (page.rows !== undefined) page.rows = toggled(page.rows, id);
     page.change = "expansion";
+  };
+  const toggle = (id: string) => {
+    expandOrCollapse(id);
     rerender();
   };
   const clickRow = (row: TreeRow) => {
@@ -646,8 +659,7 @@ const TreeContent = observer((props: TreeContentProps) => {
       if (hostDetailsOpen()) Navigation.hideDetails();
       openDetails(node.id);
     } else if (row.expandable && node.form !== "entry") {
-      page.rows = page.rows === undefined ? undefined : toggled(page.rows, node.id);
-      page.change = "expansion";
+      expandOrCollapse(node.id);
     }
     focusTree();
     rerender();
