@@ -9,6 +9,12 @@
 // (core/config/crd/bases/cluster.x-k8s.io_clusters.yaml). The name `Cluster` stays inside this module and the modules
 // that import it: the host exports a model of the same name, for another group.
 //
+// The variables of a topology and of its parts are the one exception: the types leave them out, `variables` and the
+// `overrides` of a part, since what a variable is set to can carry the fields that SPEC-0001, A3 never shows and
+// whatever a user writes there; one function of the views reads them, for their names alone, and the check of Safety
+// finds their names in no other module of the view, read or declared (SPEC-0005, "Notes and deviations", the names of
+// the variables and of the patches).
+//
 // The host hands the extension objects of its own store, instances of its `KubeObject`, so the class has no method of
 // its own (AGENTS.md, "CRD KubeObject Pattern"). The status of a Cluster is the status model's (SPEC-0003): the views
 // read it through `statusOf` and `conditionsOf`, never from these fields alone.
@@ -57,7 +63,6 @@ export interface Topology {
   version: string;
   controlPlane?: ControlPlaneTopology;
   workers?: WorkersTopology;
-  variables?: ClusterVariable[];
 }
 
 export interface ClusterClassRef {
@@ -74,7 +79,6 @@ export interface ControlPlaneTopology {
   deletion?: ControlPlaneTopologyMachineDeletionSpec;
   taints?: MachineTaint[];
   readinessGates?: MachineReadinessGate[];
-  variables?: ControlPlaneVariables;
 }
 
 export interface ControlPlaneTopologyRolloutSpec {
@@ -128,7 +132,6 @@ export interface MachineDeploymentTopology {
   minReadySeconds?: number;
   readinessGates?: MachineReadinessGate[];
   rollout?: MachineDeploymentTopologyRolloutSpec;
-  variables?: MachineDeploymentVariables;
 }
 
 export interface MachineDeploymentTopologyHealthCheck {
@@ -185,32 +188,12 @@ export interface MachinePoolTopology {
   taints?: MachineTaint[];
   minReadySeconds?: number;
   replicas?: number;
-  variables?: MachinePoolVariables;
 }
 
 export interface MachinePoolTopologyMachineDeletionSpec {
   nodeDrainTimeoutSeconds?: number;
   nodeVolumeDetachTimeoutSeconds?: number;
   nodeDeletionTimeoutSeconds?: number;
-}
-
-// A variable of a topology, and the overrides of a part (api/core/v1beta2/cluster_types.go:1327-1379). Its value is
-// any JSON that the variables of the ClusterClass allow.
-export interface ClusterVariable {
-  name: string;
-  value: unknown;
-}
-
-export interface ControlPlaneVariables {
-  overrides?: ClusterVariable[];
-}
-
-export interface MachineDeploymentVariables {
-  overrides?: ClusterVariable[];
-}
-
-export interface MachinePoolVariables {
-  overrides?: ClusterVariable[];
 }
 
 // The network of the workload cluster (api/core/v1beta2/cluster_types.go:1384-1417).

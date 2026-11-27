@@ -252,26 +252,30 @@ src/
   main/index.ts                  # Main entry (Main.LensExtension)
   renderer/index.tsx             # Renderer entry (Renderer.LensExtension): every registration
   renderer/api/                  # The models: Cluster at v1beta2 (cluster/), the kinds that the view of Clusters
-                                 #   reads as the context of the status model (context/), and their shared types
+                                 #   reads as the context of the status model and those that the tree of a Cluster
+                                 #   adds (context/), and their shared types
   renderer/pages/                # The page of the Clusters and its list (SPEC-0004)
   renderer/details/              # The details of a Cluster (SPEC-0004): the drawer that the page opens over its list,
                                  #   the view of one Cluster and the panel in the details of the host
   renderer/reads/                # How a view reads the stores of the host: the adapter of each store, the reads of a
                                  #   mount, the stores of the page, the definitions, the context of the frame, and the
-                                 #   stores of its own that the view of one Cluster reads outside the page
+                                 #   stores of its own that a view of one Cluster reads outside the page, with the
+                                 #   kinds of that view, the details or the tree
   renderer/components/           # ErrorBoundary and its registration wrappers, ErrorPage, the marks of state, notices
   renderer/icons/                # The icon of the root entry of the sidebar
   common/parsers/                # The parsers of the status model (SPEC-0003), each with its unit test
   common/status/                 # The status model (SPEC-0003): statusOf and conditionsOf in index.ts, the rules
                                  #   of each family of kinds, freshness, activity and tone, each with its unit test
   common/views/                  # The pure functions of the views: the context of the model, the state of the reads,
-                                 #   the references, the availability of a kind, the cells of a list, and the address,
-                                 #   the state and the sections of the details, each tested
+                                 #   the references, the availability of a kind, the cells of a list, the address, the
+                                 #   state and the sections of the details, and the tree of a Cluster, its rows, the
+                                 #   selector of a ClusterResourceSet and the names of the variables, each tested
 test/freelens-extensions.ts      # Runtime stub of @freelensapp/extensions for Vitest
 test/status-objects.ts           # The objects of the fixtures of SPEC-0002 that the unit tests of the model start from
 test/fixture-sets.ts             # The fixtures of SPEC-0002, read from their files for the unit tests of the views
 test/host-stores.ts              # Stores and APIs of the host on the stub, for the unit tests of the pages
 test/status-views.ts             # The model read with the context that a view builds from a set of objects
+test/tree-sources.ts             # The reads of the tree of a Cluster over a set of objects, for the tests of the tree
 test/environment.test.ts         # Unit tests of the scripts of the test environment
 test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
 test/expected-refusals.test.ts   # Unit tests of the refusals that a session expects and leaves out of its errors
@@ -298,7 +302,8 @@ source maps. `main` and `renderer` in `package.json` point at the two entries.
 The models of this extension follow the pattern of
 freelensapp/freelens-example-extension: the model of Cluster at `v1beta2`,
 and the models that SPEC-0004 gives the kinds that the view of Clusters reads
-only as the context of the status model (SPEC-0004, P1).
+only as the context of the status model (SPEC-0004, P1), with those that
+SPEC-0005 adds for the tree of a Cluster (SPEC-0005, P6).
 
 A model is a subclass of `Renderer.K8sApi.LensExtensionKubeObject`, one file
 per API version: `src/renderer/api/cluster/cluster-v1beta2.ts`, exporting a
@@ -378,7 +383,11 @@ each on the namespace of the Cluster alone, under an `AbortController` of its
 own, subscribes it once that load has ended, stops the stores built on the APIs
 that the host registers again, ends every subscription when it closes, and never
 registers them with the API manager of the host, whose own views would then read
-them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`).
+them (SPEC-0004, P31; `src/renderer/reads/cluster-namespace-read.ts`). The
+kinds of the view are a parameter of that read: the details and the panel pass
+those of SPEC-0004, and the tree of a Cluster its own, with the kinds of a
+provider that the references of what it read name and its ClusterClass in the
+namespace that the class reference of its Cluster names (SPEC-0005, P6).
 
 `src/renderer/index.tsx` registers the page of the Clusters (`clusterPages`)
 and its sidebar entries (`clusterPageMenus`). The details panel and the menu
@@ -434,11 +443,20 @@ A new kind, or a new version of a kind, takes the same set of files as
    kubebuilder, otherwise the `openAPIV3Schema` of the CRD.
    - Every Go struct has a TypeScript interface of the same name, with the
      same fields under their `json` names. The one exception is a kind that a
-     view reads only as the context of the status model: its model types, as
-     its spec and its status, the plain-data types of the status model for the
-     fields that its rules read, and nothing else, until the spec of its own
-     view gives it its whole types (SPEC-0004, P1). The spec of a
-     KubeadmControlPlane holds fields that SPEC-0001, A3 never reads.
+     view reads only as the context of the status model, or as a node of the
+     tree of a Cluster: its model types, as its spec and its status, the
+     plain-data types of the status model for the fields that its rules read,
+     and the fields that the tree follows, its references and its version
+     (SPEC-0005, P6), and nothing else, until the spec of its own view gives
+     it its whole types (SPEC-0004, P1). The specs of a KubeadmControlPlane
+     and of a KubeadmConfig hold fields that SPEC-0001, A3 never reads: of a
+     KubeadmConfig and of its template no field of the spec is typed. No model
+     types a field that holds what a variable is set to, the model of a
+     Cluster included: the variables of a topology and of its parts, and the
+     variables and the patches of a ClusterClass, whose names one function of
+     `src/common/views/` reads, and whose names the check of Safety finds
+     nowhere else, read or declared (SPEC-0005, "Notes and deviations", the
+     names of the variables and of the patches).
    - A field is optional in the interface when the CRD does not require it.
      `controller-gen` decides that from the markers, not from the `json` tag:
      `+required` (or `+kubebuilder:validation:Required`) makes the field
@@ -1068,8 +1086,12 @@ status types of the models.
 
 `knip.jsonc` lists the entries knip cannot find: the two source entries, the
 Vitest alias target `test/freelens-extensions.ts` and the probes in
-`environment-tests/`. The entry of `src/common/status/index.ts` went with the
-list of the Clusters of SPEC-0004, whose page imports the model, and that of
+`environment-tests/`. Until the page of the tree of a Cluster imports them, it
+also lists the three modules of the tree in `src/common/views/` as production
+entries, since only their tests reach them; the page removes the entries
+(SPEC-0005, "Notes and deviations"). The entry of
+`src/common/status/index.ts` went with the list of the Clusters of SPEC-0004,
+whose page imports the model, and that of
 `src/common/parsers/list-annotation.ts`, the one parser that the model does not
 import, with their details, which import it (SPEC-0003, "Notes and
 deviations").

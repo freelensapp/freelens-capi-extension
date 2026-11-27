@@ -41,7 +41,7 @@ import { detailsAddressOf } from "../../common/views/details-address";
 import { nameOf, namespaceOf } from "../../common/views/objects";
 import { ErrorBoundary } from "../components/error-boundary";
 import { Duration, Instant, MarkNote, MarkView } from "../components/marks";
-import { ClusterNamespaceRead } from "../reads/cluster-namespace-read";
+import { CLUSTER_VIEW_KINDS, ClusterNamespaceRead } from "../reads/cluster-namespace-read";
 import { mountedPageSource, readsNamespace } from "../reads/cluster-source";
 import styles from "./cluster-details.module.scss";
 
@@ -1065,7 +1065,7 @@ export const ClusterView = observer((props: ClusterViewProps) => {
 // A view of one Cluster that reads its namespace through stores of its own (P31): the reads are made once for the
 // view, and run while it is mounted, from the effect that it opens.
 const OwnClusterView = observer((props: Omit<ClusterViewProps, "source">) => {
-  const [read] = useState(() => new ClusterNamespaceRead(props.namespace, props.name));
+  const [read] = useState(() => new ClusterNamespaceRead(props.namespace, props.name, CLUSTER_VIEW_KINDS));
 
   useEffect(() => read.start(), [read]);
 

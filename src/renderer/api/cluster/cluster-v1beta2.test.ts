@@ -27,7 +27,6 @@ import type {
   ClusterSpec,
   ClusterStatus,
   ClusterV1Beta1DeprecatedStatus,
-  ClusterVariable,
   ControlPlaneTopology,
   ControlPlaneTopologyHealthCheck,
   ControlPlaneTopologyHealthCheckChecks,
@@ -35,7 +34,6 @@ import type {
   ControlPlaneTopologyHealthCheckRemediationTriggerIf,
   ControlPlaneTopologyMachineDeletionSpec,
   ControlPlaneTopologyRolloutSpec,
-  ControlPlaneVariables,
   FailureDomain,
   MachineDeploymentTopology,
   MachineDeploymentTopologyHealthCheck,
@@ -46,10 +44,8 @@ import type {
   MachineDeploymentTopologyRolloutSpec,
   MachineDeploymentTopologyRolloutStrategy,
   MachineDeploymentTopologyRolloutStrategyRollingUpdate,
-  MachineDeploymentVariables,
   MachinePoolTopology,
   MachinePoolTopologyMachineDeletionSpec,
-  MachinePoolVariables,
   NetworkRanges,
   Topology,
   WorkersStatus,
@@ -75,8 +71,10 @@ describe("the model of a Cluster at v1beta2", () => {
 });
 
 // The shape of an interface, checked against it by the type check: every key of the interface, each required as the
-// interface makes it, and the kind of its value. The test reads the Clusters of the fixtures against it: a field that
-// the interface does not declare, a required one missing, or a value of another kind fails it.
+// interface makes it, and the kind of its value, and the keys of the schema that the interface leaves out on purpose,
+// the variables of a topology and of its parts (SPEC-0005, "Notes and deviations", the names of the variables and of
+// the patches). The test reads the Clusters of the fixtures against it: a field that the interface does not declare,
+// and that it does not leave out, a required one missing, or a value of another kind fails it.
 type Shape =
   | "string"
   | "number"
@@ -85,14 +83,20 @@ type Shape =
   | { readonly list: Shape }
   | { readonly map: "string" }
   | { readonly union: readonly string[] }
-  | { readonly fields: Readonly<Record<string, { readonly required: boolean; readonly value: Shape }>> };
+  | {
+      readonly fields: Readonly<Record<string, { readonly required: boolean; readonly value: Shape }>>;
+      readonly untyped: readonly string[];
+    };
 
 type ShapeOf<T> = {
   readonly [K in keyof T]-?: { readonly required: {} extends Pick<T, K> ? false : true; readonly value: Shape };
 };
 
-function fields<T>(shape: ShapeOf<T>): Shape {
-  return { fields: shape as Readonly<Record<string, { readonly required: boolean; readonly value: Shape }>> };
+function fields<T>(shape: ShapeOf<T>, untyped: readonly string[] = []): Shape {
+  return {
+    fields: shape as Readonly<Record<string, { readonly required: boolean; readonly value: Shape }>>,
+    untyped,
+  };
 }
 
 const listOf = (value: Shape): Shape => ({ list: value });
@@ -134,154 +138,157 @@ const templateRef = fields<MachineHealthCheckRemediationTemplateReference>({
   name: { required: true, value: "string" },
   apiVersion: { required: true, value: "string" },
 });
-const variable = fields<ClusterVariable>({
-  name: { required: true, value: "string" },
-  value: { required: true, value: "json" },
-});
-const overrides = { overrides: { required: false, value: listOf(variable) } } as const;
 const deletion = {
   nodeDrainTimeoutSeconds: { required: false, value: "number" },
   nodeVolumeDetachTimeoutSeconds: { required: false, value: "number" },
   nodeDeletionTimeoutSeconds: { required: false, value: "number" },
 } as const;
 
-const controlPlaneTopology = fields<ControlPlaneTopology>({
-  metadata: { required: false, value: objectMeta },
-  replicas: { required: false, value: "number" },
-  rollout: {
-    required: false,
-    value: fields<ControlPlaneTopologyRolloutSpec>({ after: { required: false, value: "string" } }),
+const controlPlaneTopology = fields<ControlPlaneTopology>(
+  {
+    metadata: { required: false, value: objectMeta },
+    replicas: { required: false, value: "number" },
+    rollout: {
+      required: false,
+      value: fields<ControlPlaneTopologyRolloutSpec>({ after: { required: false, value: "string" } }),
+    },
+    healthCheck: {
+      required: false,
+      value: fields<ControlPlaneTopologyHealthCheck>({
+        enabled: { required: false, value: "boolean" },
+        checks: {
+          required: false,
+          value: fields<ControlPlaneTopologyHealthCheckChecks>({
+            nodeStartupTimeoutSeconds: { required: false, value: "number" },
+            unhealthyNodeConditions: { required: false, value: listOf(nodeCondition) },
+            unhealthyMachineConditions: { required: false, value: listOf(machineCondition) },
+          }),
+        },
+        remediation: {
+          required: false,
+          value: fields<ControlPlaneTopologyHealthCheckRemediation>({
+            triggerIf: {
+              required: false,
+              value: fields<ControlPlaneTopologyHealthCheckRemediationTriggerIf>({
+                unhealthyLessThanOrEqualTo: { required: false, value: INT_OR_STRING },
+                unhealthyInRange: { required: false, value: "string" },
+              }),
+            },
+            templateRef: { required: false, value: templateRef },
+          }),
+        },
+      }),
+    },
+    deletion: { required: false, value: fields<ControlPlaneTopologyMachineDeletionSpec>(deletion) },
+    taints: { required: false, value: listOf(taint) },
+    readinessGates: { required: false, value: listOf(readinessGate) },
   },
-  healthCheck: {
-    required: false,
-    value: fields<ControlPlaneTopologyHealthCheck>({
-      enabled: { required: false, value: "boolean" },
-      checks: {
-        required: false,
-        value: fields<ControlPlaneTopologyHealthCheckChecks>({
-          nodeStartupTimeoutSeconds: { required: false, value: "number" },
-          unhealthyNodeConditions: { required: false, value: listOf(nodeCondition) },
-          unhealthyMachineConditions: { required: false, value: listOf(machineCondition) },
-        }),
-      },
-      remediation: {
-        required: false,
-        value: fields<ControlPlaneTopologyHealthCheckRemediation>({
-          triggerIf: {
-            required: false,
-            value: fields<ControlPlaneTopologyHealthCheckRemediationTriggerIf>({
-              unhealthyLessThanOrEqualTo: { required: false, value: INT_OR_STRING },
-              unhealthyInRange: { required: false, value: "string" },
-            }),
-          },
-          templateRef: { required: false, value: templateRef },
-        }),
-      },
-    }),
-  },
-  deletion: { required: false, value: fields<ControlPlaneTopologyMachineDeletionSpec>(deletion) },
-  taints: { required: false, value: listOf(taint) },
-  readinessGates: { required: false, value: listOf(readinessGate) },
-  variables: { required: false, value: fields<ControlPlaneVariables>(overrides) },
-});
+  ["variables"],
+);
 
-const deploymentTopology = fields<MachineDeploymentTopology>({
-  metadata: { required: false, value: objectMeta },
-  class: { required: true, value: "string" },
-  name: { required: true, value: "string" },
-  failureDomain: { required: false, value: "string" },
-  replicas: { required: false, value: "number" },
-  healthCheck: {
-    required: false,
-    value: fields<MachineDeploymentTopologyHealthCheck>({
-      enabled: { required: false, value: "boolean" },
-      checks: {
-        required: false,
-        value: fields<MachineDeploymentTopologyHealthCheckChecks>({
-          nodeStartupTimeoutSeconds: { required: false, value: "number" },
-          unhealthyNodeConditions: { required: false, value: listOf(nodeCondition) },
-          unhealthyMachineConditions: { required: false, value: listOf(machineCondition) },
-        }),
-      },
-      remediation: {
-        required: false,
-        value: fields<MachineDeploymentTopologyHealthCheckRemediation>({
-          maxInFlight: { required: false, value: INT_OR_STRING },
-          triggerIf: {
-            required: false,
-            value: fields<MachineDeploymentTopologyHealthCheckRemediationTriggerIf>({
-              unhealthyLessThanOrEqualTo: { required: false, value: INT_OR_STRING },
-              unhealthyInRange: { required: false, value: "string" },
-            }),
-          },
-          templateRef: { required: false, value: templateRef },
-        }),
-      },
-    }),
+const deploymentTopology = fields<MachineDeploymentTopology>(
+  {
+    metadata: { required: false, value: objectMeta },
+    class: { required: true, value: "string" },
+    name: { required: true, value: "string" },
+    failureDomain: { required: false, value: "string" },
+    replicas: { required: false, value: "number" },
+    healthCheck: {
+      required: false,
+      value: fields<MachineDeploymentTopologyHealthCheck>({
+        enabled: { required: false, value: "boolean" },
+        checks: {
+          required: false,
+          value: fields<MachineDeploymentTopologyHealthCheckChecks>({
+            nodeStartupTimeoutSeconds: { required: false, value: "number" },
+            unhealthyNodeConditions: { required: false, value: listOf(nodeCondition) },
+            unhealthyMachineConditions: { required: false, value: listOf(machineCondition) },
+          }),
+        },
+        remediation: {
+          required: false,
+          value: fields<MachineDeploymentTopologyHealthCheckRemediation>({
+            maxInFlight: { required: false, value: INT_OR_STRING },
+            triggerIf: {
+              required: false,
+              value: fields<MachineDeploymentTopologyHealthCheckRemediationTriggerIf>({
+                unhealthyLessThanOrEqualTo: { required: false, value: INT_OR_STRING },
+                unhealthyInRange: { required: false, value: "string" },
+              }),
+            },
+            templateRef: { required: false, value: templateRef },
+          }),
+        },
+      }),
+    },
+    deletion: {
+      required: false,
+      value: fields<MachineDeploymentTopologyMachineDeletionSpec>({
+        order: { required: false, value: { union: ["Random", "Newest", "Oldest"] } },
+        ...deletion,
+      }),
+    },
+    taints: { required: false, value: listOf(taint) },
+    minReadySeconds: { required: false, value: "number" },
+    readinessGates: { required: false, value: listOf(readinessGate) },
+    rollout: {
+      required: false,
+      value: fields<MachineDeploymentTopologyRolloutSpec>({
+        after: { required: false, value: "string" },
+        strategy: {
+          required: false,
+          value: fields<MachineDeploymentTopologyRolloutStrategy>({
+            type: { required: true, value: { union: ["RollingUpdate", "OnDelete"] } },
+            rollingUpdate: {
+              required: false,
+              value: fields<MachineDeploymentTopologyRolloutStrategyRollingUpdate>({
+                maxUnavailable: { required: false, value: INT_OR_STRING },
+                maxSurge: { required: false, value: INT_OR_STRING },
+              }),
+            },
+          }),
+        },
+      }),
+    },
   },
-  deletion: {
-    required: false,
-    value: fields<MachineDeploymentTopologyMachineDeletionSpec>({
-      order: { required: false, value: { union: ["Random", "Newest", "Oldest"] } },
-      ...deletion,
-    }),
-  },
-  taints: { required: false, value: listOf(taint) },
-  minReadySeconds: { required: false, value: "number" },
-  readinessGates: { required: false, value: listOf(readinessGate) },
-  rollout: {
-    required: false,
-    value: fields<MachineDeploymentTopologyRolloutSpec>({
-      after: { required: false, value: "string" },
-      strategy: {
-        required: false,
-        value: fields<MachineDeploymentTopologyRolloutStrategy>({
-          type: { required: true, value: { union: ["RollingUpdate", "OnDelete"] } },
-          rollingUpdate: {
-            required: false,
-            value: fields<MachineDeploymentTopologyRolloutStrategyRollingUpdate>({
-              maxUnavailable: { required: false, value: INT_OR_STRING },
-              maxSurge: { required: false, value: INT_OR_STRING },
-            }),
-          },
-        }),
-      },
-    }),
-  },
-  variables: { required: false, value: fields<MachineDeploymentVariables>(overrides) },
-});
+  ["variables"],
+);
 
-const poolTopology = fields<MachinePoolTopology>({
-  metadata: { required: false, value: objectMeta },
-  class: { required: true, value: "string" },
-  name: { required: true, value: "string" },
-  failureDomains: { required: false, value: listOf("string") },
-  deletion: { required: false, value: fields<MachinePoolTopologyMachineDeletionSpec>(deletion) },
-  taints: { required: false, value: listOf(taint) },
-  minReadySeconds: { required: false, value: "number" },
-  replicas: { required: false, value: "number" },
-  variables: { required: false, value: fields<MachinePoolVariables>(overrides) },
-});
+const poolTopology = fields<MachinePoolTopology>(
+  {
+    metadata: { required: false, value: objectMeta },
+    class: { required: true, value: "string" },
+    name: { required: true, value: "string" },
+    failureDomains: { required: false, value: listOf("string") },
+    deletion: { required: false, value: fields<MachinePoolTopologyMachineDeletionSpec>(deletion) },
+    taints: { required: false, value: listOf(taint) },
+    minReadySeconds: { required: false, value: "number" },
+    replicas: { required: false, value: "number" },
+  },
+  ["variables"],
+);
 
-const topology = fields<Topology>({
-  classRef: {
-    required: true,
-    value: fields<ClusterClassRef>({
-      name: { required: true, value: "string" },
-      namespace: { required: false, value: "string" },
-    }),
+const topology = fields<Topology>(
+  {
+    classRef: {
+      required: true,
+      value: fields<ClusterClassRef>({
+        name: { required: true, value: "string" },
+        namespace: { required: false, value: "string" },
+      }),
+    },
+    version: { required: true, value: "string" },
+    controlPlane: { required: false, value: controlPlaneTopology },
+    workers: {
+      required: false,
+      value: fields<WorkersTopology>({
+        machineDeployments: { required: false, value: listOf(deploymentTopology) },
+        machinePools: { required: false, value: listOf(poolTopology) },
+      }),
+    },
   },
-  version: { required: true, value: "string" },
-  controlPlane: { required: false, value: controlPlaneTopology },
-  workers: {
-    required: false,
-    value: fields<WorkersTopology>({
-      machineDeployments: { required: false, value: listOf(deploymentTopology) },
-      machinePools: { required: false, value: listOf(poolTopology) },
-    }),
-  },
-  variables: { required: false, value: listOf(variable) },
-});
+  ["variables"],
+);
 
 const ranges = fields<NetworkRanges>({ cidrBlocks: { required: true, value: listOf("string") } });
 
@@ -421,7 +428,7 @@ function misfits(value: unknown, shape: Shape, path: string): string[] {
   if ("map" in shape) return Object.entries(record).flatMap(([key, item]) => misfits(item, "string", `${path}.${key}`));
   return [
     ...Object.keys(record)
-      .filter((key) => !(key in shape.fields))
+      .filter((key) => !(key in shape.fields) && !shape.untyped.includes(key))
       .map((key) => `${path}.${key}: not declared`),
     ...Object.entries(shape.fields).flatMap(([key, field]) =>
       record[key] === undefined
@@ -454,6 +461,27 @@ describe("the types of a Cluster", () => {
     expect(misfits({ controlPlaneRef: { kind: "K", name: "n" } }, spec, "spec")).toEqual([
       "spec.controlPlaneRef.apiGroup: required and missing",
     ]);
+  });
+
+  it("type neither the variables of a topology nor those of its parts, which hold what a variable is set to (SPEC-0005, the note on the names of the variables)", () => {
+    // @ts-expect-error: the variables of a topology are not typed
+    const variables: Topology["variables"] = undefined;
+    // @ts-expect-error: nor are those of its control plane
+    const controlPlane: ControlPlaneTopology["variables"] = undefined;
+    // @ts-expect-error: nor those of a MachineDeployment of its workers
+    const deployment: MachineDeploymentTopology["variables"] = undefined;
+    // @ts-expect-error: nor those of a MachinePool of its workers
+    const pool: MachinePoolTopology["variables"] = undefined;
+
+    expect([variables, controlPlane, deployment, pool]).toEqual([undefined, undefined, undefined, undefined]);
+    // The variables that the Cluster of healthy sets are left out of its types, and read as no misfit.
+    expect(
+      misfits(
+        ofKind<{ spec: { topology: unknown } }>(fixtureSet("healthy"), "Cluster")[0].spec.topology,
+        topology,
+        "t",
+      ),
+    ).toEqual([]);
   });
 
   it("fit the input of the rule of Cluster of SPEC-0003, and refuse what the schema requires missing", () => {

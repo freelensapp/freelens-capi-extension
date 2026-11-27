@@ -109,6 +109,43 @@ export interface MachineHealthCheckRemediationTemplateReference {
 // A number or a percentage, as Kubernetes writes an `IntOrString`.
 export type IntOrString = number | string;
 
+// The bootstrap of a Machine (api/core/v1beta2/machine_types.go:781-795), of which the tree follows the reference to
+// its config (SPEC-0005, P6).
+export interface Bootstrap {
+  configRef?: ContractVersionedObjectReference;
+}
+
+// The fields of the spec of a Machine that the tree follows (SPEC-0005, P6; api/core/v1beta2/machine_types.go:416-453):
+// the references to its bootstrap config and to its infrastructure machine, its version and its provider ID. The
+// models of the kinds that the view reads as the context of the status model type no other field of the struct
+// (SPEC-0004, P1), which the view of Machines types whole (SPEC-0008).
+export interface MachineSpec {
+  bootstrap: Bootstrap;
+  infrastructureRef: ContractVersionedObjectReference;
+  version?: string;
+  providerID?: string;
+}
+
+// The template of the Machines of a MachineDeployment, a MachineSet and a MachinePool
+// (api/core/v1beta2/machineset_types.go:260-270), of which the tree follows the spec.
+export interface MachineTemplateSpec {
+  spec: MachineSpec;
+}
+
+// A label selector of Kubernetes (metav1.LabelSelector), as a ClusterResourceSet selects its Clusters. The operator of
+// a requirement has no enumeration in the schema
+// (core/config/crd/bases/addons.cluster.x-k8s.io_clusterresourcesets.yaml, spec.clusterSelector).
+export interface LabelSelector {
+  matchLabels?: Record<string, string>;
+  matchExpressions?: LabelSelectorRequirement[];
+}
+
+export interface LabelSelectorRequirement {
+  key: string;
+  operator: string;
+  values?: string[];
+}
+
 // The order in which a MachineSet deletes its Machines, and the strategy of the rollout of a MachineDeployment
 // (api/core/v1beta2/machineset_types.go:275; api/core/v1beta2/machinedeployment_types.go:36).
 export type MachineSetDeletionOrder = "Random" | "Newest" | "Oldest";
