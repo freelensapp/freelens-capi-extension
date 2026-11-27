@@ -70,14 +70,16 @@ import {
   keyEffect,
   marksProblems,
   moveScrollProblem,
+  removalScroll,
   rowsLost,
   waitingReads,
   wholeInView,
   writesOfTheFrame,
 } from "./tree-checks";
 import {
+  CREATED_CHILD,
   CREATED_MACHINE,
-  CREATED_ROWS,
+  CREATED_ROW,
   createdMachine,
   EXPECTED_MARKS,
   EXPECTED_TREES,
@@ -315,11 +317,14 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
     await rowOf(tree, id).getByTestId("capi-tree-name-button").click();
   }
 
+  // The rows that the list draws, in the order of their places.
+  async function sortedRows(tree: Locator): Promise<DrawnRow[]> {
+    return (await drawnRows(tree)).sort((one, other) => one.index - other.index);
+  }
+
   // The rows that the list draws, in their order, as the keys of P18 move among them.
   async function shownRows(tree: Locator): Promise<ShownRow[]> {
-    return (await drawnRows(tree))
-      .sort((one, other) => one.index - other.index)
-      .map((row) => ({ id: row.id, level: row.level, expanded: row.expanded }));
+    return (await sortedRows(tree)).map((row) => ({ id: row.id, level: row.level, expanded: row.expanded }));
   }
 
   // The top and the bottom of the row of a node in the window of the list, when the list draws it.
@@ -1175,9 +1180,10 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
       }
 
       // The Machine created above the rows in view, the tree with every node expanded and scrolled to its end: it is
-      // the first row under the KubeadmControlPlane, its infrastructure machine not found, and the first row in view
-      // keeps its place, by its id and its top; then, the list scrolled up from its end by more than the rows that go,
-      // the Machine deleted, and the first row in view keeps its place again.
+      // the first row under the KubeadmControlPlane, collapsed, as a node that a watch adds comes (P13), with the counts
+      // of its infrastructure machine, which is not found, and the first row in view keeps its place, by its id and its
+      // top; then the Machine expanded shows that infrastructure machine; then, with the rows that go above the first
+      // row in view and the list short of its end, the Machine deleted, and the first row in view keeps its place again.
       tree = await openTree(frame, namespace, name);
       await expandAll(tree);
       await scrollListTo(tree, (await listMetrics(tree)).scrollHeight);
@@ -1213,16 +1219,19 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
         );
         await rendered(tree);
 
-        const drawn = (await drawnRows(tree)).sort((one, other) => one.index - other.index);
+        const drawn = await sortedRows(tree);
         const at = drawn.findIndex((row) => row.id === created);
         const plane = drawn.findIndex(
           (row) => row.id === "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
         );
 
-        expect(drawn.slice(at, at + 2).map((row) => outlineTextOf(row))).toEqual([...CREATED_ROWS]);
+        // The row of the Machine alone: its place, its level, collapsed, and its counts.
         expect(at).toBe(plane + 1);
+        expect(outlineTextOf(drawn[at])).toBe(CREATED_ROW.text);
         expect(drawn[at].level).toBe(drawn[plane].level + 1);
-        // The row of the Machine sits above the first row in view, so that its rows are inserted above the view.
+        expect(drawn[at].expanded).toBe(CREATED_ROW.expanded);
+        expect(drawn[at].counts).toBe(CREATED_ROW.counts);
+        // The row of the Machine sits above the first row in view, so that it is inserted above the view.
         expect(drawn[at].bottom).toBeLessThanOrEqual(0.5);
         if (JSON.stringify(await inView()) !== JSON.stringify(firstBefore)) {
           problems.push(
@@ -1230,10 +1239,41 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
           );
         }
 
-        // Up from the end by more than the two rows that go, where the list keeps its place only if the page moves it.
-        const { scrollTop } = await listMetrics(tree);
+        // Once the compensation is checked, the Machine expanded by its button, as a user expands it: its
+        // infrastructure machine not found, a level under it. An expansion moves no row of its own (P13), so the
+        // rows in view shift by that row, which no check reads.
+        await rowOf(tree, created)
+          .getByTestId("capi-tree-expander")
+          .evaluate((button) => (button as HTMLElement).click());
+        await until(
+          `${created} to expand`,
+          async () => (await rowOf(tree, created).getAttribute("aria-expanded")) === "true",
+        );
+        await rendered(tree);
 
-        await scrollListTo(tree, scrollTop - 4 * ROW_HEIGHT);
+        const expandedRows = await sortedRows(tree);
+        const machineAt = expandedRows.findIndex((row) => row.id === created);
+
+        expect(outlineTextOf(expandedRows[machineAt + 1])).toBe(CREATED_CHILD);
+        expect(expandedRows[machineAt + 1].level).toBe(expandedRows[machineAt].level + 1);
+
+        // The rows that go, the Machine and its infrastructure machine, above the first row in view, and the list short
+        // of its end: at its end the browser keeps the scroll within the shorter list, which takes it back by the height
+        // of the rows that go as the page does, and a page that moves nothing would pass.
+        const { scrollHeight, clientHeight } = await listMetrics(tree);
+        const target = removalScroll(
+          expandedRows.slice(machineAt, machineAt + 2).map((row) => row.index),
+          scrollHeight,
+          clientHeight,
+          ROW_HEIGHT,
+        );
+
+        if (target === undefined) {
+          throw new Error(
+            `The list of ${clientHeight} px cannot hold the rows that go above its view and stay short of its end: ${scrollHeight} px of rows`,
+          );
+        }
+        await scrollListTo(tree, target);
 
         const firstUp = await inView();
 

@@ -1064,11 +1064,17 @@ export function createdMachine(): {
   };
 }
 
-// The rows that the created Machine adds, first under the KubeadmControlPlane (P7, P14), by their texts.
-export const CREATED_ROWS: readonly string[] = [
-  `Machine ${CREATED_MACHINE}`,
-  `DevMachine ${CREATED_MACHINE} (infrastructure machine) [not found]`,
-];
+// The row that the created Machine adds, first under the KubeadmControlPlane (P7, P14), by its text: a node that a watch
+// adds comes collapsed, since only the user expands once the tree is shown (P13), with the counts of what it holds, its
+// infrastructure machine, which is not found (P11, P12).
+export const CREATED_ROW = {
+  text: `Machine ${CREATED_MACHINE}`,
+  expanded: "false",
+  counts: "1 object: 1 not found",
+} as const;
+
+// The row under the created Machine once the session expands it, by its text.
+export const CREATED_CHILD = `DevMachine ${CREATED_MACHINE} (infrastructure machine) [not found]`;
 
 // The condition `Ready` that step 6 writes on NOT_READY_WORKER through the status subresource, in place of its own.
 export const NOT_READY = {

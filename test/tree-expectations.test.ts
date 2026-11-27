@@ -8,8 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   activityTones,
+  CREATED_CHILD,
   CREATED_MACHINE,
-  CREATED_ROWS,
+  CREATED_ROW,
   createdMachine,
   EXPECTED_MARKS,
   EXPECTED_TREES,
@@ -30,7 +31,7 @@ import { activityCell, healthCell } from "../src/common/views/cluster-cells";
 import { buildTree, evaluateTree, indexTree } from "../src/common/views/cluster-tree";
 import { StatusMemo } from "../src/common/views/context";
 import { searchWordsOf } from "../src/common/views/tree-cells";
-import { countsOf, countWords, firstExpansion, rowsOf, searchTree } from "../src/common/views/tree-rows";
+import { countsOf, countWords, firstExpansion, rowsOf, rowsStateOf, searchTree } from "../src/common/views/tree-rows";
 import { CAPTURE, fixtureSet, STATES } from "./fixture-sets";
 import { outlineText, treeOutline, treeSourceOf } from "./tree-sources";
 
@@ -217,7 +218,7 @@ describe("the expectations of the sessions of the tree", () => {
     );
   });
 
-  it("place the Machine that step 6 creates first under the KubeadmControlPlane, its infrastructure machine not found", () => {
+  it("show the Machine that step 6 creates first under the KubeadmControlPlane, collapsed, with the counts of its infrastructure machine not found, which its expansion shows", () => {
     const machine = createdMachine();
     const objects = [
       ...(fixtureSet("healthy") as unknown as KubeObjectData[]),
@@ -231,16 +232,38 @@ describe("the expectations of the sessions of the tree", () => {
         },
       } as unknown as KubeObjectData,
     ];
-    const outline = treeOutline(evaluated("healthy", CAPTURE + MINUTE, objects).tree);
-    const plane = outline.findIndex((row) => row.text === "KubeadmControlPlane freelens-capi-healthy-d2lgq");
+    // The session expands every node of the tree of healthy before it creates the Machine; the page keeps those
+    // expansions, by the identities of the nodes, for as long as it shows that Cluster, and expands nothing that a
+    // watch adds (P13).
+    const before = evaluated("healthy", CAPTURE + MINUTE).tree;
+    const after = evaluated("healthy", CAPTURE + MINUTE, objects);
+    const kept = rowsStateOf(
+      { cluster: `${LIVE_NAMESPACE}/${TREE_CLUSTERS.healthy}`, expanded: new Set(before.nodes.keys()), search: "" },
+      after.tree,
+      after.statuses,
+    );
+    const { expanded } = kept;
+    const shown = rowsOf(after.tree, expanded);
+    const plane = shown.findIndex((row) => outlineText(row.node) === "KubeadmControlPlane freelens-capi-healthy-d2lgq");
+    const created = shown[plane + 1];
 
     expect(machine.metadata.namespace).toBe(LIVE_NAMESPACE);
     expect(CREATED_MACHINE < "freelens-capi-healthy-d2lgq-zqlcx").toBe(true);
-    expect(outline.slice(plane + 1, plane + 3)).toEqual([
-      { depth: 2, text: CREATED_ROWS[0] },
-      { depth: 3, text: CREATED_ROWS[1] },
-    ]);
-    expect(outline.filter((row) => !CREATED_ROWS.includes(row.text))).toEqual(outlineRows(EXPECTED_TREES.healthy));
+    expect(outlineText(created.node)).toBe(CREATED_ROW.text);
+    expect(created.depth).toBe(shown[plane].depth + 1);
+    expect(created.expandable).toBe(true);
+    expect(String(created.expanded)).toBe(CREATED_ROW.expanded);
+    expect(countsByText(after).get(CREATED_ROW.text)).toBe(CREATED_ROW.counts);
+    expect(shown.filter((row) => row.node !== created.node).map((row) => outlineText(row.node))).toEqual(
+      outlineRows(EXPECTED_TREES.healthy).map((row) => row.text),
+    );
+
+    // Expanded by the session, as a user expands it: its infrastructure machine, not found, a level under it.
+    const opened = rowsOf(after.tree, new Set([...expanded, created.node.id]));
+    const at = opened.findIndex((row) => row.node === created.node);
+
+    expect(outlineText(opened[at + 1].node)).toBe(CREATED_CHILD);
+    expect(opened[at + 1].depth).toBe(created.depth + 1);
   });
 
   it("count a worker Machine paused by its annotation as stale, and one whose Ready is False as Unhealthy, in the nodes above it (step 6)", () => {

@@ -15,6 +15,7 @@ import {
   marksProblems,
   moveScrollProblem,
   readsAGroupOfTheTree,
+  removalScroll,
   rowsLost,
   waitingReads,
   wholeInView,
@@ -371,6 +372,18 @@ describe("what the sessions of the tree decide", () => {
     expect(wholeInView({ top: 0, bottom: 33 }, 33)).toBe(true);
     expect(wholeInView({ top: -3, bottom: 30 }, 700)).toBe(false);
     expect(wholeInView({ top: 690, bottom: 723 }, 700)).toBe(false);
+  });
+
+  it("scroll the list so that the rows that go are above the first row in view, with the list short of its end, or say it cannot", () => {
+    // 30 rows of 33 px in a list of 787 px, the scroll up to 203 px: the rows at 3 and 4 end at 165 px.
+    expect(removalScroll([3, 4], 990, 787, 33)).toBe(176);
+    // Short of its end by one pixel at least, where the browser would take the scroll back as the page does.
+    expect(removalScroll([3, 4], 990, 815, 33)).toBe(174);
+    expect(removalScroll([3, 4], 990, 820, 33)).toBe(169);
+    // A list too tall to hold the rows that go above its view and stay short of its end.
+    expect(removalScroll([3, 4], 990, 825, 33)).toBeUndefined();
+    expect(removalScroll([3], 957, 787, 33)).toBe(143);
+    expect(removalScroll([], 957, 787, 33)).toBeUndefined();
   });
 
   it("report the rows drawn before a refresh that a record after it does not hold", () => {

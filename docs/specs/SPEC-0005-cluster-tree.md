@@ -3600,6 +3600,27 @@ the contract label of the definition for a control plane of a provider; and
   sent after the click has ended in its resource timing, the requests that the
   session records naming them; seen failing once against a refresh that empties
   its stores before it loads them, by a patch of the branch of the screenshots.
+- Decided while implementing the third part, after the first run of its CI, in
+  which step 6 found the Machine that it creates with no row under it: as P13
+  says, a node that a watch adds once the tree is shown comes collapsed, since
+  only the user expands then, and the page follows it, while the step expected
+  the rows of every node. So the step asserts the row of the Machine alone, its
+  place first under the KubeadmControlPlane, its level, `aria-expanded` false
+  and its counts, `1 object: 1 not found`, then that the first row in view kept
+  its place, and only then expands the Machine by its button, as a user does,
+  and finds its DevMachine not found a level under it, since an expansion above
+  the view moves the rows in view, which the page does not compensate (P13).
+  The unit case takes the rows that the page shows from the expansions that it
+  keeps (`rowsStateOf` and `rowsOf` of `tree-rows.ts`), no longer the whole
+  outline. The deletion scrolls the list to the offset that `removalScroll` of
+  `tree-checks.ts` gives, in place of a scroll up from the end of the list by
+  more than the rows that go, which "Tests", "In Freelens", 6 says: on the tree
+  of `healthy`, 30 rows in a list of 787 px, which the first run measured, four
+  rows up from the end brought the rows that go into view, where no page moves
+  anything, so the check could not fail. The offset that it takes puts the rows
+  that go above the first row in view and the list short of its end: at its end
+  the browser, which keeps the scroll within the shorter list, takes it back by
+  their height as the page does, and a page that moves nothing would pass.
 - Decided while implementing the third part, for steps 8 and 9: step 8 is a
   test of its own, after the write that TEST_PLANT_WRITE plants, and step 9 a
   group of its own, which applies the large Cluster before its test, within

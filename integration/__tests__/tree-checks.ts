@@ -300,6 +300,24 @@ export function wholeInView(row: { readonly top: number; readonly bottom: number
   return row.top >= -0.5 && row.bottom <= viewHeight + 0.5;
 }
 
+// The scroll of the list at which the rows that a change of the reads removes, by their places among the rows shown,
+// are all above the first row in view, which shows two thirds of itself, and the list is short of its end (P13; step
+// 6). At its end the browser keeps the scroll within the shorter list once rows go, which takes it back by their
+// height, as the page does, so a page that moves nothing would keep the rows in view in place there too. Undefined when
+// the list is too tall for both.
+export function removalScroll(
+  removed: readonly number[],
+  scrollHeight: number,
+  clientHeight: number,
+  rowHeight: number,
+): number | undefined {
+  const below = (Math.max(...removed) + 1) * rowHeight;
+  const end = scrollHeight - clientHeight;
+  const target = Math.min(below + rowHeight / 3, end - 1);
+
+  return removed.length > 0 && target >= below ? target : undefined;
+}
+
 // The rows drawn before a change of the reads that the frame no longer draws at some moment after it, from the rows
 // that an observer of the DOM recorded at each change of the document (P23).
 export function rowsLost(
