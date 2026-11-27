@@ -1081,10 +1081,10 @@ describe("the IPAddressClaims of a Cluster (P7, P21)", () => {
     );
   });
 
-  it("the claim of no-status that names its Cluster, as P21 captures it, sits under Other objects with its address", () => {
+  it("the claim of no-status, which names its Cluster as P21 captures it, sits under Other objects with its address", () => {
     const objects = setOf("no-status");
 
-    named(objects, "IPAddressClaim").spec.clusterName = "freelens-capi-no-status";
+    expect(named(objects, "IPAddressClaim").spec.clusterName).toBe("freelens-capi-no-status");
 
     const rows = treeOutline(treeOf(objects, "freelens-capi-no-status"));
 

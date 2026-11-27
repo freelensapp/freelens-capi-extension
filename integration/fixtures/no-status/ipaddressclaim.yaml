@@ -5,6 +5,7 @@ metadata:
   name: freelens-capi-no-status
   namespace: freelens-capi-no-status
 spec:
+  clusterName: freelens-capi-no-status
   poolRef:
     apiGroup: ipam.test-environment.freelens.app
     kind: AddressPool

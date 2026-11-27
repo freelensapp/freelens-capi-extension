@@ -14,8 +14,8 @@
 // - a resource of a ClusterResourceSet: its kind and its name, then how the binding of the Cluster records it,
 //   `[applied]`, `[not applied]`, `[in no binding]`, or `[not read]` when the bindings cannot be read.
 //
-// The set `no-status` holds no IPAddressClaim of its Cluster until its capture gives its claim `spec.clusterName`
-// (SPEC-0005, P21); the unit case of P21 writes that field meanwhile.
+// The claim of the set `no-status` names its Cluster in `spec.clusterName`, as the dry run that captures the set writes
+// it (SPEC-0005, P21), so its tree holds the claim and its IPAddress, under Other objects, since the claim has no owner.
 
 // The namespace and the name of the Cluster of each state (docs/development/TESTING.md, "The fixtures").
 export const TREE_CLUSTERS: Readonly<Record<string, string>> = {
@@ -184,6 +184,8 @@ Cluster freelens-capi-no-status
     Machine freelens-capi-no-status-machine-0
       DevMachine freelens-capi-no-status-machine-0 (infrastructure machine)
       KubeadmConfig freelens-capi-no-status-machine-0
+    IPAddressClaim freelens-capi-no-status
+      IPAddress freelens-capi-no-status
 `,
   paused: `
 Cluster freelens-capi-paused

@@ -6,9 +6,11 @@ no template of the release uses, as a user writes it, before any controller
 reconciles it, so with no status: the scripts send them to the real project in a
 server-side dry run of their creation, which its webhooks default and validate
 and which stores nothing, and keep what the API server answers. They make one
-Cluster without a topology, whose parts name each other, and a ClusterClass. No
-ExtensionConfig is among them: the real project of the test environment runs
-without the feature RuntimeSDK, without which its webhook refuses one.
+Cluster without a topology, whose parts name each other, and a ClusterClass, and
+their IPAddressClaim names that Cluster in `spec.clusterName`, as a user writes
+a claim of a Cluster. No ExtensionConfig is among them: the real project of the
+test environment runs without the feature RuntimeSDK, without which its webhook
+refuses one.
 
 What the real project of the test environment, Cluster API `v1.14.4` with its
 development provider, answered to a server-side dry run of the creation of the

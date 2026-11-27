@@ -142,23 +142,23 @@ says how the state was reached and a YAML file for each kind of its objects,
 which live in a namespace of their own, named as the workload cluster of the
 state, so that the fixtures of every state can be on the first tier at once.
 
-| State                           | Namespace                             | How the real project was brought into it                                                                                                             |
-| ------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provisioning`                  | `freelens-capi-provisioning`          | A Cluster with a managed topology, its control plane held before kubeadm by a command that the scripts give its template                             |
-| `healthy`                       | `freelens-capi-healthy`               | A Cluster with a managed topology, two workers and kindnet, once every condition is at its normal value and every Machine is checked healthy         |
-| `machine-without-node`          | `freelens-capi-without-node`          | A MachineSet beside the topology, whose Node registers with a provider ID that is not the one of its Machine                                         |
-| `rolling-out`                   | `freelens-capi-rolling-out`           | `clusterctl alpha rollout restart` of the MachineDeployment, while a new Machine starts                                                              |
-| `scaling-up`                    | `freelens-capi-scaling-up`            | The topology asks for three control plane Machines and a second worker, while they start                                                             |
-| `scaling-up-held`               | `freelens-capi-scaling-up-held`       | The MachineDeployment scaled by its own replicas while the control plane upgrades, which the preflight checks of the MachineSet hold                 |
-| `scaling-down`                  | `freelens-capi-scaling-down`          | The topology asks for one worker of two, while a pre-drain hook of the scripts holds the deletion of the other                                       |
-| `paused`                        | `freelens-capi-paused`                | `spec.paused` of the Cluster                                                                                                                         |
-| `deleting`                      | `freelens-capi-deleting`              | The Cluster deleted, while a pre-terminate hook of the scripts holds a worker                                                                        |
-| `upgrading`                     | `freelens-capi-upgrading`             | The version of the topology moved from `workloadKubernetesUpgradeFrom` of the pins to `workloadKubernetesVersion`, while the control plane rolls out |
-| `without-topology`              | `freelens-capi-without-topology`      | A Cluster that names its parts, written by the scripts from the schemas, once every condition is at its normal value                                 |
-| `machine-pools`                 | `freelens-capi-machine-pools`         | A Cluster whose only workers are a MachinePool, with no network add-on                                                                               |
-| `machine-pool-without-machines` | `freelens-capi-pool-without-machines` | Written by hand, from SPEC-0001 R2.66 to R2.69: a MachinePool whose provider keeps no Machines, which the development provider cannot show           |
-| `remediation`                   | `freelens-capi-remediation`           | Both workers marked for remediation with `maxInFlight` 1: one remediated, its deletion held by a hook of the scripts, the other deferred             |
-| `no-status`                     | `freelens-capi-no-status`             | One or two objects of each kind but the Docker kinds, as a user writes them, in a server-side dry run of their creation                              |
+| State                           | Namespace                             | How the real project was brought into it                                                                                                              |
+| ------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provisioning`                  | `freelens-capi-provisioning`          | A Cluster with a managed topology, its control plane held before kubeadm by a command that the scripts give its template                              |
+| `healthy`                       | `freelens-capi-healthy`               | A Cluster with a managed topology, two workers and kindnet, once every condition is at its normal value and every Machine is checked healthy          |
+| `machine-without-node`          | `freelens-capi-without-node`          | A MachineSet beside the topology, whose Node registers with a provider ID that is not the one of its Machine                                          |
+| `rolling-out`                   | `freelens-capi-rolling-out`           | `clusterctl alpha rollout restart` of the MachineDeployment, while a new Machine starts                                                               |
+| `scaling-up`                    | `freelens-capi-scaling-up`            | The topology asks for three control plane Machines and a second worker, while they start                                                              |
+| `scaling-up-held`               | `freelens-capi-scaling-up-held`       | The MachineDeployment scaled by its own replicas while the control plane upgrades, which the preflight checks of the MachineSet hold                  |
+| `scaling-down`                  | `freelens-capi-scaling-down`          | The topology asks for one worker of two, while a pre-drain hook of the scripts holds the deletion of the other                                        |
+| `paused`                        | `freelens-capi-paused`                | `spec.paused` of the Cluster                                                                                                                          |
+| `deleting`                      | `freelens-capi-deleting`              | The Cluster deleted, while a pre-terminate hook of the scripts holds a worker                                                                         |
+| `upgrading`                     | `freelens-capi-upgrading`             | The version of the topology moved from `workloadKubernetesUpgradeFrom` of the pins to `workloadKubernetesVersion`, while the control plane rolls out  |
+| `without-topology`              | `freelens-capi-without-topology`      | A Cluster that names its parts, written by the scripts from the schemas, once every condition is at its normal value                                  |
+| `machine-pools`                 | `freelens-capi-machine-pools`         | A Cluster whose only workers are a MachinePool, with no network add-on                                                                                |
+| `machine-pool-without-machines` | `freelens-capi-pool-without-machines` | Written by hand, from SPEC-0001 R2.66 to R2.69: a MachinePool whose provider keeps no Machines, which the development provider cannot show            |
+| `remediation`                   | `freelens-capi-remediation`           | Both workers marked for remediation with `maxInFlight` 1: one remediated, its deletion held by a hook of the scripts, the other deferred              |
+| `no-status`                     | `freelens-capi-no-status`             | One or two objects of each kind but the Docker kinds, as a user writes them, in a server-side dry run of their creation, the claim naming its Cluster |
 
 The files are YAML as kubectl writes it, with the keys in order and the
 sequences unindented under their key, quotes only where a value needs them, as

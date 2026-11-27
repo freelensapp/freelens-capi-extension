@@ -68,6 +68,7 @@ import {
   kindnetLabelArgument,
   kindnetManifest,
   kindnetResources,
+  objectsWithoutStatus,
   S7,
   s7Clusters,
   s7ClusterWithNoReference,
@@ -2241,6 +2242,23 @@ describe("the states of the fixtures", () => {
     expect(selects({ matchExpressions: [{ key: "constructor", operator: "Exists" }] }, labels)).toBe(false);
     expect(selects({ matchExpressions: [{ key: "tier", operator: "DoesNotExist" }] }, labels)).toBe(false);
     expect(selects({ matchExpressions: [{ key: "tier", operator: "Gt", values: ["1"] }] }, labels)).toBe(false);
+  });
+
+  it("writes the objects of no-status as a user writes them, its claim naming its Cluster in spec.clusterName (SPEC-0005, P21)", () => {
+    const objects = objectsWithoutStatus("workload", "workload-namespace", {
+      kubernetes: "v1.37.0",
+      clusterApi: "v1.14.4",
+    }) as KubeObject[];
+
+    expect(objects.filter((object) => object.kind === "Cluster").map((cluster) => cluster.metadata.name)).toEqual([
+      "workload",
+    ]);
+    expect(objects.filter((object) => object.kind === "IPAddressClaim").map((claim) => claim.spec)).toEqual([
+      {
+        clusterName: "workload",
+        poolRef: { apiGroup: "ipam.test-environment.freelens.app", kind: "AddressPool", name: "workload" },
+      },
+    ]);
   });
 
   it.each(["healthy", "paused"])(
