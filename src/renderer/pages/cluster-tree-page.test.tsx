@@ -412,6 +412,27 @@ describe("the states of the tree (P13, P19)", () => {
     expect(screen.queryByTestId("capi-tree")).toBeNull();
   });
 
+  it("keeps the details open when the Cluster goes, saying that their object is gone, until the user closes them", async () => {
+    const { params, built } = await opened(MACHINE);
+    const clusters = ownStore("Cluster", built);
+
+    expect(screen.getByTestId("capi-node-details")).toBeDefined();
+    act(() => {
+      runInAction(() => clusters.items.replace([]));
+    });
+
+    expect(screen.getByTestId("capi-tree-not-found")).toBeDefined();
+    expect(params.details.get()).toBe(MACHINE);
+    expect(drawerTitle()).toBe(`Machine: ${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`);
+    expect(screen.getByTestId("capi-tree-details-absent").textContent).toBe(
+      `No such object is in the tree of the Cluster ${HEALTHY}/${HEALTHY} any longer: Machine ${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg was there, and is gone.`,
+    );
+
+    fireEvent.click(screen.getByTestId("capi-tree-details-close"));
+    expect(params.details.get()).toBe("");
+    expect(screen.queryByTestId("capi-tree-details")).toBeNull();
+  });
+
   it("shows the error page in the place of the tree when what the tree computes throws, the header kept", async () => {
     const treeOf = vi.spyOn(TreeBuilds.prototype, "treeOf").mockImplementation(() => {
       throw new TypeError("the tree failed");

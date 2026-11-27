@@ -85,7 +85,7 @@ import type { Common } from "@freelensapp/extensions";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { ConditionsResult } from "../../common/status/index";
-import type { ClusterTree, NodeStatus, TreeIndex, TreeNode } from "../../common/views/cluster-tree";
+import type { ClusterTree, NodeStatus, TreeIndex, TreeNode, TreeOutcome } from "../../common/views/cluster-tree";
 import type { ClusterViewState } from "../../common/views/cluster-view";
 import type { NodeDetails } from "../../common/views/node-details";
 import type { Notice } from "../../common/views/read-state";
@@ -866,7 +866,7 @@ const TreeContent = observer((props: TreeContentProps) => {
 
   // What the drawer shows of the node of the address, which the drawer computes inside its own error boundary (P17).
   const contentOf = () =>
-    drawerContent(found, index, address, namespace, page, (node) =>
+    drawerContent(outcome, index, address, namespace, page, (node) =>
       nodeDetailsOf(found as ClusterTree, node, { status: statuses.get(node.id), conditions: conditionsOf(node) }),
     );
 
@@ -914,7 +914,7 @@ const TreeContent = observer((props: TreeContentProps) => {
           </Table>
         </div>
       )}
-      {shown && outcome?.state !== "found" ? null : (
+      {shown && outcome?.state === "not-read" ? null : (
         <TreeDetailsDrawer
           address={address}
           contentOf={contentOf}
@@ -931,17 +931,24 @@ const TreeContent = observer((props: TreeContentProps) => {
   );
 });
 
-// What the drawer shows of the node that the address names (P17, P19).
+// What the drawer shows of the node that the address names (P17, P19, P23). The drawer stays while the tree loads, while
+// the Cluster is not found and once it is gone, and goes while its namespace cannot be read, which the page says in the
+// place of the tree.
 function drawerContent(
-  tree: ClusterTree | undefined,
+  outcome: TreeOutcome | undefined,
   index: TreeIndex | undefined,
   address: NodeAddress,
   namespace: string,
   page: TreePage,
   detailsOf: (node: Extract<TreeNode, { readonly form: "object" | "reference" }>) => NodeDetails,
 ): DrawerContent {
-  if (address.state !== "node" || tree === undefined || index === undefined) return { state: "loading" };
+  if (address.state !== "node") return { state: "loading" };
+  // The Cluster is gone, and every object of its tree with it: the details stay open, and say that their object is no
+  // longer in the tree, until the user closes them (P23).
+  if (outcome?.state === "not-found") return { state: "absent", gone: page.seen.has(address.id) };
+  if (outcome?.state !== "found" || index === undefined) return { state: "loading" };
 
+  const { tree } = outcome;
   const node = tree.nodes.get(address.id);
 
   if (node === tree.root) return { state: "root" };
