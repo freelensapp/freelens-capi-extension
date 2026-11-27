@@ -696,6 +696,19 @@ const TreeContent = observer((props: TreeContentProps) => {
     return () => clearTimeout(timer);
   }, [next, rerender]);
 
+  // The element of the tree takes the focus as it is drawn, with no scroll, so that the keys of the tree work at once,
+  // which the search, with `autoFocus` false, leaves to it (P15, P18); unless a control holds the focus, as the search in
+  // which the user typed while the tree loaded.
+  const treeDrawn = found !== undefined;
+
+  useLayoutEffect(() => {
+    if (!treeDrawn) return;
+
+    const focused = document.activeElement;
+
+    if (focused === null || focused === document.body) page.focusTree();
+  }, [treeDrawn, page]);
+
   // The header says how many nodes the search matches, once the tree has searched, and nothing once the tree is gone.
   useLayoutEffect(() => onMatches(matches), [matches, onMatches]);
   useLayoutEffect(() => () => onMatches(undefined), [onMatches]);

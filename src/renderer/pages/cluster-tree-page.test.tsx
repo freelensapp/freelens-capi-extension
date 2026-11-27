@@ -987,6 +987,34 @@ describe("the keys and the focus of the tree (P18)", () => {
     expect(fireEvent.keyDown(element, { key: "a" })).toBe(true);
   });
 
+  it("gives the focus to the element of the tree as it is drawn, with no scroll, unless a control holds it, as the search in which the user typed while the tree loaded", async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+
+    onTestFinished(() => focus.mockRestore());
+    await opened();
+
+    const at = focus.mock.contexts.indexOf(tree());
+
+    expect(document.activeElement).toBe(tree());
+    expect(at).toBeGreaterThan(-1);
+    expect(focus.mock.calls[at]).toEqual([{ preventScroll: true }]);
+    cleanup();
+
+    serveTree(objectsOfStates(["healthy"]));
+
+    const release = host.deferLoads();
+
+    render(pageOf(paramsOf()));
+    await settle();
+    expect(screen.getByTestId("capi-tree-loading")).toBeDefined();
+    search().focus();
+    release();
+    await settle();
+
+    expect(screen.getByTestId("capi-tree")).toBeDefined();
+    expect(document.activeElement).toBe(search());
+  });
+
   it("names no row in aria-activedescendant while the row of the active node is not drawn", async () => {
     await opened();
 

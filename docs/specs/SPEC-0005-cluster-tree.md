@@ -3331,6 +3331,12 @@ the contract label of the definition for a control plane of a provider; and
   their own, with nothing expanded or collapsed by the user. Before, a click on
   the button of a node, Right or Left changed the expansions of the user
   alone, which nothing showed until the search was cleared.
+- Decided while implementing the second part, after its reviews, as P15 means
+  the focus that goes to the tree: the page gives it to the element of the
+  tree as that element is drawn, once the first loads have ended, with
+  `preventScroll`, unless a control holds the focus, as the search in which
+  the user typed while the tree loaded. Before, it stayed on the body, and Tab
+  reached the search and the refresh first.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -602,6 +602,7 @@ tree of a Cluster does (SPEC-0005):
   first mount (SPEC-0005, P2, P16).
 - **The keyboard.** The tree is one stop of Tab, an element around the table
   with the role `treegrid`, since it has columns and a header row, which takes
+  the focus as it is drawn, with no scroll, unless a control holds it, takes
   the keys and prevents their default, and names the active row in
   `aria-activedescendant` once that row is drawn, and no row while it is not;
   each row carries the role `row`, an id, `aria-level`, `aria-selected`, and
