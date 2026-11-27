@@ -10,10 +10,10 @@
 // name does not match `*.tests.ts`, so Vitest does not collect it as a session.
 //
 // What an identity may read is said as an access: in `default` and in the namespaces of the fixtures, every kind that
-// the page of the Clusters reads but those that the access refuses there, or every such kind over the whole cluster;
-// the definitions, listed, or read by their names alone; and in every access, the namespaces over the whole cluster,
-// as the frame of a cluster lists them, and what the start page of the host reads in `default`, so that no other read
-// of the session is refused. Every role grants `get`, `list` and `watch` alone.
+// the page of the Clusters and the tree of a Cluster read but those that the access refuses there, or every such kind
+// over the whole cluster; the definitions, listed, or read by their names alone; and in every access, the namespaces
+// over the whole cluster, as the frame of a cluster lists them, and what the start page of the host reads in
+// `default`, so that no other read of the session is refused. Every role grants `get`, `list` and `watch` alone.
 
 import { printedObjects } from "../../e2e/scripts/fixtures.mts";
 import { statesOf } from "../../e2e/scripts/states.mts";
@@ -67,16 +67,35 @@ export const PAGE_KINDS: readonly Kind[] = [
   ].map((plural) => ({ group: OPERATOR, version: "v1alpha2", plural })),
 ];
 
+// The kinds that the tree of a Cluster reads beside them, through its models, in the namespace of its Cluster
+// (SPEC-0005, "What the tree reads", P6), at the versions that it reads.
+export const TREE_KINDS: readonly Kind[] = [
+  { group: "bootstrap.cluster.x-k8s.io", version: "v1beta2", plural: "kubeadmconfigs" },
+  { group: "bootstrap.cluster.x-k8s.io", version: "v1beta2", plural: "kubeadmconfigtemplates" },
+  { group: "addons.cluster.x-k8s.io", version: "v1beta2", plural: "clusterresourcesets" },
+  { group: "addons.cluster.x-k8s.io", version: "v1beta2", plural: "clusterresourcesetbindings" },
+  { group: "ipam.cluster.x-k8s.io", version: "v1beta2", plural: "ipaddressclaims" },
+  { group: "ipam.cluster.x-k8s.io", version: "v1beta2", plural: "ipaddresses" },
+];
+
+const DEVELOPMENT = "infrastructure.cluster.x-k8s.io";
+
 // The infrastructure cluster of the fixtures, a DevCluster of the development provider, which the page and the
 // details read for the references of the Clusters at the version of its contract label (P3; SPEC-0001, R1.19).
-export const INFRASTRUCTURE: Kind = {
-  group: "infrastructure.cluster.x-k8s.io",
-  version: "v1beta2",
-  plural: "devclusters",
-};
+export const INFRASTRUCTURE: Kind = { group: DEVELOPMENT, version: "v1beta2", plural: "devclusters" };
+
+// The kinds of the providers of the fixtures that the tree reads, through the references of the objects of a Cluster,
+// at the version of their contract label: its infrastructure cluster, and the infrastructure machines, their templates
+// and the infrastructure machine pools of the development provider (SPEC-0005, P6).
+export const PROVIDER_KINDS: readonly Kind[] = [
+  INFRASTRUCTURE,
+  { group: DEVELOPMENT, version: "v1beta2", plural: "devmachines" },
+  { group: DEVELOPMENT, version: "v1beta2", plural: "devmachinetemplates" },
+  { group: DEVELOPMENT, version: "v1beta2", plural: "devmachinepools" },
+];
 
 // Every kind that an access grants or refuses.
-export const READ_KINDS: readonly Kind[] = [...PAGE_KINDS, INFRASTRUCTURE];
+export const READ_KINDS: readonly Kind[] = [...PAGE_KINDS, ...TREE_KINDS, ...PROVIDER_KINDS];
 
 // What the start page of the host reads in the namespace that the filter selects for a cluster opened for the first
 // time, `default`: the overview of the workloads, for a user who may not list the Nodes
@@ -89,10 +108,18 @@ export const START_PAGE_RULES = [
 ] as const;
 
 // The definitions that a view reads by their names when the host may not list them (P3): those of the kinds that a
-// Cluster of the fixtures names, its control plane and its infrastructure cluster.
+// Cluster of the fixtures names, its control plane and its infrastructure cluster; and those that the tree of the
+// Cluster of `healthy` reads beside them, of its infrastructure machines and of their templates (SPEC-0005, P6).
 export const CONTROL_PLANE_DEFINITION = "kubeadmcontrolplanes.controlplane.cluster.x-k8s.io";
 export const INFRASTRUCTURE_DEFINITION = "devclusters.infrastructure.cluster.x-k8s.io";
-export const NAMED_DEFINITIONS = [CONTROL_PLANE_DEFINITION, INFRASTRUCTURE_DEFINITION] as const;
+export const MACHINE_DEFINITION = "devmachines.infrastructure.cluster.x-k8s.io";
+export const MACHINE_TEMPLATE_DEFINITION = "devmachinetemplates.infrastructure.cluster.x-k8s.io";
+export const NAMED_DEFINITIONS = [
+  CONTROL_PLANE_DEFINITION,
+  INFRASTRUCTURE_DEFINITION,
+  MACHINE_DEFINITION,
+  MACHINE_TEMPLATE_DEFINITION,
+] as const;
 
 // The path of the list of the definitions, which the host makes as the frame of a cluster starts.
 export const DEFINITIONS_PATH = "/apis/apiextensions.k8s.io/v1/customresourcedefinitions";

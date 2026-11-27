@@ -1,6 +1,7 @@
-// The second identity of the restricted session (SPEC-0004, P23), with no cluster: the kinds that it is granted, what
-// each access lets it read, the objects of RBAC that grant an access, the reviews that ask the cluster about it, the
-// refusals that a step expects, and its kubeconfig.
+// The second identity of the restricted session (SPEC-0004, P23), with no cluster: the kinds that it is granted, those
+// of the page of the Clusters and of the tree of a Cluster (SPEC-0005, P19), what each access lets it read, the objects
+// of RBAC that grant an access, the reviews that ask the cluster about it, the refusals that a step expects, and its
+// kubeconfig.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -17,19 +18,27 @@ import {
   identityObjects,
   keyOf,
   kubeconfigOf,
+  MACHINE_DEFINITION,
+  MACHINE_TEMPLATE_DEFINITION,
+  NAMED_DEFINITIONS,
   NAMESPACES,
   PAGE_KINDS,
+  PROVIDER_KINDS,
   permissionsOf,
   READ_KINDS,
   refusedDefinitions,
   refusedLists,
   START_PAGE_RULES,
+  TREE_KINDS,
   wrongAnswers,
 } from "../integration/__tests__/restricted-access";
+import { followedObjectsOf, followedReferencesOf, isClusterApiKind } from "../src/common/views/references";
 import { Cluster } from "../src/renderer/api/cluster/cluster-v1beta2";
-import { CONTEXT_MODELS } from "../src/renderer/api/context/context-models";
+import { CONTEXT_MODELS, TREE_MODELS } from "../src/renderer/api/context/context-models";
+import { fixtureSet, STATES } from "./fixture-sets";
 
 import type { Access, Kind } from "../integration/__tests__/restricted-access";
+import type { KubeObjectData } from "../src/common/status/index";
 
 const HEALTHY = "freelens-capi-healthy";
 const PAUSED = "freelens-capi-paused";
@@ -59,19 +68,86 @@ function objectsOfKind(objects: readonly Manifest[], kindName: string): Manifest
   return objects.filter((object) => object.kind === kindName);
 }
 
+// A kind that a model reads, as the identity is granted it: its group, its version and its plural.
+function kindOfModel(model: { crd: { apiVersions: readonly string[]; plural: string } }): Kind {
+  const [group, version] = model.crd.apiVersions[0].split("/");
+
+  return { group, version, plural: model.crd.plural };
+}
+
+// The kinds of the providers that the tree of the Cluster of each state of the fixtures reads, by `group/Kind`: those
+// that the references of the Cluster name, and those that the objects of the Cluster whose references the reads of the
+// tree follow name (SPEC-0005, P6), as the read of one Cluster follows them.
+function providerKindsOfTheFixtures(): string[] {
+  const kinds = new Set<string>();
+
+  for (const state of STATES) {
+    const objects = fixtureSet(state) as unknown as KubeObjectData[];
+    const ofKind = (kind: string) => objects.filter((object) => object.kind === kind);
+    const [cluster] = ofKind("Cluster");
+    const references = [
+      ...followedReferencesOf(cluster),
+      ...followedObjectsOf(cluster, {
+        machines: ofKind("Machine"),
+        machineDeployments: ofKind("MachineDeployment"),
+        machineSets: ofKind("MachineSet"),
+        machinePools: ofKind("MachinePool"),
+        kubeadmControlPlanes: ofKind("KubeadmControlPlane"),
+      }).flatMap(({ object, controlPlane }) => followedReferencesOf(object, controlPlane)),
+    ];
+
+    for (const { reference } of references) {
+      if (!isClusterApiKind(reference.apiGroup, reference.kind)) kinds.add(`${reference.apiGroup}/${reference.kind}`);
+    }
+  }
+  return [...kinds].sort();
+}
+
 describe("the identity of the restricted session (P23)", () => {
   it("is granted the kinds that the page reads, at the versions that it reads them, and the infrastructure cluster of the fixtures", () => {
-    expect(PAGE_KINDS).toEqual(
-      [Cluster, ...CONTEXT_MODELS].map((model) => {
-        const [group, version] = model.crd.apiVersions[0].split("/");
-
-        return { group, version, plural: model.crd.plural };
-      }),
-    );
-    expect(READ_KINDS).toEqual([...PAGE_KINDS, INFRASTRUCTURE]);
+    expect(PAGE_KINDS).toEqual([Cluster, ...CONTEXT_MODELS].map(kindOfModel));
+    expect(READ_KINDS).toEqual([...PAGE_KINDS, ...TREE_KINDS, ...PROVIDER_KINDS]);
+    expect(PROVIDER_KINDS[0]).toEqual(INFRASTRUCTURE);
     expect(NAMESPACES[0]).toBe("default");
     expect(NAMESPACES).toContain(HEALTHY);
     expect(NAMESPACES).toContain(PAUSED);
+  });
+
+  it("is granted the kinds that the tree of a Cluster reads: those of the models of the tree, and those of the providers of the fixtures that the tree reads, each under its group (SPEC-0005, P19)", () => {
+    expect(TREE_KINDS).toEqual(TREE_MODELS.map(kindOfModel));
+    // The kinds of the development provider, whose definitions in the release name the contract v1beta2 alone, at that
+    // version, and with the plurals of their definitions, the kind in lower case and an s.
+    expect(PROVIDER_KINDS.map((kind) => `${kind.group}/${kind.version}/${kind.plural}`).sort()).toEqual(
+      providerKindsOfTheFixtures()
+        .map((kind) => {
+          const [group, name] = kind.split("/");
+
+          return `${group}/v1beta2/${name.toLowerCase()}s`;
+        })
+        .sort(),
+    );
+    expect(providerKindsOfTheFixtures()).toEqual([
+      "infrastructure.cluster.x-k8s.io/DevCluster",
+      "infrastructure.cluster.x-k8s.io/DevMachine",
+      "infrastructure.cluster.x-k8s.io/DevMachinePool",
+      "infrastructure.cluster.x-k8s.io/DevMachineTemplate",
+    ]);
+    // Each kind once, under its group.
+    expect(new Set(READ_KINDS.map((kind) => `${kind.plural}.${kind.group}`)).size).toBe(READ_KINDS.length);
+  });
+
+  it("may get by their names the definitions that the tree of healthy reads, beside those of the references of a Cluster", () => {
+    expect(NAMED_DEFINITIONS).toEqual([
+      CONTROL_PLANE_DEFINITION,
+      INFRASTRUCTURE_DEFINITION,
+      MACHINE_DEFINITION,
+      MACHINE_TEMPLATE_DEFINITION,
+    ]);
+    for (const name of [INFRASTRUCTURE_DEFINITION, MACHINE_DEFINITION, MACHINE_TEMPLATE_DEFINITION]) {
+      const [plural, ...group] = name.split(".");
+
+      expect(PROVIDER_KINDS, name).toContainEqual({ group: group.join("."), version: "v1beta2", plural });
+    }
   });
 
   it("may read with each access what its case says, and nothing outside default and the namespaces of the fixtures", () => {
@@ -221,7 +297,7 @@ describe("the identity of the restricted session (P23)", () => {
       (permission) => permission.resource === "clusters" && permission.namespace === PAUSED,
     );
 
-    expect(permissions).toHaveLength(READ_KINDS.length * (NAMESPACES.length + 1) + 3);
+    expect(permissions).toHaveLength(READ_KINDS.length * (NAMESPACES.length + 1) + 1 + NAMED_DEFINITIONS.length);
     expect(permissions[refusedAt].allowed).toBe(false);
     expect(reviews[refusedAt]).toEqual({
       apiVersion: "authorization.k8s.io/v1",
@@ -271,6 +347,8 @@ describe("the identity of the restricted session (P23)", () => {
     expect(refusedDefinitions(BY_NAME)).toEqual([
       "/apis/apiextensions.k8s.io/v1/customresourcedefinitions",
       `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${INFRASTRUCTURE_DEFINITION}`,
+      `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${MACHINE_DEFINITION}`,
+      `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${MACHINE_TEMPLATE_DEFINITION}`,
     ]);
   });
 
