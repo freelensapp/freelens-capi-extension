@@ -153,19 +153,33 @@ export const UNREAD_WORDS: Record<UnreadReason, string> = {
 // a Cluster of the namespace that the view read opens its details of the extension; an object of Cluster API of the
 // Cluster that the view read opens the tree of the Cluster at its node (SPEC-0005, P5); an object of a provider that a
 // reference of the Cluster names, its control plane or its infrastructure cluster, read by the view, opens the details
-// of the host as the link of that reference does; every other name is text.
+// of the host as the link of that reference does; every other name is text. The kind of the subject is the one that
+// the parser gives, as the message writes it, alone or in the plural (`subjectKindsOf`).
 export type SubjectTarget =
   | { readonly form: "cluster"; readonly namespace: string; readonly name: string }
   | { readonly form: "tree"; readonly node: string }
   | { readonly form: "host"; readonly selfLink: string }
   | { readonly form: "text" };
 
+// A kind as the subject of a line of a message writes it (SPEC-0003, P27): the kind, which the project writes before
+// the name of one object, and its plural, which it writes before the names of two or more and makes with the
+// pluralizer that also names the definition of each kind (util/conditions/merge_strategies.go:452, 488-494;
+// util/contract/contract.go:29). The plural of each kind of SPEC-0001, R1 is the kind and `es` when it ends in `ss`,
+// as `ClusterClasses` and `IPAddresses`, and the kind and `s` otherwise, as `Machines`: the plural of its definition in
+// the capitals of the kind. The lookups of the names of a subject, in the details of a Cluster and in those of a node,
+// find an object under both, so that a name opens its target whatever the number of its kind (SPEC-0005, P5). A kind of
+// a provider that the pluralizer writes otherwise, as one that ends in `y`, is found under the kind alone, and a name
+// that its plural writes stays text.
+export function subjectKindsOf(kind: string): readonly [string, string] {
+  return [kind, `${kind}${kind.endsWith("ss") ? "es" : "s"}`];
+}
+
 export function subjectTarget(
   details: Pick<ClusterDetails, "cluster" | "controlPlane" | "infrastructure" | "readClusters" | "readObjects">,
   kind: string,
   name: string,
 ): SubjectTarget {
-  if (kind === "Cluster") {
+  if (subjectKindsOf("Cluster").includes(kind)) {
     return details.readClusters.includes(name)
       ? { form: "cluster", namespace: namespaceOf(details.cluster) ?? "", name }
       : { form: "text" };
@@ -175,35 +189,41 @@ export function subjectTarget(
 
   if (node !== undefined) return { form: "tree", node };
   for (const reference of [details.controlPlane?.reference, details.infrastructure?.reference]) {
-    if (reference?.kind === kind && reference.name === name && reference.selfLink !== undefined) {
+    if (
+      reference !== undefined &&
+      subjectKindsOf(reference.kind).includes(kind) &&
+      reference.name === name &&
+      reference.selfLink !== undefined
+    ) {
       return { form: "host", selfLink: reference.selfLink };
     }
   }
   return { form: "text" };
 }
 
-// The objects of Cluster API of a Cluster that the view read, which a name in a message may name, by their kind and
-// their name, each with the address of its node in the tree of the Cluster (SPEC-0005, P2, P5): its Machines, its
-// MachineSets, its MachineDeployments and its MachinePools, by the label of the name of the Cluster, and its control
-// plane when it is a KubeadmControlPlane, in the namespace of the Cluster, as the indexes of the context hold them.
+// The objects of Cluster API of a Cluster that the view read, which a name in a message may name, by their kind, alone
+// and in the plural, and their name, each with the address of its node in the tree of the Cluster (SPEC-0005, P2, P5):
+// its Machines, its MachineSets, its MachineDeployments and its MachinePools, by the label of the name of the Cluster,
+// and its control plane when it is a KubeadmControlPlane, in the namespace of the Cluster, as the indexes of the
+// context hold them.
 export function readObjectsOf(index: ContextIndex, cluster: ClusterObject): ReadonlyMap<string, string> {
   const namespace = namespaceOf(cluster) ?? "";
   const name = nameOf(cluster) ?? "";
   const key = `${namespace}/${name}`;
   const found = new Map<string, string>();
-  const add = (objects: readonly KubeObjectData[] | undefined) => {
-    for (const object of objects ?? []) {
-      const kind = textOf(object.kind) ?? "";
-      const objectName = nameOf(object) ?? "";
+  const add = (group: string, kind: string, objectName: string) => {
+    const address = addressOf(group, kind, objectName);
 
-      found.set(`${kind}/${objectName}`, addressOf("cluster.x-k8s.io", kind, objectName));
-    }
+    for (const written of subjectKindsOf(kind)) found.set(`${written}/${objectName}`, address);
+  };
+  const addAll = (objects: readonly KubeObjectData[] | undefined) => {
+    for (const object of objects ?? []) add("cluster.x-k8s.io", textOf(object.kind) ?? "", nameOf(object) ?? "");
   };
 
-  add(index.machinesByCluster.get(key));
-  add(index.machineSetsByCluster.get(key));
-  add(index.deploymentsByCluster.get(key));
-  add(index.poolsByCluster.get(key));
+  addAll(index.machinesByCluster.get(key));
+  addAll(index.machineSetsByCluster.get(key));
+  addAll(index.deploymentsByCluster.get(key));
+  addAll(index.poolsByCluster.get(key));
 
   const reference = contractReferenceOf(fieldsOf(cluster.spec)?.controlPlaneRef);
 
@@ -212,9 +232,7 @@ export function readObjectsOf(index: ContextIndex, cluster: ClusterObject): Read
       .get(`${reference.apiGroup}/${reference.kind}`)
       ?.get(`${namespace}/${reference.name}`);
 
-    if (read !== undefined) {
-      found.set(`${reference.kind}/${reference.name}`, addressOf(reference.apiGroup, reference.kind, reference.name));
-    }
+    if (read !== undefined) add(reference.apiGroup, reference.kind, reference.name);
   }
   return found;
 }
@@ -649,8 +667,8 @@ export interface ClusterDetails {
   readonly cluster: ClusterObject;
   // The names of the Clusters that the view read in the namespace of the Cluster, which a message may name.
   readonly readClusters: readonly string[];
-  // The objects of Cluster API of the Cluster that the view read, which a message may name, by `<Kind>/<name>`, each
-  // with the address of its node in the tree.
+  // The objects of Cluster API of the Cluster that the view read, which a message may name, by `<Kind>/<name>` and by
+  // the plural of the kind, `<Kinds>/<name>` (`subjectKindsOf`), each with the address of its node in the tree.
   readonly readObjects: ReadonlyMap<string, string>;
   // An input of the model of the Cluster is not loaded yet: its marks show the spinner.
   readonly pending: boolean;

@@ -27,7 +27,15 @@
 
 import { annotationsOf } from "./annotations";
 import { activityCell, healthCell } from "./cluster-cells";
-import { conditionViews, messageLines, noteWords, parsedTimeOf, toneSourceOf, UNREAD_WORDS } from "./cluster-details";
+import {
+  conditionViews,
+  messageLines,
+  noteWords,
+  parsedTimeOf,
+  subjectKindsOf,
+  toneSourceOf,
+  UNREAD_WORDS,
+} from "./cluster-details";
 import { pausedByAnnotation, unreadWords } from "./cluster-tree";
 import { countOf, fieldsOf, listOf, metadataOf, namespaceOf, ownersOf, textOf } from "./objects";
 import { contractReferenceOf, isClusterApiKind, objectReferenceOf } from "./references";
@@ -672,14 +680,15 @@ export function nodeDetailsOf(
 
 // The node of the tree that a name of a subject of a message names, when the tree holds an object of Cluster API of
 // that kind and that name (P5): the names of the objects of Cluster API of the Cluster that the view read, its class
-// read in another namespace included, the one node of the tree of its kind; undefined for any other name, which stays
+// read in another namespace included, the one node of the tree of its kind, by `<Kind>/<name>` and by the plural of
+// the kind, `<Kinds>/<name>`, as the subject writes it (`subjectKindsOf`); undefined for any other name, which stays
 // text.
 export function subjectNodes(tree: ClusterTree): ReadonlyMap<string, string> {
   const found = new Map<string, string>();
 
   for (const node of tree.nodes.values()) {
-    if (node.form === "object" && isClusterApiKind(node.group, node.kind))
-      found.set(`${node.kind}/${node.name}`, node.id);
+    if (node.form !== "object" || !isClusterApiKind(node.group, node.kind)) continue;
+    for (const written of subjectKindsOf(node.kind)) found.set(`${written}/${node.name}`, node.id);
   }
   return found;
 }

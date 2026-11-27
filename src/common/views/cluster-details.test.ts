@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CAPTURE, fixtureSet, ofKind } from "../../../test/fixture-sets";
 import { descriptorOf, hostObjects, objectsOfStates, readsOf, sourceOf } from "../../../test/view-sources";
+import { Cluster } from "../../renderer/api/cluster/cluster-v1beta2";
+import { CONTEXT_MODELS, TREE_MODELS } from "../../renderer/api/context/context-models";
+import { parseConditionMessage } from "../parsers/condition-message";
 import {
   clusterDetailsOf,
   isClusterApiObject,
@@ -8,6 +11,7 @@ import {
   noteWords,
   pauseFormOf,
   readFailuresOf,
+  subjectKindsOf,
   subjectTarget,
   UNREAD_WORDS,
   weightTone,
@@ -20,7 +24,8 @@ import type { ClusterDetails } from "./cluster-details";
 
 // The pure functions of the details of a Cluster (SPEC-0004, "The details", P17, P18, P27): the words of the notes of
 // the model, the tone of a weight, the form of a pause, the objects of Cluster API that stay text, the names of a
-// subject, the parts and their counters, and the reads that failed in the namespace of the Cluster.
+// subject whatever the number of its kind, the parts and their counters, and the reads that failed in the namespace of
+// the Cluster.
 
 type Fields = Record<string, any>;
 
@@ -218,6 +223,92 @@ describe("the marks and the words of the details", () => {
 
     expect(details.controlPlane?.reference?.name).toBe(gone);
     expect(subjectTarget(details, "KubeadmControlPlane", gone)).toEqual({ form: "text" });
+  });
+
+  it("write a kind as a subject writes it, alone and in the plural, the plural of each kind that the extension models being that of its definition in the capitals of the kind (SPEC-0005, P5)", () => {
+    for (const model of [Cluster, ...CONTEXT_MODELS, ...TREE_MODELS]) {
+      const [kind, plural] = subjectKindsOf(model.kind);
+
+      expect(kind).toBe(model.kind);
+      expect(plural.startsWith(model.kind), model.kind).toBe(true);
+      expect(plural.toLowerCase(), model.kind).toBe(model.crd.plural);
+    }
+    expect(subjectKindsOf("ClusterClass")).toEqual(["ClusterClass", "ClusterClasses"]);
+    expect(subjectKindsOf("IPAddress")).toEqual(["IPAddress", "IPAddresses"]);
+    expect(subjectKindsOf("Machine")).toEqual(["Machine", "Machines"]);
+  });
+
+  it("open the tree from each name of a subject whatever the number of its kind, as the messages of rolling-out write its Machines (SPEC-0005, P5)", () => {
+    const details = detailsOf(["rolling-out"]);
+    const subjectOf = (type: string) =>
+      details.conditions?.find((view) => view.condition.type === type)?.lines[0]?.subject;
+    // One Machine that is not ready, `* Machine <name>:`, and two that are not up to date, `* Machines <a>, <b>:`, as
+    // the parser gives them.
+    const one = subjectOf("WorkerMachinesReady");
+    const two = subjectOf("WorkerMachinesUpToDate");
+
+    expect(one?.kind).toBe("Machine");
+    expect(one?.names).toHaveLength(1);
+    expect(two?.kind).toBe("Machines");
+    expect(two?.names).toHaveLength(2);
+    for (const subject of [one, two]) {
+      for (const name of subject?.names ?? []) {
+        expect(subjectTarget(details, subject?.kind ?? "", name), `${subject?.kind} ${name}`).toEqual({
+          form: "tree",
+          node: `cluster.x-k8s.io/Machine/${name}`,
+        });
+      }
+    }
+  });
+
+  it("open the target of each name of a subject in the plural on lines that the case writes, every other name text (SPEC-0004, P18; SPEC-0005, P5)", () => {
+    const details = detailsOf(["healthy"]);
+    const devCluster = details.infrastructure?.reference;
+    const controlPlane = details.controlPlane?.reference?.name ?? "";
+    const message = parseConditionMessage(
+      [
+        "* MachineSets freelens-capi-healthy-md-0-m9x7h-m5gtb, not-read-here: waiting",
+        "* MachineDeployments a, freelens-capi-healthy-md-0-m9x7h, b, ... (2 more): waiting",
+        `* KubeadmControlPlanes ${controlPlane}, another: waiting`,
+        "* Clusters freelens-capi-healthy, another: waiting",
+        `* DevClusters ${devCluster?.name}, not-this-one: waiting`,
+        // A word that the parser reads as the kind of a subject and that names no kind, as `deleting` writes it.
+        "* Worker Machines: freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      ].join("\n"),
+    );
+    const targets = messageLines(message).flatMap(({ subject }) =>
+      (subject?.names ?? []).map((name) => [
+        `${subject?.kind} ${name}`,
+        subjectTarget(details, subject?.kind ?? "", name),
+      ]),
+    );
+
+    expect(targets).toEqual([
+      [
+        "MachineSets freelens-capi-healthy-md-0-m9x7h-m5gtb",
+        { form: "tree", node: "cluster.x-k8s.io/MachineSet/freelens-capi-healthy-md-0-m9x7h-m5gtb" },
+      ],
+      ["MachineSets not-read-here", { form: "text" }],
+      ["MachineDeployments a", { form: "text" }],
+      [
+        "MachineDeployments freelens-capi-healthy-md-0-m9x7h",
+        { form: "tree", node: "cluster.x-k8s.io/MachineDeployment/freelens-capi-healthy-md-0-m9x7h" },
+      ],
+      ["MachineDeployments b", { form: "text" }],
+      [
+        `KubeadmControlPlanes ${controlPlane}`,
+        { form: "tree", node: `controlplane.cluster.x-k8s.io/KubeadmControlPlane/${controlPlane}` },
+      ],
+      ["KubeadmControlPlanes another", { form: "text" }],
+      [
+        "Clusters freelens-capi-healthy",
+        { form: "cluster", namespace: "freelens-capi-healthy", name: "freelens-capi-healthy" },
+      ],
+      ["Clusters another", { form: "text" }],
+      [`DevClusters ${devCluster?.name}`, { form: "host", selfLink: devCluster?.selfLink }],
+      ["DevClusters not-this-one", { form: "text" }],
+      ["Worker Machines", { form: "text" }],
+    ]);
   });
 });
 

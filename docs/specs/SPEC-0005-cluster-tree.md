@@ -3449,6 +3449,26 @@ the contract label of the definition for a control plane of a provider; and
   the details, and the way in from the panel in the details of the host with
   the session of the third part (Tests, "In Freelens", 3). Its step 5 expects
   the row Tree after the metadata and before the status (P3).
+- Decided while implementing the second part, where P5 opens the tree from
+  every name in a message that names an object of Cluster API of the Cluster
+  that the view read, and the parser of SPEC-0003 gives the kind of a subject
+  as the message writes it, alone or in the plural (SPEC-0003, P27): the
+  lookups of the names of a subject, in the details of a Cluster and in those
+  of a node, take the kind either way, through one function, `subjectKindsOf`
+  of `cluster-details.ts`, which writes the plural as the project writes it,
+  with the pluralizer that also names the definition of each kind
+  (util/conditions/merge_strategies.go:452, 488-494;
+  util/contract/contract.go:29): the kind and `es` when it ends in `ss`, and
+  the kind and `s` otherwise, the plural of the definition of each kind that
+  the extension models, in the capitals of the kind, which a unit case
+  compares. Before, they looked a name up by the kind as written, so that a
+  subject in the plural, as `* Machines <a>, <b>:` of the WorkerMachinesUpToDate
+  of `rolling-out`, stayed text while `* Machine <name>:` opened the tree; the
+  same held for a Cluster, which a name opens in its details, and for the
+  object of a provider that a reference of the Cluster names, which a name
+  opens in the details of the host (SPEC-0004, P18). A kind of a provider that
+  the pluralizer writes otherwise, as one that ends in `y`, is found under the
+  kind alone.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { TREE_CLUSTERS } from "../../../integration/__tests__/tree-expectations";
 import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
 import { resolved, treeSourceOf } from "../../../test/tree-sources";
+import { parseConditionMessage } from "../parsers/condition-message";
 import { annotationsOf } from "./annotations";
+import { messageLines } from "./cluster-details";
 import { buildTree, evaluateTree, indexTree } from "./cluster-tree";
 import { StatusMemo } from "./context";
 import { nodeDetailsOf, subjectNodes } from "./node-details";
@@ -17,12 +19,12 @@ import type { ResolvedReference } from "./references";
 // The cases of SPEC-0005, "Tests", "Unit", `node-details.test.ts` (P17, P20): the sections of each kind, shown or
 // hidden; the place of a node and the field that found it, and the reason of each case under Other objects; the
 // owners as links to their nodes, and an owner that the tree does not hold as text; the subjects of a message as links
-// to their nodes; the templates of an object as links to their rows; the phase with its remark for a Machine and a
-// MachinePool, and with none for a MachineDeployment; the pool of a claim as text with its role, and the remediation
-// template of a MachineHealthCheck as text; the reason of an object under the row of an owner that cannot be read; the
-// annotations of the kinds of P20 without the one that `kubectl apply` writes, whose presence alone they say; and the
-// names of the variables and of the patches of the class, with none of their values. A value that the fixtures do not
-// hold is written by the case into a copy of a fixture, which the case says.
+// to their nodes, whatever the number of their kind; the templates of an object as links to their rows; the phase with
+// its remark for a Machine and a MachinePool, and with none for a MachineDeployment; the pool of a claim as text with
+// its role, and the remediation template of a MachineHealthCheck as text; the reason of an object under the row of an
+// owner that cannot be read; the annotations of the kinds of P20 without the one that `kubectl apply` writes, whose
+// presence alone they say; and the names of the variables and of the patches of the class, with none of their values.
+// A value that the fixtures do not hold is written by the case into a copy of a fixture, which the case says.
 
 interface Writable {
   apiVersion: string;
@@ -685,5 +687,60 @@ describe("the subjects of a message (P5)", () => {
     expect(subjects.get("ClusterClass/quick-start")).toBe(
       "cluster.x-k8s.io/ClusterClass/freelens-capi-classes/quick-start",
     );
+  });
+
+  it("name the nodes of the Machines of a subject whatever the number of its kind, as the messages of the MachineDeployment of rolling-out write them", () => {
+    const view = stateView("rolling-out");
+    const subjects = subjectNodes(view.tree);
+    const details = detailsOf(view, "cluster.x-k8s.io/MachineDeployment/freelens-capi-rolling-out-md-0-t96dp");
+    const subjectOf = (type: string) =>
+      details.conditions?.find((condition) => condition.condition.type === type)?.lines[0]?.subject;
+    // One Machine that is not ready, `* Machine <name>:`, and two that are not up to date, `* Machines <a>, <b>:`, as
+    // the parser gives them; the page finds the node of a name by `<kind>/<name>`.
+    const one = subjectOf("MachinesReady");
+    const two = subjectOf("MachinesUpToDate");
+
+    expect(one?.kind).toBe("Machine");
+    expect(one?.names).toHaveLength(1);
+    expect(two?.kind).toBe("Machines");
+    expect(two?.names).toHaveLength(2);
+    for (const subject of [one, two]) {
+      for (const name of subject?.names ?? []) {
+        expect(subjects.get(`${subject?.kind}/${name}`), `${subject?.kind} ${name}`).toBe(machine(name));
+      }
+    }
+  });
+
+  it("name the nodes of the objects of a subject in the plural on lines that the case writes, the plural of a kind that ends in ss included, and no other", () => {
+    const subjects = subjectNodes(stateView("healthy").tree);
+    const message = parseConditionMessage(
+      [
+        `* Machines ${WORKER}, gone: waiting`,
+        "* ClusterClasses quick-start, other: waiting",
+        "* KubeadmControlPlanes freelens-capi-healthy-d2lgq, another: waiting",
+        `* Clusters ${HEALTHY}, another: waiting`,
+        // An object of a provider is no node that a subject opens, in the plural either.
+        `* DevMachines ${WORKER}, other: waiting`,
+      ].join("\n"),
+    );
+    const nodes = messageLines(message).flatMap(({ subject }) =>
+      (subject?.names ?? []).map((name) => [`${subject?.kind} ${name}`, subjects.get(`${subject?.kind}/${name}`)]),
+    );
+
+    expect(nodes).toEqual([
+      [`Machines ${WORKER}`, machine(WORKER)],
+      ["Machines gone", undefined],
+      ["ClusterClasses quick-start", "cluster.x-k8s.io/ClusterClass/quick-start"],
+      ["ClusterClasses other", undefined],
+      [
+        "KubeadmControlPlanes freelens-capi-healthy-d2lgq",
+        "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+      ],
+      ["KubeadmControlPlanes another", undefined],
+      [`Clusters ${HEALTHY}`, `cluster.x-k8s.io/Cluster/${HEALTHY}`],
+      ["Clusters another", undefined],
+      [`DevMachines ${WORKER}`, undefined],
+      ["DevMachines other", undefined],
+    ]);
   });
 });
