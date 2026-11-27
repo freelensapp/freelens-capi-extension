@@ -181,9 +181,12 @@ and writes nothing; what each part shows is in [DESIGN.md](DESIGN.md).
    ClusterResourceSet of kindnet and what its binding records it applied; and
    Health checks. Each row shows its replicas, its version, its activities, its
    health and the counts of the objects that it holds, by health, and its
-   status, each whole in its tooltip. The tree opens on the objects that need a
-   look: on `freelens-capi-mp`, the MachinePool and its Machine, whose Node is
-   not ready.
+   status, each whole in its tooltip. The tree opens with the Cluster expanded
+   and every node expanded under which, or at which, an object needs a look:
+   its health Unhealthy, Degraded or Unknown; an activity other than Idle and
+   Paused, or Paused by its own annotation; a mark of freshness other than
+   Paused; or it could not be read or was not found. What is all Healthy and
+   Idle stays collapsed, with its counts.
 3. **The details and the keys.** A click on a row, or Enter, opens the details
    of its object over the tree: where it sits and why, its status, its facts,
    and, for a DevMachine, a link to the details of Freelens. Tab reaches the

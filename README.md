@@ -120,7 +120,10 @@ namespace. Freelens itself reads the namespaces for its filter.
 The extension never reads a Secret, never reads a Cluster at a version other
 than `v1beta2`, reads no field of the spec of a KubeadmControlPlane but its
 replicas, its version and the reference to the template of its Machines, and
-no field of the spec of a KubeadmConfig or of its template.
+no field of the spec of a KubeadmConfig or of its template. The list of
+`kubeadmconfigs` that the tree reads returns, in clear, the join tokens and the
+content of the files that the spec of each KubeadmConfig holds: the extension
+types none of those fields and shows none of them.
 
 ## Install
 

@@ -1315,32 +1315,37 @@ logged by either process:
   CSS pixels: the tree of the Cluster of every state, opened by its address,
   every node expanded, against the expected trees of `tree-expectations.ts` and
   the marks of SPEC-0003, and, 1024 px wide, the rows of `rolling-out` on one
-  line with their names whole or cut with an ellipsis and whole in their
-  tooltip; the expansion at first and the counts of `healthy`, `rolling-out`
-  and `deleting`, with the first rows drawn, which an observer of the DOM
-  records in the frame, once the answers to the lists of the page have arrived,
-  read from the resource timing of the frame; the ways in from the details of a
-  Cluster and from the panel in the details of the host, and one Back; the
-  details of a node over the page, Escape and their icon with the focus on the
-  tree, and the details of the host of a DevMachine over them; the states that
-  are not the happy one; Tab and the keys of P18 on `healthy`, each move whole
-  in view at the first frame that names its row, the roles in the DOM and in the
-  tree of accessibility of Chromium, read through CDP
-  (`Accessibility.getFullAXTree`, never the snapshot of Playwright); the tree
-  live, an annotation, a Machine created and deleted above the rows in view,
-  which keep their place, a status that changes the counts, and a refresh that
-  keeps every row drawn; the search; the check of "Safety"; and a large Cluster
-  of 300 Machines that it makes and deletes (docs/development/TESTING.md, "The
-  large Cluster of the session of the tree"), where the element of the tree
-  keeps the focus while the wheel unmounts rows. It writes through the scripts
-  alone, with `openDefinitions`, records the version that the answer to each
-  write gives, and undoes each write at the end of its part, also when a check
-  failed. Its planted runs are TEST_PLANT_WRITE, a write of the frame, which
-  fails the check of "Safety"; TEST_PLANT_COMPENSATION, an own `scrollTop` of
-  the list that drops what the page sets; TEST_PLANT_FOCUS, a press of the mouse
-  that focuses a name and a click that gives the element no focus; and
-  TEST_PLANT_KEYS, keys whose default is not prevented, which it records. Two
-  more plant the page itself on the branch of the screenshots.
+  line, read from the lines that the browser gives each text of their cells and
+  not from the scroll height of a cell, which a mark of state exceeds on one
+  line, with their names whole or cut with an ellipsis and whole in their
+  tooltip; the expansion at first and the counts of `healthy`, `rolling-out` and
+  `deleting`, with the first rows drawn, which an observer of the DOM records in
+  the frame, once the answers to the lists of the page have arrived, read from
+  the resource timing of the frame; the ways in from the details of a Cluster
+  and from the panel in the details of the host, and one Back, with the address
+  of the frame before the click, after it and after the Back logged; the details
+  of a node over the page, Escape and their icon with the focus on the tree, and
+  the details of the host of a DevMachine over them; the states that are not the
+  happy one; Tab and the keys of P18 on `healthy`, each move whole in view at
+  the first frame that names its row, the roles in the DOM and in the tree of
+  accessibility of Chromium, read through CDP (`Accessibility.getFullAXTree`,
+  never the snapshot of Playwright); the tree live, an annotation, a Machine
+  created above the rows in view, collapsed as a node that a watch adds, then
+  expanded, and deleted with its rows above the view and the list short of its
+  end, the rows in view keeping their place, a status that changes the counts,
+  and a refresh that keeps every row drawn; the search; the check of "Safety";
+  and a large Cluster of 300 Machines that it makes and deletes
+  (docs/development/TESTING.md, "The large Cluster of the session of the tree"),
+  where the element of the tree keeps the focus while the wheel unmounts rows.
+  It writes through the scripts alone, with `openDefinitions`, records the
+  version that the answer to each write gives, and undoes each write at the end
+  of its part, also when a check failed. Its planted runs are TEST_PLANT_WRITE,
+  a write of the frame, which fails the check of "Safety";
+  TEST_PLANT_COMPENSATION, an own `scrollTop` of the list that drops what the
+  page sets; TEST_PLANT_FOCUS, a press of the mouse that focuses a name and a
+  click that gives the element no focus; and TEST_PLANT_KEYS, keys whose default
+  is not prevented, which it records. Two more plant the page itself on the
+  branch of the screenshots.
 
 The sessions of the real tier, `clusters-real.tests.ts`,
 `clusters-sveltos.tests.ts` and `cluster-tree-real.tests.ts`, open the cluster
@@ -1387,9 +1392,11 @@ kubeconfig of the scripts for that cluster alone:
   `real-project-checks.ts`): every row of an object a node under the node of its
   row, at its depth, every other node of a kind that the tool leaves out, the
   condition that the health of each node rests on, from the summary of its
-  details, and the counters of the control plane and of the MachineDeployment,
-  from the tooltip of their cell Replicas; each side read again until they
-  agree, five minutes at most. It writes nothing.
+  details, which it closes on Escape after each, since their drawer covers the
+  cells of the rows, and the counters of the control plane and of the
+  MachineDeployment, from the tooltip of their cell Replicas, each row brought
+  into the window of the list first; each side read again until they agree,
+  five minutes at most. It writes nothing.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 1500`, and the job

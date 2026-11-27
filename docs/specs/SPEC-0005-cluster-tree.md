@@ -1615,11 +1615,11 @@ has two tiers"), and no capture can make 300 Machines on a runner of CI. The
 session applies them as the scripts apply a state, the objects first, owners
 before their dependents, then the changes that give each its generation, then
 each status through the status subresource
-(`e2e/scripts/commands.mts:1366-1430`), through a function that the scripts
-export beside `openDefinitions` (`e2e/scripts/commands.mts:1307-1343`); and it
+(`e2e/scripts/commands.mts:1378-1441`), through a function that the scripts
+export beside `openDefinitions` (`e2e/scripts/commands.mts:1312-1345`); and it
 deletes that namespace at its end, also when a step failed, and checks that it
 is gone, before any other session runs, since the sessions run one at a time
-(`vitest.integration.config.ts:19-21`). The probe derived such a set from
+(`vitest.integration.config.ts:20-22`). The probe derived such a set from
 `healthy` with the reader and the writer of the scripts, 922 objects: 301
 Machines, 301 DevMachines, 301 KubeadmConfigs and the 19 other objects of the
 set; written as files, it is 18 files and 2.8 MB, which is why the session makes
@@ -1632,11 +1632,11 @@ So no test that reads every state changes: the check that the folders of the
 fixtures are the fifteen states (`src/common/status/fixtures.test.ts:158-185`),
 the states that the unit tests read from those folders
 (`test/fixture-sets.ts:22-25`), the states of the scripts
-(`test/environment.test.ts:2106-2112`), the sessions that read every state
+(`test/environment.test.ts:2118-2124`), the sessions that read every state
 (`integration/__tests__/clusters.tests.ts:60-71`;
-`integration/__tests__/clusters-restricted.tests.ts:90-109, 680`), and
+`integration/__tests__/clusters-restricted.tests.ts:107-126, 785`), and
 `pnpm e2e:fixtures:check`, which takes every state
-(`e2e/scripts/commands.mts:1540`). The generation is a pure function of a module
+(`e2e/scripts/commands.mts:1586`). The generation is a pure function of a module
 of the session, `integration/__tests__/large-cluster.ts`, with its unit test in
 `test/large-cluster.test.ts`, as `restricted-access.ts` is tested (SPEC-0004,
 "Notes and deviations"): every copy is named apart, every owner reference names
@@ -1645,7 +1645,7 @@ an object of the set, and the counters add up to the Machines.
 Time. The scripts applied the set of the probe in 52.6 s and deleted it in
 77.0 s, on a local kind cluster, the deletion longer since they remove the
 finalizer of each object with a call of its own (H24;
-`e2e/scripts/commands.mts:1352-1364`), and the page of the Clusters showed its
+`e2e/scripts/commands.mts:1357-1367`), and the page of the Clusters showed its
 300 workers at its first reading, 376 ms after the navigation, with 1.21 s of
 CPU of the renderer in 10.5 s and one long task of 188 ms (H24). So the
 session runs the large Cluster in a time of its own: the step that applies it
@@ -1654,7 +1654,7 @@ times what the probe measured, a margin for the runners of CI, which the probe
 did not try (H25), in place of the 120 s of every other test and hook
 (`vitest.integration.config.ts:26-27`). Two limits of 25 minutes bound it: the
 step of the tests of the integration workflow, which every session shares
-(`timeout 1500`, `.github/workflows/integration-tests.yaml:351`; TESTING.md,
+(`timeout 1500`, `.github/workflows/integration-tests.yaml:353`; TESTING.md,
 "Continuous integration"), and the window of the marks of the fixtures, which
 hold for 25 minutes after their apply, after which a session that checks them
 fails at its start (TESTING.md, "Continuous integration", "Safety"; SPEC-0004,
@@ -3551,9 +3551,17 @@ the contract label of the definition for a control plane of a provider; and
   Cluster and of the definitions, sent before the first rows, the list of the
   Clusters of that namespace among them. The first rows are the first rows of
   the tree once it settles, by their nodes and their `aria-expanded`, since the
-  virtual list draws a few rows before it has measured its height. Seen failing
-  once against a page that draws its rows as each load ends, by a patch of the
-  branch of the screenshots.
+  virtual list draws a few rows before it has measured its height. A patch of
+  the branch of the screenshots plants a page that draws its rows as each load
+  ends. In the first run of that branch it failed the step on the rows of the
+  first frame, which were not the first rows of the tree once settled: on
+  `healthy` the KubeadmControlPlane drawn as a leaf and the ClusterClass in the
+  place of Workers; and on its expansion at first, computed on a partial read,
+  Workers collapsed on `rolling-out` and `deleting`. Its comparison with the
+  answers found nothing: every answer had ended before the first rows, since a
+  store takes an answer some time after it arrives, so the planted page drew
+  after the answers too. That part is not seen failing by this patch; the next
+  run of the patch, on its step alone, must show the rest again.
 - A fact of the host seen in a run in CI on Freelens 2.1.0, by the probe of the
   way back of the session of the screenshots of the second part, on a branch
   that is no part of this spec: the page of the Clusters had searched its list,
@@ -3620,20 +3628,26 @@ the contract label of the definition for a control plane of a provider; and
   after, before the browser paints it (P16). The scroll that a key leaves is
   that of the moves of the page when it moved only for a row that was not whole
   in view, and then shows that row whole: the virtual list of the host scrolls
-  to its selected row with the alignment `smart` of its library, which centers
-  a row far from those shown
+  to its selected row with the alignment `smart` of its library, which centers a
+  row far from those shown
   (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx:126-136,
   at `v2.1.0`), an offset that the session does not compute. Run with the
   default of the keys not prevented, the step logs the scroll of the list before
-  and after each key, and asserts nothing of it (H16).
+  and after each key, and asserts nothing of it (H16). So run in the first run
+  of the branch of the screenshots, the keys that moved within the rows in view
+  left the list where it was, so the browser scrolled nothing for them from the
+  element of the tree, which holds the list and is not the element that scrolls;
+  End and Page Down took it to 137 px and Home and Page Up back to 0, where the
+  page brings the row of each move whole into view.
 - Decided while implementing the third part, where P18 sees the check of the
   focus after a click on a name fail against a page that lets the press of the
   mouse focus the name: the click of a name gives the focus to the element of
   the tree whatever its press did, so on such a page the focus is still on the
   element when the wheel unmounts the row, and the check holds. The planted run
   lets the press focus the name and drops the focus that the click gives the
-  element, and the check fails there; that the press focuses nothing is the
-  guard under the click, which no session tells apart.
+  element, and the check fails there, as the first run of the branch of the
+  screenshots showed in step 9; that the press focuses nothing is the guard
+  under the click, which no session tells apart.
 - Decided while implementing the third part, for step 6: the session writes
   through the scripts, with `openDefinitions`, as AGENTS.md asks of a write that
   is not a label: the annotation by a merge patch; the Machine by a creation,
@@ -3641,17 +3655,21 @@ the contract label of the definition for a control plane of a provider; and
   `cluster.x-k8s.io/cluster-name` and `cluster.x-k8s.io/control-plane`, no
   owner, its bootstrap by a data secret and its infrastructure reference to a
   DevMachine that is not there; and the condition `Ready` by a JSON patch of the
-  status subresource that tests the type of the condition that it replaces.
-  Each write is undone at the end of its part, the end of the session undoing
-  what a part could not, and the Machine is checked gone once deleted. To show
-  the worker that the annotation pauses, the step first expands Workers, the
+  status subresource that tests the type of the condition that it replaces. Each
+  write is undone at the end of its part, the end of the session undoing what a
+  part could not, and the Machine is checked gone once deleted. To show the
+  worker that the annotation pauses, the step first expands Workers, the
   MachineDeployment and the MachineSet, as a user does; that the annotation
-  expands nothing is read as every row keeping its `aria-expanded`, and "with
-  no reload" as the element of the tree being the same element. The refresh is
+  expands nothing is read as every row keeping its `aria-expanded`, and "with no
+  reload" as the element of the tree being the same element. The refresh is
   followed until the answer to every list and get of the tree that the frame
   sent after the click has ended in its resource timing, the requests that the
-  session records naming them; seen failing once against a refresh that empties
-  its stores before it loads them, by a patch of the branch of the screenshots.
+  session records naming them. A patch of the branch of the screenshots plants a
+  refresh that empties its stores before it loads them, and
+  TEST_PLANT_COMPENSATION a list that drops the scroll that the page sets; the
+  first run of that branch reached neither check, since the step failed before
+  them on the Machine that it creates (the note below), so the next run must
+  show both failing.
 - Decided while implementing the third part, after the first run of its CI, in
   which step 6 found the Machine that it creates with no row under it: as P13
   says, a node that a watch adds once the tree is shown comes collapsed, since
@@ -3673,12 +3691,20 @@ the contract label of the definition for a control plane of a provider; and
   that go above the first row in view and the list short of its end: at its end
   the browser, which keeps the scroll within the shorter list, takes it back by
   their height as the page does, and a page that moves nothing would pass.
-- Decided while implementing the third part, for steps 8 and 9: step 8 is a
-  test of its own, after the write that TEST_PLANT_WRITE plants, and step 9 a
-  group of its own, which applies the large Cluster before its test, within
-  180 s, and deletes it after it, within 240 s, the frame leaving the tree
-  first. The session deletes a namespace of the large Cluster that a run that
-  was killed left as it starts, and at its end when its group could not.
+- Decided while implementing the third part, for steps 8 and 9: step 8 is a test
+  of its own, after the write that TEST_PLANT_WRITE plants, and step 9 a group
+  of its own, which applies the large Cluster before its test, within 180 s, and
+  deletes it after it, within 240 s, the frame leaving the tree first. The
+  session deletes a namespace of the large Cluster that a run that was killed
+  left as it starts, and at its end when its group could not. Those limits hold
+  as Vitest applies them to a hook: it fails a hook that ran past its limit once
+  the hook returns, and cannot cut one that hangs, since the hooks run kubectl
+  synchronously; the timeouts of the scripts bound each of their requests
+  instead, two minutes, five for the statuses of a set and six for the deletion
+  of the namespace. In the first run of the branch of the screenshots, the
+  planted write failed step 8 with both of its messages, the PATCH of the frame
+  and the version of the Cluster of `healthy`, and nothing else of that step
+  failed.
 - Decided while implementing the third part, for the tree of accessibility of
   step 5: the session reads it through a CDP session of the frame of the cluster
   when Chromium renders the frame in a process of its own, else through that of
@@ -3776,12 +3802,28 @@ the contract label of the definition for a control plane of a provider; and
   from the claim that the scripts send. The job of the branch of the screenshots
   captures the set on the real project and compares the capture with its files,
   and `pnpm e2e:fixtures:check`, which the pull request runs, applies the set to
-  the cluster of the definitions and reads it back.
+  the cluster of the definitions and reads it back. In the first run of that
+  branch, the real project accepted the claim that names its Cluster, and the
+  capture gave the files of the set but for every `creationTimestamp`, one
+  second after `CAPTURE_TIME` where the files hold `CAPTURE_TIME` itself. The
+  scripts do not anchor the times on the earliest second of the objects: every
+  time is written as its offset from the moment of the capture, which a capture
+  of `no-status` reads, in whole seconds, before it sends the dry run, and the
+  API server stamps the objects when it answers that request, so they come out
+  at 0 or at 1 s after `CAPTURE_TIME`, as the second of the clock turns during
+  the request or not. That is the rule of the scripts, which say that a time is
+  its offset from the capture, and no change follows from it: the files keep
+  the capture that wrote them, and a capture of the same objects can differ
+  from them by that second. The job compares the folder of the set by the
+  status of git, so that a file that a capture adds counts too.
 - Decided while implementing the third part: the step of the tests of the
   integration workflow keeps its limit of 25 minutes, the window of the marks of
   the fixtures; the session logs the time of the apply and of the deletion of
   the large Cluster and of its step, which the run of the pull request measures
-  on a runner (P22).
+  on a runner (P22). Its first run applied the large Cluster in 46.5 s, ran its
+  step in 6.0 s and deleted it in 85.4 s, within their limits of 180 s and
+  240 s, which stay; the step of the tests took 7.8 minutes with every session,
+  three cases failing, one after a wait of 60 s.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

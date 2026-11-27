@@ -309,7 +309,11 @@ request, and both refusing, before any request, a namespace that is not one of
 the scripts, that is the namespace of a state, or that is the namespace of the
 second identity of the restricted session. The step that applies it has
 180 s and the hook that deletes it 240 s, three times what a local kind cluster
-took; the session logs both times, and the time of its step. It deletes the
+took; the session logs both times, and the time of its step, which the first
+run in CI measured at 46.5 s, 85.4 s and 6.0 s. Vitest fails such a hook once it
+returns past its limit, and cannot cut one that hangs, since the hooks run
+kubectl synchronously: the timeouts of the scripts bound each of their requests
+instead, two minutes, and six for the deletion of the namespace. It deletes the
 namespace at its end, also when a step failed, as it deletes first one that a
 run that was killed left, and checks that it is gone.
 
@@ -469,8 +473,9 @@ extension that the profile of Freelens dev has, and leaves none.
   hour, and its step of the tests 25 minutes, the window of the marks of the
   fixtures, limits set from the durations of the runs: in CI the job took 5
   minutes, and its step of the tests 3.3, with a case that waited its 60
-  seconds, before the session of the tree, whose times the run of its pull
-  request measures, the large Cluster included (SPEC-0005, P22). A step that
+  seconds, before the session of the tree; with it, the first run of its pull
+  request took 10 minutes, and the step of the tests 7.8, three cases failing,
+  one after its wait of 60 seconds (SPEC-0005, P22). A step that
   reaches its limit fails, as a case that reaches its own does, and loses the
   report of the sessions after it, which a run of one file gives again.
   The list of the host keys its columns by the names of the printer columns,
