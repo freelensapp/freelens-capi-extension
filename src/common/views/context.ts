@@ -768,6 +768,12 @@ export interface ClusterRow {
   readonly poolsWithoutMachines: number;
 }
 
+// How many MachinePools of a Cluster have no Machine to stand for their instances, from the results of its MachinePools
+// in its context (SPEC-0003, P10): the counters of its workers count their instances, which the list and the tree say.
+export function poolsWithoutMachinesOf(context: StatusContext | undefined): number {
+  return (context?.machinePools ?? []).filter((pool) => pool.notes.some((note) => note.code === "no-machine")).length;
+}
+
 function rowOf(cluster: ClusterObject, clusterContext: ClusterContext, memo: StatusMemo): ClusterRow {
   const { context, inputs, pending, key } = clusterContext;
 
@@ -777,9 +783,7 @@ function rowOf(cluster: ClusterObject, clusterContext: ClusterContext, memo: Sta
     conditions: memo.conditions(cluster, context, key),
     pending,
     inputs,
-    poolsWithoutMachines: (context.machinePools ?? []).filter((pool) =>
-      pool.notes.some((note) => note.code === "no-machine"),
-    ).length,
+    poolsWithoutMachines: poolsWithoutMachinesOf(context),
   };
 }
 

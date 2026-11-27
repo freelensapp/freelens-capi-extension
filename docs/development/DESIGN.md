@@ -232,7 +232,9 @@ and in a theme that is not the default, such as its high contrast theme
   known: not written yet, no managed topology, not set by the topology, a kind
   that keeps no replicas, a kind that has no status, an object that the view
   could not read, as a control plane whose version it takes from that object
-  (SPEC-0028, P11).
+  (SPEC-0028, P11), an object that is deleting, to which the model gives no
+  health, with the stage of its deletion in its details (SPEC-0005, "Notes and
+  deviations").
 - The role of an object of a provider is said in the words of the closed set of
   SPEC-0003, the eight of `ProviderRole`: infrastructure cluster, control plane,
   infrastructure machine, bootstrap config, infrastructure machine pool, IPAM
@@ -583,9 +585,14 @@ tree of a Cluster does (SPEC-0005):
   no row shows, the namespace that every row shares and the counts left out,
   with the nodes above them, expanded, says how many match, gives the
   expansions of the user back once it is cleared, and takes no focus when the
-  page opens; an Escape in it clears its words, or, when it holds none, closes
-  the details, those of the host first while they are open over those of a
-  node (SPEC-0005, P15).
+  page opens; what the user expands or collapses while it holds words acts on
+  what it shows, at once, every node under a node expanded and none under one
+  collapsed, for those words alone; a node that the address names while it
+  holds words, as a link of the details names it, shows among its rows with
+  the nodes above it, those that it hid expanded as it expands the nodes above
+  a match, for those words alone; an Escape in it clears its words, or, when
+  it holds none, closes the details, those of the host first while they are
+  open over those of a node (SPEC-0005, P15, "Notes and deviations").
 - **The scroll.** The view scrolls the list on a key move, an address, the
   closing of the details, and to keep the rows in view in place when rows are
   inserted or removed above them, and never otherwise, so the active node may
@@ -598,8 +605,12 @@ tree of a Cluster does (SPEC-0005):
   first mount (SPEC-0005, P2, P16).
 - **The keyboard.** The tree is one stop of Tab, an element around the table
   with the role `treegrid`, since it has columns and a header row, which takes
+  the focus as it is drawn, with no scroll, unless a control holds it, takes
   the keys and prevents their default, and names the active row in
   `aria-activedescendant` once that row is drawn, and no row while it is not;
+  it owns the rows drawn by `aria-owns`, in their order, named again as the
+  list draws others, since the virtual list of the host puts its rows in an
+  element with the role `list` (SPEC-0005, "Notes and deviations");
   each row carries the role `row`, an id, `aria-level`, `aria-selected`, and
   `aria-expanded` when it has children, and each of its cells the role
   `gridcell`, and the header row the role `row` with cells of the role
@@ -609,18 +620,28 @@ tree of a Cluster does (SPEC-0005):
   the row, and the click gives the focus to the element, with `preventScroll`.
   Down and Up, Home and End, Page Up and Page Down move; Right expands, or goes
   to the first child; Left collapses, or goes to the node above; Enter and
-  Space open the details, or expand or collapse a virtual node, and do nothing
-  on an entry of a binding; Escape closes the details, with the focus back on
-  the element. A move first brings its row into view. The focus stays on the
-  element when the active row leaves the window. The keys act only while the
-  focus is in the tree (SPEC-0005, P18).
+  Space open the details, or expand or collapse a virtual node or the node of a
+  kind, and do nothing on an entry of a binding; Escape closes the details,
+  with the focus back on the element. A move first brings its row into view.
+  The focus stays on the element when the active row leaves the window. When
+  the rows no longer show the active node, a search makes the first node that
+  it matches active, with no scroll, and a collapse or a change of the reads
+  the nearest node above it that the rows show, else the root. The keys act
+  only while the focus is in the tree (SPEC-0005, P18, "Notes and
+  deviations").
 - **Live.** The view follows the watches of its stores and polls nothing; its
   header holds a refresh that reads its stores again, which keep their rows
-  while it loads, as the reload after a 410 does: a refresh that fails is said
-  as one, with its time, and its kind is held back. The refresh is disabled,
-  with a tooltip that says why, while a first load of a kind runs, also of a
-  kind that a reference names later, since a refresh would end it (SPEC-0005,
-  P23).
+  while it loads, as the reload after a 410 does, and draws the tree again in
+  the place of its error page: a refresh that fails is said as one, with its
+  time, and its kind is held back. The refresh is disabled, with a tooltip that
+  says why, while a first load of a kind runs, also of a kind that a reference
+  names later, since a refresh would end it. The details that are open follow
+  their object: when it goes, or its Cluster with it once the view showed its
+  tree, they stay open and say that it is no longer in the tree, until the user
+  closes them, while a Cluster that the view never found opens no details; those
+  of an object in a namespace where the tree does not read its kind say that it
+  is not read, and never show the spinner, which stands for a kind that still
+  loads where the tree reads it (SPEC-0005, P19, P23, "Notes and deviations").
 
 ## What the details never show
 

@@ -2995,3 +2995,11 @@ No question is open.
     it ("What the view reads", "Safety"; SPEC-0028, P10, P14);
   - the restricted session grants the KamajiControlPlanes, and reads their
     definition by its name in its case 3 (P23; SPEC-0028, "Tests").
+- From the second part of SPEC-0005: in the details of a Cluster, the
+  references to its KubeadmControlPlane, its MachineDeployments, its
+  MachinePools and its ClusterClass open the tree of the Cluster at their node,
+  as the maintainer decided on 2026-11-26, and so do, as SPEC-0005 proposes,
+  the other parts of the workers and the names of objects of Cluster API in the
+  lines of a message that the view read (SPEC-0005, P3, P5); the session of the
+  Clusters checks them so, where "Tests", "In Freelens", 4 says that they are
+  text.

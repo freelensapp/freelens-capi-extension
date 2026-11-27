@@ -55,6 +55,7 @@ import {
   isClusterApiKind,
   isTemplateKind,
 } from "./references";
+import { addressOf } from "./tree-address";
 
 import type { ContractVersion } from "../parsers/contract-label";
 import type {
@@ -127,12 +128,6 @@ const ROLE_ROW: Readonly<Record<ReferenceRole, number>> = {
   "infrastructure-machine-pool": 9,
   template: ROW.template,
 };
-
-// The address of a node (P2): `<group>/<Kind>/<name>`, or `<group>/<Kind>/<namespace>/<name>` for the class in another
-// namespace than its Cluster, the one node that can live elsewhere.
-export function addressOf(group: string, kind: string, name: string, namespace?: string): string {
-  return namespace === undefined ? `${group}/${kind}/${name}` : `${group}/${kind}/${namespace}/${name}`;
-}
 
 // An owner of an object, by its group, its kind and its name in the namespace of the object.
 export interface OwnerName {
@@ -621,6 +616,39 @@ function kindReadOf(index: TreeIndex, kind: TreeKind | undefined, namespace: str
   }
   // A namespace that the filter does not hold is one that the view does not read: it is still to be read.
   return { state: "pending" };
+}
+
+// The namespace in which the tree reads the objects of a kind (P6): that of the Cluster, or, for the ClusterClasses, the
+// one that the class reference of the Cluster names, and no other; none for the ClusterClasses of a Cluster that names
+// no class.
+function readNamespaceOf(tree: ClusterTree, kind: TreeKind): string | undefined {
+  return kind.where === "class" ? tree.classNamespace : tree.root.namespace;
+}
+
+// How the reads of the tree stand on the kind of an address in the namespace that it names, for the details of a node
+// that the tree does not hold (P19, P23).
+export type AddressKindRead =
+  // The tree reads that kind in that namespace, and its first load, or the definition of a kind of a provider, still
+  // runs: the details show the spinner, and never that the node is not in the tree.
+  | { readonly state: "pending" }
+  // The tree reads that kind in another namespace alone, or not at all, as the ClusterClasses of a Cluster that names no
+  // class: an object named there is not read, and its read is never pending.
+  | { readonly state: "not-read"; readonly noun: string }
+  // The tree read it there, or could not, or the reads never tried the kind: no such object is in the tree.
+  | { readonly state: "read" };
+
+export function addressKindRead(
+  index: TreeIndex,
+  tree: ClusterTree,
+  group: string,
+  kind: string,
+  namespace: string,
+): AddressKindRead {
+  const known = index.kinds.get(kindId(group, kind));
+
+  if (known === undefined) return { state: "read" };
+  if (readNamespaceOf(tree, known) !== namespace) return { state: "not-read", noun: known.noun };
+  return kindReadOf(index, known, namespace).state === "pending" ? { state: "pending" } : { state: "read" };
 }
 
 // Whether the objects of a kind cannot be read in a namespace, as an owner row or a kind node says it (P12): its read
@@ -1436,9 +1464,12 @@ class Placer {
   // Other objects (P7): an object of the Cluster that no row places, with its reason, which holds what it owns and
   // names by the same rules. The objects go there one at a time, owners first, and after each the rows above place
   // what it holds, and what that holds in turn (`#placeHeld`), so that an object that the last one controls or names
-  // goes under it, never beside it with a false reason. An object whose owner is of a kind still loading waits for it,
-  // and so does an object whose owner, or whose Machine or MachinePool that names it, waits. The work grows with the
-  // objects, never with their square (P16).
+  // goes under it. The templates aside: the row of the owners places no template once the templates are placed, so a
+  // template that a template under Other objects owns goes beside it, and an object that a template alone owns goes
+  // there before the templates are placed; each says that its owners are not nodes of the tree, naming a template that
+  // is one by then, a shape that Cluster API does not make (SPEC-0005, "Notes and deviations"). An object whose owner
+  // is of a kind still loading waits for it, and so does an object whose owner, or whose Machine or MachinePool that
+  // names it, waits. The work grows with the objects, never with their square (P16).
   #placeOthers(templates: boolean): void {
     // The objects that no row placed, in the order of the rows of P7 that place their kinds, then of their addresses,
     // whatever the order of a store.

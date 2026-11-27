@@ -73,6 +73,9 @@ export function resolved(kind: string, provider = "infrastructure-docker"): Reso
 export interface TreeSourceOptions {
   // The namespaces that the reads hold: those of the objects by default, and the namespace of the class.
   readonly namespaces?: readonly string[];
+  // The namespaces that the filter of the reads holds, those that they load by default. The read of the tree holds the
+  // namespace of its class in its filter, where it loads no kind but the ClusterClasses.
+  readonly filter?: readonly string[];
   // The kinds, by `group/kind`, whose first load has not ended, or whose load failed with these failures, one for each
   // namespace of the load.
   readonly pending?: readonly string[];
@@ -168,7 +171,9 @@ export function treeSourceOf(objects: readonly KubeObjectData[], options: TreeSo
   const kinds = [...new Set([...Object.keys(MODELS), ...providers.cluster, ...providers.tree])].filter(
     (kind) => !(options.notServed ?? []).includes(kind),
   );
-  const events: ReadEvent[] = [{ type: "filter-changed", namespaces: [...namespaces], selectedAll: false }];
+  const events: ReadEvent[] = [
+    { type: "filter-changed", namespaces: [...(options.filter ?? namespaces)], selectedAll: false },
+  ];
   let id = 0;
 
   for (const kind of kinds) {

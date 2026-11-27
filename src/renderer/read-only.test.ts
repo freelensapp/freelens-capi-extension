@@ -2,9 +2,11 @@
 // src/renderer/ and src/common/views/, the test files left out, call no method that writes, of a store, of an API or of
 // the client of the host, send no request other than a GET, and read none of the fields of R3.36, matched from
 // `spec`, which hold a join token, a password, the content of a file or the credentials of a discovery (SPEC-0001, A3),
-// as SPEC-0003 checks its own two folders. Each pattern is tried on a line written for it, so that a pattern that
-// matches nothing cannot pass for a clean tree. The test reads the files with the modules of Node, which tests may
-// import (AGENTS.md, "Biome").
+// as SPEC-0003 checks its own two folders. And those of the "Safety" of SPEC-0005 (P20): the variables and the patches,
+// read for their names alone, in `variable-names.ts`, and the annotation that `kubectl apply` writes, named in
+// `annotations.ts` alone, which reads whether an object holds it and never its value. Each pattern is tried on a line
+// written for it, so that a pattern that matches nothing cannot pass for a clean tree. The test reads the files with
+// the modules of Node, which tests may import (AGENTS.md, "Biome").
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -77,6 +79,25 @@ const NAMES_MODULE = join("common", "views", "variable-names.ts");
 // its code; its comments are left out.
 const VALUE_OR_PATCH = /\b(?:value|description|enabledIf|definitions|external)\b/;
 
+// The annotation that `kubectl apply` writes copies the spec of an object as it was applied, the fields of R3.36
+// included, so the views never show it (SPEC-0005, P20): one module of the view names it, `annotations.ts`, whose one
+// function reads whether an object holds it, with `Object.hasOwn`, and never its value, by an index, a destructuring,
+// a `get` or a walk of every value of the annotations.
+const LAST_APPLIED = /last-applied-configuration/;
+const ANNOTATIONS_MODULE = join("common", "views", "annotations.ts");
+const HOLDS_LAST_APPLIED = /Object\.hasOwn\(\s*annotations\s*,\s*LAST_APPLIED\s*\)/;
+const KEY = `(?:LAST_APPLIED|["'\`][^"'\`]*last-applied-configuration["'\`])`;
+const READS_LAST_APPLIED = new RegExp(
+  [
+    // An index, after a name, a call or another index, and never an array that holds the key.
+    `(?:[\\w)\\]]|\\?\\.)\\s*\\[\\s*${KEY}\\s*\\]`,
+    // A destructuring by a computed key.
+    `[{,]\\s*\\[\\s*${KEY}\\s*\\]\\s*:`,
+    `\\.get\\(\\s*${KEY}`,
+    `\\bObject\\.(?:entries|values)\\(`,
+  ].join("|"),
+);
+
 function codeOf(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
@@ -123,6 +144,26 @@ describe("the variables and the patches, read for their names alone (SPEC-0005, 
     const module = modules.find((each) => each.name === NAMES_MODULE);
 
     expect(codeOf(module?.source ?? "value")).not.toMatch(VALUE_OR_PATCH);
+  });
+});
+
+describe("the annotation that kubectl apply writes, never shown (SPEC-0005, P20, Safety)", () => {
+  const modules = FOLDERS.flatMap(modulesOf);
+
+  it("is named by annotations.ts alone", () => {
+    expect(modules.map((module) => module.name)).toContain(ANNOTATIONS_MODULE);
+    expect(
+      modules
+        .filter((module) => module.name !== ANNOTATIONS_MODULE && LAST_APPLIED.test(module.source))
+        .map((module) => module.name),
+    ).toEqual([]);
+  });
+
+  it("is read there for whether an object holds it, with Object.hasOwn, and never for its value", () => {
+    const code = codeOf(modules.find((each) => each.name === ANNOTATIONS_MODULE)?.source ?? "");
+
+    expect(code).toMatch(HOLDS_LAST_APPLIED);
+    expect(code).not.toMatch(READS_LAST_APPLIED);
   });
 });
 
@@ -189,6 +230,32 @@ describe("the patterns of the check, each on a line written for it", () => {
       expect(codeOf(line)).toMatch(VALUE_OR_PATCH);
     },
   );
+
+  it.each([
+    ["const applied = annotations[LAST_APPLIED];"],
+    ['const applied = annotations["kubectl.kubernetes.io/last-applied-configuration"];'],
+    ["const applied = new Map(Object.entries(annotations)).get(LAST_APPLIED);"],
+    ["const applied = byKey.get(LAST_APPLIED);"],
+    ["for (const [key, value] of Object.entries(annotations)) shown.push(value);"],
+    ["const all = Object.values(annotations);"],
+    ["const { [LAST_APPLIED]: applied } = annotations;"],
+    ["const applied = metadata.annotations?.[LAST_APPLIED];"],
+  ])("finds a read of the value of the annotation in %s", (line) => {
+    expect(codeOf(line)).toMatch(READS_LAST_APPLIED);
+  });
+
+  it.each([
+    ["const held = Object.hasOwn(annotations, LAST_APPLIED);"],
+    ["const value = annotations[key];"],
+    ["const held = Object.hasOwn(annotations, LAST_APPLIED) ? [LAST_APPLIED] : [];"],
+  ])("finds no read of its value in %s", (line) => {
+    expect(codeOf(line)).not.toMatch(READS_LAST_APPLIED);
+  });
+
+  it("finds the name of the annotation, and whether an object holds it", () => {
+    expect(LAST_APPLIED.test('const key = "kubectl.kubernetes.io/last-applied-configuration";')).toBe(true);
+    expect("const held = Object.hasOwn(annotations, LAST_APPLIED) ? [LAST_APPLIED] : [];").toMatch(HOLDS_LAST_APPLIED);
+  });
 
   it("finds neither in a name, nor in a comment", () => {
     expect(codeOf("const name = textOf(entry.name); // never its value")).not.toMatch(VALUE_OR_PATCH);

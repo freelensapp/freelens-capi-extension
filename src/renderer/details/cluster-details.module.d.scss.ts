@@ -8,6 +8,7 @@ declare const classNames: {
   readonly activities: "activities";
   readonly failure: "failure";
   readonly message: "message";
+  readonly annotation: "annotation";
   readonly note: "note";
   readonly remark: "remark";
   readonly state: "state";

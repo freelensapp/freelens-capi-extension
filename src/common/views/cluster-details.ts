@@ -17,18 +17,21 @@
 // - Infrastructure: its object, whether it is provisioned (P27), and the failure domains.
 // - Topology, Network and Conditions.
 //
-// A reference to an object of Cluster API is plain text, its kind and its name, until SPEC-0005 gives it details of
-// the extension (P18): the maintainer decided it for the KubeadmControlPlane, the MachineDeployments, the MachinePools
-// and the ClusterClass, and P18 proposes it for the other objects of Cluster API that a view names, a MachineSet or a
-// Machine among the parts or in a message. A reference to an object of a provider is a link to the details of the
-// host when the view read the object, and otherwise text that says why.
+// A reference to an object of Cluster API of the Cluster opens the tree of the Cluster at its node, with its details,
+// the details of the extension that SPEC-0005 gives every object of a Cluster (SPEC-0005, P3, P5): as the maintainer
+// decided for the KubeadmControlPlane, the MachineDeployments, the MachinePools and the ClusterClass, and as SPEC-0005
+// proposes for the MachineSets and the worker Machines among the parts and for a name in a message that names an object
+// of Cluster API of the Cluster that the view read. A reference to an object of a provider is a link to the details of
+// the host when the view read the object, and otherwise text that says why.
 
 import { PENDING_HOOKS_ANNOTATION, parseListAnnotation } from "../parsers/list-annotation";
 import { activityCell, compareVersions, healthCell } from "./cluster-cells";
 import { holdsOf } from "./cluster-view";
 import { countOf, fieldsOf, listOf, metadataOf, nameOf, namespaceOf, textOf } from "./objects";
 import { namespaceRead } from "./read-state";
-import { classReferenceOf, contractReferenceOf, targetReadOf } from "./references";
+import { classReferenceOf, contractReferenceOf, isClusterApiKind, targetReadOf } from "./references";
+import { addressOf } from "./tree-address";
+import { variableNamesOf } from "./variable-names";
 
 import type { ConditionMessage, MessageLine } from "../parsers/condition-message";
 import type { ParsedTime } from "../parsers/time";
@@ -37,6 +40,7 @@ import type {
   ClusterObject,
   ConditionsResult,
   Issue,
+  KubeObjectData,
   Note,
   ObjectStatus,
   WeightedCondition,
@@ -49,24 +53,19 @@ import type { TargetRead, UnreadReason } from "./references";
 
 // A time that the project wrote, as the views show it: N/A for a time that is not valid, none for one not written
 // (SPEC-0003, P30).
-function parsedTimeOf(parsed: ParsedTime | undefined): Time | undefined {
+export function parsedTimeOf(parsed: ParsedTime | undefined): Time | undefined {
   if (parsed === undefined || parsed.state === "absent") return undefined;
   return parsed.state === "accepted" ? { state: "written", text: parsed.text } : { state: "unavailable" };
 }
 
 // References (P18)
 
-// The groups and kinds of Cluster API that the views of M2 give details of the extension: until then a reference to
-// one of their objects is plain text (P18). The infrastructure cluster and a control plane of another provider are
-// objects of a provider.
-const CLUSTER_API_GROUP = "cluster.x-k8s.io";
-const CLUSTER_API_KINDS: readonly string[] = [
-  "controlplane.cluster.x-k8s.io/KubeadmControlPlane",
-  "bootstrap.cluster.x-k8s.io/KubeadmConfig",
-];
-
+// An object is of Cluster API when its group and its kind are among the kinds of SPEC-0001, R1, the `Provider` of
+// `clusterctl` and the seven kinds of the operator included (SPEC-0005, P5), which widens the list that SPEC-0004
+// decided while implementing P18; any other kind is of a provider. None of them ever gets the link to the details of
+// the host (SPEC-0001, A7): the details of the extension, the node of the object in the tree, stand for it.
 export function isClusterApiObject(group: string, kind: string): boolean {
-  return group === CLUSTER_API_GROUP || CLUSTER_API_KINDS.includes(`${group}/${kind}`);
+  return isClusterApiKind(group, kind);
 }
 
 export type ReferenceRead =
@@ -78,8 +77,11 @@ export interface ReferenceView {
   readonly kind: string;
   readonly name: string;
   readonly group: string;
-  // An object of Cluster API, plain text until SPEC-0005 (P18).
+  // An object of Cluster API, which opens the tree of the Cluster at its node (SPEC-0005, P5).
   readonly clusterApi: boolean;
+  // The node of an object of Cluster API in the tree of the Cluster, by its address (SPEC-0005, P2); undefined for an
+  // object of a provider.
+  readonly node: string | undefined;
   // The address of the details of the host for an object of a provider that the view read; undefined for text.
   readonly selfLink: string | undefined;
   readonly read: ReferenceRead;
@@ -105,7 +107,7 @@ function referenceView(
 
   const { apiGroup: group, kind, name } = reference;
   const clusterApi = isClusterApiObject(group, kind);
-  const view = { kind, name, group, clusterApi };
+  const view = { kind, name, group, clusterApi, node: clusterApi ? addressOf(group, kind, name) : undefined };
   const objects = kinds?.get(`${group}/${kind}`);
   const resolution = objects?.resolution;
 
@@ -148,32 +150,91 @@ export const UNREAD_WORDS: Record<UnreadReason, string> = {
 };
 
 // The names of a subject of a line of a message, each as P18 shows it, as a link only when the view read its target:
-// a Cluster of the namespace that the view read opens its details of the extension; an object of a provider that a
+// a Cluster of the namespace that the view read opens its details of the extension; an object of Cluster API of the
+// Cluster that the view read opens the tree of the Cluster at its node (SPEC-0005, P5); an object of a provider that a
 // reference of the Cluster names, its control plane or its infrastructure cluster, read by the view, opens the details
-// of the host as the link of that reference does; every other name is text, those of Cluster API among them, until
-// SPEC-0005.
+// of the host as the link of that reference does; every other name is text. The kind of the subject is the one that
+// the parser gives, as the message writes it, alone or in the plural (`subjectKindsOf`).
 export type SubjectTarget =
   | { readonly form: "cluster"; readonly namespace: string; readonly name: string }
+  | { readonly form: "tree"; readonly node: string }
   | { readonly form: "host"; readonly selfLink: string }
   | { readonly form: "text" };
 
+// A kind as the subject of a line of a message writes it (SPEC-0003, P27): the kind, which the project writes before
+// the name of one object, and its plural, which it writes before the names of two or more and makes with the
+// pluralizer that also names the definition of each kind (util/conditions/merge_strategies.go:452, 488-494;
+// util/contract/contract.go:29). The plural of each kind of SPEC-0001, R1 is the kind and `es` when it ends in `ss`,
+// as `ClusterClasses` and `IPAddresses`, and the kind and `s` otherwise, as `Machines`: the plural of its definition in
+// the capitals of the kind. The lookups of the names of a subject, in the details of a Cluster and in those of a node,
+// find an object under both, so that a name opens its target whatever the number of its kind (SPEC-0005, P5). A kind of
+// a provider that the pluralizer writes otherwise, as one that ends in `y`, is found under the kind alone, and a name
+// that its plural writes stays text.
+export function subjectKindsOf(kind: string): readonly [string, string] {
+  return [kind, `${kind}${kind.endsWith("ss") ? "es" : "s"}`];
+}
+
 export function subjectTarget(
-  details: Pick<ClusterDetails, "cluster" | "controlPlane" | "infrastructure" | "readClusters">,
+  details: Pick<ClusterDetails, "cluster" | "controlPlane" | "infrastructure" | "readClusters" | "readObjects">,
   kind: string,
   name: string,
 ): SubjectTarget {
-  if (kind === "Cluster") {
+  if (subjectKindsOf("Cluster").includes(kind)) {
     return details.readClusters.includes(name)
       ? { form: "cluster", namespace: namespaceOf(details.cluster) ?? "", name }
       : { form: "text" };
   }
 
+  const node = details.readObjects.get(`${kind}/${name}`);
+
+  if (node !== undefined) return { form: "tree", node };
   for (const reference of [details.controlPlane?.reference, details.infrastructure?.reference]) {
-    if (reference?.kind === kind && reference.name === name && reference.selfLink !== undefined) {
+    if (
+      reference !== undefined &&
+      subjectKindsOf(reference.kind).includes(kind) &&
+      reference.name === name &&
+      reference.selfLink !== undefined
+    ) {
       return { form: "host", selfLink: reference.selfLink };
     }
   }
   return { form: "text" };
+}
+
+// The objects of Cluster API of a Cluster that the view read, which a name in a message may name, by their kind, alone
+// and in the plural, and their name, each with the address of its node in the tree of the Cluster (SPEC-0005, P2, P5):
+// its Machines, its MachineSets, its MachineDeployments and its MachinePools, by the label of the name of the Cluster,
+// and its control plane when it is a KubeadmControlPlane, in the namespace of the Cluster, as the indexes of the
+// context hold them.
+export function readObjectsOf(index: ContextIndex, cluster: ClusterObject): ReadonlyMap<string, string> {
+  const namespace = namespaceOf(cluster) ?? "";
+  const name = nameOf(cluster) ?? "";
+  const key = `${namespace}/${name}`;
+  const found = new Map<string, string>();
+  const add = (group: string, kind: string, objectName: string) => {
+    const address = addressOf(group, kind, objectName);
+
+    for (const written of subjectKindsOf(kind)) found.set(`${written}/${objectName}`, address);
+  };
+  const addAll = (objects: readonly KubeObjectData[] | undefined) => {
+    for (const object of objects ?? []) add("cluster.x-k8s.io", textOf(object.kind) ?? "", nameOf(object) ?? "");
+  };
+
+  addAll(index.machinesByCluster.get(key));
+  addAll(index.machineSetsByCluster.get(key));
+  addAll(index.deploymentsByCluster.get(key));
+  addAll(index.poolsByCluster.get(key));
+
+  const reference = contractReferenceOf(fieldsOf(cluster.spec)?.controlPlaneRef);
+
+  if (reference !== undefined && isClusterApiObject(reference.apiGroup, reference.kind)) {
+    const read = index.controlPlanes
+      .get(`${reference.apiGroup}/${reference.kind}`)
+      ?.get(`${namespace}/${reference.name}`);
+
+    if (read !== undefined) add(reference.apiGroup, reference.kind, reference.name);
+  }
+  return found;
 }
 
 // A line of a message, nested as the parser gives it (SPEC-0003, P27), with the names of its subject.
@@ -329,7 +390,7 @@ export interface StatusSection {
   readonly failure: { readonly reason: string | undefined; readonly message: string | undefined } | undefined;
 }
 
-function toneSourceOf(status: ObjectStatus): ToneSource | undefined {
+export function toneSourceOf(status: ObjectStatus): ToneSource | undefined {
   const { tone } = status;
 
   if (tone.tone === "health" || tone.setBy === undefined) return undefined;
@@ -414,6 +475,8 @@ export interface PartRow {
   readonly kind: string;
   readonly name: string;
   readonly namespace: string | undefined;
+  // The node of the part in the tree of its Cluster, which its name opens (SPEC-0005, P5).
+  readonly node: string;
   readonly health: HealthCell;
   readonly activity: ActivityCell;
   // An input of its model is not loaded yet: its marks show the spinner.
@@ -425,10 +488,14 @@ export interface PartRow {
 }
 
 function partRow(part: Part, counted: { available: number | undefined; desired: number | undefined }): PartRow {
+  const kind = textOf(part.object.kind) ?? "";
+  const name = nameOf(part.object) ?? "";
+
   return {
-    kind: textOf(part.object.kind) ?? "",
-    name: nameOf(part.object) ?? "",
+    kind,
+    name,
     namespace: namespaceOf(part.object),
+    node: addressOf("cluster.x-k8s.io", kind, name),
     health: healthCell(part.status),
     activity: activityCell(part.status),
     pending: part.pending,
@@ -573,6 +640,10 @@ export interface TopologyPart {
 export interface TopologySection {
   readonly className: string;
   readonly classNamespace: string | undefined;
+  // The node of the class in the tree of the Cluster, which its name opens (SPEC-0005, P5).
+  readonly classNode: string;
+  // The names of the variables that the topology sets, never their values (SPEC-0005, P20).
+  readonly variableNames: readonly string[];
   readonly version: string | undefined;
   readonly controlPlaneReplicas: number | undefined;
   readonly parts: readonly TopologyPart[];
@@ -596,6 +667,9 @@ export interface ClusterDetails {
   readonly cluster: ClusterObject;
   // The names of the Clusters that the view read in the namespace of the Cluster, which a message may name.
   readonly readClusters: readonly string[];
+  // The objects of Cluster API of the Cluster that the view read, which a message may name, by `<Kind>/<name>` and by
+  // the plural of the kind, `<Kinds>/<name>` (`subjectKindsOf`), each with the address of its node in the tree.
+  readonly readObjects: ReadonlyMap<string, string>;
   // An input of the model of the Cluster is not loaded yet: its marks show the spinner.
   readonly pending: boolean;
   readonly status: StatusSection;
@@ -721,9 +795,13 @@ function topologySection(cluster: ClusterObject): TopologySection | undefined {
   );
   const workers = topology.workers;
 
+  const classNamespace = reference.elsewhere ? reference.namespace : undefined;
+
   return {
     className: reference.name,
-    classNamespace: reference.elsewhere ? reference.namespace : undefined,
+    classNamespace,
+    classNode: addressOf("cluster.x-k8s.io", "ClusterClass", reference.name, classNamespace),
+    variableNames: variableNamesOf(cluster).variableNames,
     version: textOf(topology.version),
     controlPlaneReplicas: countOf(fieldsOf(topology.controlPlane)?.replicas),
     parts: [...topologyPartsOf(workers, "machineDeployments"), ...topologyPartsOf(workers, "machinePools")],
@@ -759,7 +837,7 @@ function networkSection(cluster: ClusterObject): NetworkSection | undefined {
   return empty ? undefined : section;
 }
 
-function conditionViews(conditions: ConditionsResult): ConditionView[] | undefined {
+export function conditionViews(conditions: ConditionsResult): ConditionView[] | undefined {
   if (conditions.state !== "read" || conditions.conditions.length === 0) return undefined;
   return conditions.conditions.map((condition) => ({
     condition,
@@ -795,6 +873,7 @@ export function clusterDetailsOf(
   return {
     cluster,
     readClusters,
+    readObjects: readObjectsOf(index, cluster),
     pending: row.pending,
     status: statusSection(cluster, row.status, row.conditions, failures),
     controlPlane: controlPlaneSection(cluster, parts, index, row.conditions),

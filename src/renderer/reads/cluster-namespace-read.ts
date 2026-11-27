@@ -568,6 +568,23 @@ export class ClusterNamespaceRead implements ReadsListener, ClusterSource {
     return this.#firstLoadsEnded;
   }
 
+  // Whether a first read of a kind runs now (SPEC-0005, P23): before the first loads of the view have ended, and, once
+  // they have, while the first load of a store runs that the view built later, of a kind that a reference names later
+  // or of the namespace that the class reference names now, or while the definition of a kind of a provider that a
+  // reference names is still being read. Unlike `firstLoadsEnded`, it does not stay false once it is: it turns true
+  // again whenever such a read starts, and false once it has ended. The refresh of the tree is disabled while it holds,
+  // since a refresh would end such a load, and a load of a refresh that fails leaves the kind with no load that ended.
+  firstLoadsRun(): boolean {
+    return (
+      !this.firstLoadsEnded() ||
+      this.#allProviders().some(({ resolution }) => resolution.state === "pending") ||
+      !firstLoadsEnded(
+        this.reads,
+        this.#stores.map((built) => storeKey(built.store)),
+      )
+    );
+  }
+
   // The stores that the view needs: those of its models, each on its namespace, then those of the kinds of a provider
   // that the references that it follows name, once what names them is read and their definitions are.
   #neededStores(): Needed[] {

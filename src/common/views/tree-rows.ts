@@ -9,10 +9,11 @@
 // - the counts of the objects under each node, worst first, the stale ones of each health next to it (P11);
 // - whether an object needs a look, and the expansion at first, which the state of the rows keeps once it is computed,
 //   so that a change of what the reads give expands nothing and moves no row; then only the user expands and
-//   collapses (P13);
+//   collapses, and a node that the address names later is shown, the nodes above it expanded (P2, P13);
 // - the rows that the table shows, each node under the nodes expanded above it, in the order of the tree (P14, P16);
 // - the search: the words that a row shows, the nodes that match them and the nodes above them, expanded, while the
-//   expansions of the user stay as they were (P15);
+//   expansions of the user stay as they were, and a node that the address names during a search, shown with the nodes
+//   above it (P2, P15);
 // - the offset of the scroll that keeps the first row in view in place when the reads insert or remove rows above it
 //   (P13).
 //
@@ -190,7 +191,7 @@ export function needsLook(node: TreeNode, status: NodeStatus | undefined): boole
 }
 
 // The nodes above a node, from its parent up to the Cluster.
-function ancestorsOf(tree: ClusterTree, id: string): string[] {
+export function ancestorsOf(tree: ClusterTree, id: string): string[] {
   const ancestors: string[] = [];
 
   for (let parent = tree.parents.get(id); parent !== undefined; parent = tree.parents.get(parent)) {
@@ -266,6 +267,22 @@ export function searched(state: RowsState, search: string): RowsState {
   return { ...state, search };
 }
 
+// The user expands or collapses a node while the search holds words: against what the search expands, for that search
+// alone, which the rows show at once, while the expansions of the user stay as they were for when it is cleared (P15).
+export function toggledInSearch(toggles: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  return toggles.has(id) ? new Set([...toggles].filter((each) => each !== id)) : new Set([...toggles, id]);
+}
+
+// A node that the address names once the expansion at first is computed, as one that appears later, or that a link
+// of the details names (P2, P5): the nodes above it are expanded, so that it is shown; nothing else changes.
+export function revealed(state: RowsState, tree: ClusterTree, id: string): RowsState {
+  if (!tree.nodes.has(id)) return state;
+
+  const above = ancestorsOf(tree, id).filter((each) => !state.expanded.has(each));
+
+  return above.length === 0 ? state : { ...state, expanded: new Set([...state.expanded, ...above]) };
+}
+
 // The rows (P14, P15, P16)
 
 export interface TreeRow {
@@ -285,22 +302,33 @@ export interface TreeSearch {
   readonly expanded: ReadonlySet<string>;
 }
 
+const NO_TOGGLES: ReadonlySet<string> = new Set();
+
 // The rows that the table shows: depth first, in the order of the tree, each node under the nodes expanded above it;
-// or, while the search holds words, the nodes that it shows, those above a match expanded.
-export function rowsOf(tree: ClusterTree, expanded: ReadonlySet<string>, search?: TreeSearch): TreeRow[] {
+// or, while the search holds words, the nodes that it shows, those above a match expanded, and what the user expands
+// or collapses during that search, against what the search expands (`toggles`): a node that the user expands shows
+// every node under it, and one that the user collapses none (P15).
+export function rowsOf(
+  tree: ClusterTree,
+  expanded: ReadonlySet<string>,
+  search?: TreeSearch,
+  toggles: ReadonlySet<string> = NO_TOGGLES,
+): TreeRow[] {
   const rows: TreeRow[] = [];
-  const visit = (node: TreeNode, depth: number): void => {
-    if (search !== undefined && !search.shown.has(node.id)) return;
+  const visit = (node: TreeNode, depth: number, every: boolean): void => {
+    if (search !== undefined && !every && !search.shown.has(node.id)) return;
 
     const expandable = node.children.length > 0;
-    const open = expandable && (search === undefined ? expanded.has(node.id) : search.expanded.has(node.id));
+    const bySearch = search !== undefined && search.expanded.has(node.id);
+    const open = expandable && (search === undefined ? expanded.has(node.id) : bySearch !== toggles.has(node.id));
 
     rows.push({ node, depth, expandable, expanded: open });
     if (!open) return;
-    for (const child of node.children) visit(child, depth + 1);
+    // Under a node that the search expands, the nodes that it shows; under one that the user expands, every node.
+    for (const child of node.children) visit(child, depth + 1, !bySearch);
   };
 
-  visit(tree.root, 0);
+  visit(tree.root, 0, false);
   return rows;
 }
 
@@ -316,8 +344,8 @@ function cellWords(state: "not-read" | "not-found"): string {
 // result still waits for an input; and, for a node that cannot be read, the words that P12 puts in its cells: "Not
 // read", or "Not found" for an object that its namespace does not hold, in its cells Activity and Condition, and the
 // reason in its cell Status. Never the counts, a label, an id or the namespace of the Cluster, which every row would
-// match. The words of the cells Version and Status of an object join them with those cells (SPEC-0005, "Notes and
-// deviations").
+// match. The words of the cells Version and Status of an object join them in `searchWordsOf` of `tree-cells.ts`, which
+// the search of the page matches (SPEC-0005, "Notes and deviations").
 export function nodeWords(tree: ClusterTree, node: TreeNode, status: NodeStatus | undefined): string[] {
   switch (node.form) {
     case "object":
@@ -393,6 +421,59 @@ export function searchTree(
     }
   }
   return { matches, shown: new Set([...matches, ...expanded]), expanded };
+}
+
+// What the page adds to a search for the nodes that the address names while the search holds its words, as a link of
+// the details names them (P2, P5, P15): the nodes that the search then shows, each such node and the nodes above it, and
+// the nodes that it then expands, those above it that the rows hid. Other words start a search with nothing added.
+export interface SearchReveals {
+  readonly shown: ReadonlySet<string>;
+  readonly expanded: ReadonlySet<string>;
+}
+
+export const NO_REVEALS: SearchReveals = { shown: new Set(), expanded: new Set() };
+
+// The search with what the page added to it: the nodes that it shows and those that it expands, the count of its
+// matches its own.
+export function withReveals(search: TreeSearch, reveals: SearchReveals): TreeSearch {
+  if (reveals.shown.size === 0) return search;
+  return {
+    matches: search.matches,
+    shown: new Set([...search.shown, ...reveals.shown]),
+    expanded: new Set([...search.expanded, ...reveals.expanded]),
+  };
+}
+
+// A node that the address names while the search holds words: it is shown, with the nodes above it, whose hidden ones
+// join the nodes that the search expands, as the nodes above a match do, and a node above it that the user collapsed
+// during this search is expanded again (`toggles`); the nodes above it that the rows show expanded stay as they are, so
+// that nothing that the user expanded closes (P2, P5, P15).
+export function revealedInSearch(
+  tree: ClusterTree,
+  search: TreeSearch,
+  toggles: ReadonlySet<string>,
+  reveals: SearchReveals,
+  id: string,
+): { readonly toggles: ReadonlySet<string>; readonly reveals: SearchReveals } {
+  if (!tree.nodes.has(id)) return { toggles, reveals };
+
+  const bySearch = withReveals(search, reveals).expanded;
+  // The nodes above it that the user collapsed during this search, whose toggles go.
+  const reopened = new Set<string>();
+  const shown = new Set([...reveals.shown, id]);
+  const expanded = new Set(reveals.expanded);
+
+  for (const above of ancestorsOf(tree, id)) {
+    shown.add(above);
+    // Expanded in the rows already, by the search or by the user.
+    if (bySearch.has(above) !== toggles.has(above)) continue;
+    if (toggles.has(above)) reopened.add(above);
+    else expanded.add(above);
+  }
+  return {
+    toggles: reopened.size === 0 ? toggles : new Set([...toggles].filter((each) => !reopened.has(each))),
+    reveals: { shown, expanded },
+  };
 }
 
 // The scroll (P13)

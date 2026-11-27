@@ -33,6 +33,7 @@ import { rowCells, versionRanks } from "../../common/views/cluster-cells";
 import { clusterRowOf, contextVersions, indexContext, StatusMemo } from "../../common/views/context";
 import { detailsAddressOf, parseDetailsAddress } from "../../common/views/details-address";
 import { isListReady, isLoaded, listNotices } from "../../common/views/read-state";
+import { treeParams } from "../../common/views/tree-address";
 import { Cluster } from "../api/cluster/cluster-v1beta2";
 import { Instant, MarkLine, MarkNote, MarksCell, MarkView } from "../components/marks";
 import { NoticeView } from "../components/notice";
@@ -51,6 +52,7 @@ import {
   uniqueStores,
 } from "../reads/page-stores";
 import styles from "./clusters-page.module.scss";
+import { TREE_PAGE } from "./page-ids";
 
 import type { Common } from "@freelensapp/extensions";
 
@@ -119,7 +121,7 @@ function clusterVersions(): string[] {
   return versions;
 }
 
-function availability(): Availability {
+export function availability(): Availability {
   const store = Renderer.K8sApi.crdStore;
 
   return availabilityOf({
@@ -129,30 +131,31 @@ function availability(): Availability {
   });
 }
 
-// A state before the list, in the place of the layout, under the title of the page (P20).
-function PageState({ availability: state }: { availability: Exclude<Availability, { state: "list" }> }) {
-  let words: ReactNode;
-
+// What a state before the list says (P20), which the page of the tree says as well (SPEC-0005, P19).
+export function availabilityWords(state: Exclude<Availability, { state: "list" }>): ReactNode {
   switch (state.state) {
     case "checking":
-      words = "Checking whether this cluster serves Cluster API";
-      break;
+      return "Checking whether this cluster serves Cluster API";
     case "not-installed":
-      words = (
+      return (
         <>
           Cluster API is not installed in this cluster: it serves no Cluster at <code>cluster.x-k8s.io/v1beta2</code>
         </>
       );
-      break;
     case "older":
-      words = (
+      return (
         <>
           This cluster serves Clusters at {state.versions.map((version) => version).join(", ")} alone, which this
           extension does not read: it reads <code>cluster.x-k8s.io/v1beta2</code>, which came with Cluster API v1.11
         </>
       );
-      break;
   }
+}
+
+// A state before the list, in the place of the layout, under the title of the page (P20).
+function PageState({ availability: state }: { availability: Exclude<Availability, { state: "list" }> }) {
+  const words = availabilityWords(state);
+
   return (
     <div className={styles.page} data-testid="capi-clusters-page">
       <h5 className={styles.title}>{PAGE_TITLE}</h5>
@@ -507,7 +510,11 @@ const ClustersList = observer(({ clusterStore, details, extension }: ClustersLis
   const definitionsFailed = Renderer.K8sApi.crdStore.failedLoading;
   const address = parseDetailsAddress(details?.get());
   const openDetails = (namespace: string, name: string) => details?.set(detailsAddressOf(namespace, name));
-  const host: ViewHost = { extension, openCluster: openDetails };
+  // The tree of a Cluster, from the row Tree of its details and from their references to an object of Cluster API
+  // (SPEC-0005, P3, P5).
+  const openTree = (namespace: string, name: string, node?: string) =>
+    void extension.navigate(TREE_PAGE, treeParams(namespace, name, node));
+  const host: ViewHost = { extension, openCluster: openDetails, openTree };
   // The name of a Cluster in the list, which gets the focus back when its details close (P15).
   const focusName = (value: string) => {
     const names = root.current?.querySelectorAll<HTMLElement>("[data-capi-cluster]") ?? [];

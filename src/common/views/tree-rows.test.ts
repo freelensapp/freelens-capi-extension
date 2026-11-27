@@ -4,25 +4,31 @@ import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { outlineText, treeSourceOf } from "../../../test/tree-sources";
 import { buildTree, compareText, evaluateTree, indexTree } from "./cluster-tree";
 import { StatusMemo } from "./context";
+import { searchWordsOf } from "./tree-cells";
 import {
   countsOf,
   countWords,
   firstExpansion,
+  NO_REVEALS,
   needsLook,
   nodeWords,
+  revealed,
+  revealedInSearch,
   rowsOf,
   rowsStateOf,
   scrollOffset,
   searched,
   searchTree,
   toggled,
+  toggledInSearch,
+  withReveals,
 } from "./tree-rows";
 
 import type { TreeSourceOptions } from "../../../test/tree-sources";
 import type { KubeObjectData } from "../status/index";
 import type { ClusterTree, NodeStatus, ObjectNode, ReferenceNode, TreeNode } from "./cluster-tree";
 import type { ReadFailure } from "./read-state";
-import type { RowsState, TreeRow } from "./tree-rows";
+import type { RowsState, TreeRow, TreeSearch } from "./tree-rows";
 
 // The cases of SPEC-0005, "Tests", "Unit", `tree-rows.test.ts` (P11, P13 to P16): the expansion at first of the states
 // of the fixtures, and of the changes that a case makes to them, each said in its case; the state of the rows after it;
@@ -100,6 +106,13 @@ function idOf(tree: ClusterTree, text: string, under?: string): string {
 }
 
 const machine = (name: string) => `cluster.x-k8s.io/Machine/${name}`;
+
+function machine2xxxg(tree: ClusterTree): string {
+  const id = machine("freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg");
+
+  if (!tree.nodes.has(id)) throw new Error(`No node ${id}`);
+  return id;
+}
 
 describe("the expansion at first (P13)", () => {
   it("of healthy is the first level alone", () => {
@@ -340,6 +353,30 @@ describe("the state of the rows after the expansion at first (P13)", () => {
       "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
     );
     expect(toggled(state, workers).expanded.has(workers)).toBe(false);
+  });
+
+  it("reveals a node that the address names later, the nodes above it expanded, and changes nothing else", () => {
+    const view = stateView("healthy");
+    const state = rowsStateOf(undefined, view.tree, view.statuses);
+    const machine = machine2xxxg(view.tree);
+    const shown = revealed(state, view.tree, machine);
+
+    expect(outline(rowsOf(view.tree, state.expanded)).some((row) => row.includes("m5gtb-2xxxg"))).toBe(false);
+    expect(
+      [...shown.expanded]
+        .filter((id) => !state.expanded.has(id))
+        .map((id) => outlineText(view.tree.nodes.get(id) as TreeNode)),
+    ).toEqual([
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+      "Workers",
+    ]);
+    expect(outline(rowsOf(view.tree, shown.expanded))).toContain(
+      "        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+    );
+    // A node already shown, and one that the tree does not hold, change nothing.
+    expect(revealed(shown, view.tree, machine)).toBe(shown);
+    expect(revealed(state, view.tree, "cluster.x-k8s.io/Machine/gone")).toBe(state);
   });
 
   it("is computed again for another Cluster", () => {
@@ -608,6 +645,34 @@ describe("the search (P15)", () => {
     expect(matched(view, "Not read")).toHaveLength(4);
   });
 
+  it("matches a version and the words of a cell Status, those of P10 and P12 among them, never N/A", () => {
+    const view = stateView("healthy");
+    const rows = (words: string) => {
+      const found = searchTree(view.tree, words, (node) => searchWordsOf(view.tree, node, view.statuses.get(node.id)));
+
+      return [...(found?.matches ?? [])].map((id) => outlineText(view.tree.nodes.get(id) as TreeNode)).sort();
+    };
+
+    expect(rows("v1.37.0")).toEqual([
+      "Cluster freelens-capi-healthy",
+      "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+      "Machine freelens-capi-healthy-d2lgq-zqlcx",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+      "Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-5pzv9",
+      "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+      "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+      "Workers",
+    ]);
+    expect(rows("2 of 2 Machines available")).toEqual(["MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb"]);
+    expect(rows("targets healthy")).toEqual([
+      "MachineHealthCheck freelens-capi-healthy-d2lgq",
+      "MachineHealthCheck freelens-capi-healthy-md-0-m9x7h",
+    ]);
+    expect(rows("N/A")).toEqual([]);
+    // Without the words of those cells, the search of the name and the marks alone finds no version.
+    expect(matched(view, "v1.37.0")).toEqual([]);
+  });
+
   it("gives back the expansions of the user once it is cleared", () => {
     const view = searchable();
     const workers = idOf(view.tree, "Workers");
@@ -621,6 +686,123 @@ describe("the search (P15)", () => {
 
     expect(search(view, cleared.search)).toBeUndefined();
     expect(outline(rowsOf(view.tree, cleared.expanded, search(view, cleared.search)))).toEqual(before);
+  });
+});
+
+describe("what the user expands or collapses during a search (P15)", () => {
+  it("shows at once every node under a node that the user expands, none under one that the user collapses, and leaves the expansions of the user as they were", () => {
+    const view = stateView("healthy");
+    const workers = idOf(view.tree, "Workers");
+    const state = rowsStateOf(undefined, view.tree, view.statuses);
+    const user = outline(rowsOf(view.tree, state.expanded));
+    const found = searchTree(view.tree, "Workers", (node) => nodeWords(view.tree, node, view.statuses.get(node.id)));
+
+    expect(outline(rowsOf(view.tree, state.expanded, found))).toEqual(["Cluster freelens-capi-healthy", "  Workers"]);
+
+    // The user expands Workers, which the search shows and does not expand: every node under it shows.
+    const expanded = toggledInSearch(new Set(), workers);
+
+    expect(outline(rowsOf(view.tree, state.expanded, found, expanded))).toEqual([
+      "Cluster freelens-capi-healthy",
+      "  Workers",
+      "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+    ]);
+    expect(rowsOf(view.tree, state.expanded, found, expanded)[1].expanded).toBe(true);
+
+    // Then the Cluster, which the search expands, collapsed: no node under it.
+    expect(outline(rowsOf(view.tree, state.expanded, found, toggledInSearch(expanded, view.tree.root.id)))).toEqual([
+      "Cluster freelens-capi-healthy",
+    ]);
+
+    // Workers collapsed again: the rows of the search as they were.
+    expect(toggledInSearch(expanded, workers)).toEqual(new Set());
+
+    // The expansions of the user are not changed, and are the rows once the search is cleared.
+    expect(outline(rowsOf(view.tree, state.expanded))).toEqual(user);
+  });
+});
+
+describe("a node that the address names during a search (P2, P5, P15)", () => {
+  // healthy, searched for "Workers", which matches the virtual node alone: the rows show the Cluster and Workers.
+  const view = stateView("healthy");
+  const found = searchTree(view.tree, "Workers", (node) => nodeWords(view.tree, node, view.statuses.get(node.id)));
+  const state = rowsStateOf(undefined, view.tree, view.statuses);
+  const devMachine = "infrastructure.cluster.x-k8s.io/DevMachine/freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg";
+  const path = [
+    "Cluster freelens-capi-healthy",
+    "  Workers",
+    "    MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+    "      MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+    "        Machine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg",
+    "          DevMachine freelens-capi-healthy-md-0-m9x7h-m5gtb-2xxxg (infrastructure machine)",
+  ];
+  const rowsWith = (toggles: ReadonlySet<string>, reveals = NO_REVEALS) =>
+    outline(rowsOf(view.tree, state.expanded, withReveals(found as TreeSearch, reveals), toggles));
+
+  it("is shown with the nodes above it, those that the search hid expanded as the search expands the nodes above a match, and the matches stay the search's own", () => {
+    expect(rowsWith(new Set())).toEqual(["Cluster freelens-capi-healthy", "  Workers"]);
+
+    const next = revealedInSearch(view.tree, found as TreeSearch, new Set(), NO_REVEALS, devMachine);
+
+    expect(next.toggles).toEqual(new Set());
+    expect(rowsWith(next.toggles, next.reveals)).toEqual(path);
+    expect(withReveals(found as TreeSearch, next.reveals).matches).toBe(found?.matches);
+    expect(found?.matches).toEqual(new Set([idOf(view.tree, "Workers")]));
+
+    // A node under a node that the search expands and does not show, the ClusterClass under the Cluster: shown alone,
+    // after the nodes that the search shows.
+    const clusterClass = idOf(view.tree, "ClusterClass quick-start");
+    const other = revealedInSearch(view.tree, found as TreeSearch, new Set(), NO_REVEALS, clusterClass);
+
+    expect(rowsWith(other.toggles, other.reveals)).toEqual([
+      "Cluster freelens-capi-healthy",
+      "  Workers",
+      "  ClusterClass quick-start",
+    ]);
+
+    // Both, the second named after the first.
+    const both = revealedInSearch(view.tree, found as TreeSearch, next.toggles, next.reveals, clusterClass);
+
+    expect(rowsWith(both.toggles, both.reveals)).toEqual([...path, "  ClusterClass quick-start"]);
+  });
+
+  it("expands again a node above it that the user collapsed during the search, and leaves one that the user expanded as the user left it, with every node under it", () => {
+    const workers = idOf(view.tree, "Workers");
+    const collapsed = toggledInSearch(new Set(), view.tree.root.id);
+
+    expect(rowsWith(collapsed)).toEqual(["Cluster freelens-capi-healthy"]);
+
+    const again = revealedInSearch(view.tree, found as TreeSearch, collapsed, NO_REVEALS, devMachine);
+
+    expect(again.toggles).toEqual(new Set());
+    expect(rowsWith(again.toggles, again.reveals)).toEqual(path);
+
+    // Workers, expanded by the user, shows every node under it; the nodes below it that the rows hid are expanded as
+    // the search expands, with what they show.
+    const expanded = toggledInSearch(new Set(), workers);
+    const kept = revealedInSearch(view.tree, found as TreeSearch, expanded, NO_REVEALS, devMachine);
+
+    expect(kept.toggles).toEqual(new Set([workers]));
+    expect(kept.reveals.expanded.has(workers)).toBe(false);
+    expect(rowsWith(kept.toggles, kept.reveals)).toEqual(path);
+    expect(rowsOf(view.tree, state.expanded, withReveals(found as TreeSearch, kept.reveals), kept.toggles)[1]).toEqual(
+      expect.objectContaining({ expanded: true }),
+    );
+  });
+
+  it("changes nothing for a node that the tree does not hold, and the search with nothing added is the search", () => {
+    const toggles = new Set<string>();
+    const unchanged = revealedInSearch(
+      view.tree,
+      found as TreeSearch,
+      toggles,
+      NO_REVEALS,
+      "cluster.x-k8s.io/Machine/gone",
+    );
+
+    expect(unchanged.toggles).toBe(toggles);
+    expect(unchanged.reveals).toBe(NO_REVEALS);
+    expect(withReveals(found as TreeSearch, NO_REVEALS)).toBe(found);
   });
 });
 

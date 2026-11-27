@@ -746,6 +746,14 @@ describe("the details of the extension (P6, P13, P15)", () => {
     expect(screen.queryByTestId("capi-cluster-details")).toBeNull();
   });
 
+  it("open the page of the tree of a Cluster from the row Tree of its details, by the parameters of that page (SPEC-0005, P3)", async () => {
+    await opened(ADDRESS);
+
+    fireEvent.click(screen.getByTestId("capi-details-open-tree"));
+
+    expect(host.navigateExtension).toHaveBeenCalledWith("cluster-tree", { cluster: ADDRESS, details: "" });
+  });
+
   it("say that a value that is not <namespace>/<name> names no Cluster, as written, and read nothing for it", async () => {
     const built = host.builtStores.length;
 

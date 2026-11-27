@@ -2972,9 +2972,14 @@ the contract label of the definition for a control plane of a provider; and
   of their addresses, whatever the order of a store, an object that another of
   them owns, or that a Machine or a MachinePool among them names, after that
   one; and after each the rows of P7 place what it holds, and what that holds
-  in turn, so that the objects that it controls, owns or names go under it,
-  never beside it with a reason that says that their owners are not nodes of
-  the tree. The rows then read only the objects that the nodes made since they
+  in turn, so that the objects that it controls, owns or names go under it.
+  The templates aside, as the second part found and its unit case pins: the
+  row of the owners places no template once the templates are placed, so a
+  template that a template under Other objects owns goes beside it, and an
+  object that a template alone owns goes there before the templates are
+  placed, each with the reason that its owners are not nodes of the tree,
+  naming a template that is a node by then; Cluster API makes neither shape.
+  The rows then read only the objects that the nodes made since they
   last read control, own or name, in the order in which a pass over every
   object reads them, so that the tree is the one that every row run again over
   every object gives, and the work grows with the objects of the Cluster, never
@@ -3044,7 +3049,8 @@ the contract label of the definition for a control plane of a provider; and
   those cells, in the second part.
 - Decided while implementing: until the page imports them, `knip.jsonc` lists
   `cluster-tree.ts`, `tree-rows.ts` and `variable-names.ts` as production
-  entries, since only their tests reach them; the page removes the entries.
+  entries, since only their tests reach them; the page removes the entries,
+  which the second part did.
 - Decided while implementing, for the names of the variables and of the patches,
   in place of what P6, P20, "Tests", "Unit" and "Safety" say of them, whose
   rules stay as they were approved, since a change to an approved spec is made
@@ -3114,6 +3120,368 @@ the contract label of the definition for a control plane of a provider; and
   time of the latest. The read state is that of every view, so the notices of
   the list and of the details of SPEC-0004 keep one entry too, which its notes
   record (SPEC-0004, "Notes and deviations").
+
+- Decided while implementing the second part, where P2 is silent on how a
+  value is read: `details` names a node by its parts alone, three or four, none
+  of them empty, `.` or `..`, and is only ever looked up among the nodes of the
+  tree, never sent; `cluster` is read by the parser of the parameter `details`
+  of the page of the Clusters (SPEC-0004, P6), in `tree-address.ts`. The ids of
+  the two pages are in `src/renderer/pages/page-ids.ts`, which the
+  registration, the page of the Clusters and the page of the tree import. The
+  page of the tree is keyed by its Cluster, so that another Cluster starts a new
+  read.
+- Decided while implementing the second part, where P13 and P16 give a reason
+  that no longer holds: the page gives the virtual list of the host its
+  `selectedItemId` and sets the scroll of the list's element, as they say,
+  although the extension follows 2.1.0 alone, since the `Table` of the host
+  hands it no handle on its list, whose `scrollToItem` would be the only other
+  way. The page gives `selectedItemId` in the render after a key move, after
+  the details close and in the render that shows the node of an address, and
+  clears it in the frame after the row is drawn, which a reference on an
+  element of each row tells; in that frame it brings the row whole into view by
+  the scroll of `.VirtualList > .list`, and, while that element has no height
+  yet, as at the first mount, it tries again in the next frame, for 30 frames
+  at most. The rows that the reads insert or remove above the first row in view
+  move the scroll in a layout effect, by `scrollOffset` of `tree-rows.ts`.
+- Decided while implementing the second part, where P2 and P13 are silent on a
+  node that the address names later: it is shown, the nodes above it expanded,
+  and scrolled to, once, when a link or a navigation names it and when it
+  appears in the tree; the node of a row that the user clicks, whose address the
+  page sets itself, is not scrolled to, since its row is in view.
+- Decided while implementing the second part, where P10 is silent on an object
+  that is deleting, to which the model gives no health: its cells Condition and
+  Status read N/A, with the tooltip "No health: it is deleting. The stage of its
+  deletion is in its details." (DESIGN.md, "Words"); while the inputs of the
+  model of an object load, its cells Activity, Condition and Status show the
+  spinner of the host, as the list does.
+- Decided while implementing the second part, where P9 is silent on the form of
+  some cells: the cell Replicas of a control plane, a MachineDeployment, a
+  MachineSet and a MachinePool is `status.availableReplicas` of
+  `spec.replicas`, as `2/3`, with every counter in its tooltip, the up to date
+  Machines of a control plane at the contract `v1beta1` read from
+  `status.updatedReplicas`; a Machine counts one desired, and one available
+  when its `Available` is `True`; the virtual nodes Control plane and Workers
+  show the counters and the versions that the Cluster keeps of them. The cell
+  Status of a node that cannot be read holds the reason, with "Not read." and
+  the message of each answer in its tooltip, and that of the node of a kind adds
+  the notice of the kind to its tooltip (P19); an entry applied reads "Applied
+  at" its instant; the tooltip of the counts names the node that holds them, as
+  "Under Workers: 10 objects: 8 Healthy, 2 with no health". The indentation is
+  twice the spacing of the host, `--padding`, for each level, 16 px, as the
+  probe drew it (H2). The columns flex as `cluster-tree.module.scss` says: those
+  of state keep their minimum width and never shrink, Replicas and Version
+  shrink the most and the name the least.
+- Decided while implementing the second part, where P12 says that the kind and
+  the name of a node that cannot be read are text: they are a button, as those
+  of an object read, since P17 gives that node details, which say why it cannot
+  be read; a virtual node, the node of a kind and an entry of a binding keep
+  their words as text.
+- Decided while implementing the second part, where P18 is silent: when the
+  rows no longer show the active node, a search makes the first node that it
+  matches active, with no scroll, and a collapse or a change of the reads the
+  nearest node above it that the rows show, else the root; Enter and Space
+  expand or collapse the node of a kind, as they do a virtual node. The element
+  of the tree is labelled "Tree of the Cluster <name>".
+- Decided while implementing the second part, where P17 is silent on the words
+  of the details: the title of the drawer is `<Kind>: <name>`, "Cluster: <name>"
+  for the root and "Details" for an address that names no node; the row Place
+  reads as "Machine of MachineSet <name>, by its controller", or
+  "MachineDeployment of Cluster <name>, under Workers, by the label
+  cluster.x-k8s.io/cluster-name", with a row "Why there" for an object under
+  Other objects or under the row of an owner that cannot be read; the pause of a
+  node says whether its own annotation, `spec.paused` of its Cluster or both
+  hold it. The facts of each kind are those of `nodeDetailsOf` of
+  `node-details.ts`: the counters, the version and the templates of a control
+  plane, a MachineDeployment, a MachineSet and a MachinePool, and the version of
+  the Machines of a control plane; the version, the provider ID, the Node and
+  the objects of a Machine; the field of the contract that says that an object
+  of a provider is ready, its provider ID and the link to the details of the
+  host; the targets, the counts, the remediation and the remediation template of
+  a MachineHealthCheck; the selector of a ClusterResourceSet and what it applied
+  to the Cluster; the entries of a binding; the pool and the IPAddress of a
+  claim; the address, the prefix and the gateway of an IPAddress; that a
+  template has no status, and the nodes that name it; and the names of the
+  variables and of the patches of the ClusterClass.
+- Decided while implementing the second part, where P5 and P17 are silent on
+  some links: an owner that is the Cluster links to the root, whose details are
+  those of a Cluster, and the owners of the Cluster itself, in the details of
+  the root, stay text, as SPEC-0004, P32 has them; a name in a message in the
+  details of a node opens the node of an object of Cluster API of the tree, by
+  its kind and its name, the class read in another namespace included, the one
+  node of the tree of its kind. In the details of a Cluster, a name in a message
+  opens the node of a Machine, a MachineSet, a MachineDeployment or a
+  MachinePool of the Cluster and of its KubeadmControlPlane when the view read
+  them, and the row Tree is a section of its own before the Status, with the
+  button "Open the tree of this Cluster".
+- Decided while implementing the second part, where "Safety" names "the one
+  function" that reads the annotation that `kubectl apply` writes: it is one
+  module, `annotations.ts`, whose `annotationsOf` reads whether an object holds
+  it, with `Object.hasOwn`, and never its value; the check of Safety finds the
+  name of the annotation in no other module of the view, and in that one no
+  index, no destructuring by its key, no `get` and no walk of every value of the
+  annotations.
+- Decided while implementing the second part, where P23 is silent on the form of
+  the refresh: an icon of the host with the role `button`, labelled "Read the
+  tree again", disabled while `firstLoadsRun` of the read holds, with the
+  tooltip "The tree is still being read: it can be read again once it is".
+  `firstLoadsRun` holds before the first loads end, while the first load of a
+  store built later runs, and while the definition of a kind of a provider that
+  a reference names is still read; unlike `firstLoadsEnded`, it turns true
+  again whenever such a read starts.
+- Decided while implementing the second part, where P1, P15 and P19 are silent
+  on some words: the title reads "Cluster Tree: <name>, <namespace>", as the
+  sketch of P1 has it; the search says "N nodes match", or "1 node matches"; a
+  page opened with no Cluster says that it shows the tree of one Cluster, which
+  the details of that Cluster open from their row Tree, with a button to the
+  page of the Clusters; the details of a node that the tree does not hold say
+  that no such object is in the tree of the Cluster, which was read, and, for
+  one that was there in this mount, that it is no longer.
+- Decided while implementing the second part: the focus goes back to the
+  element of the tree when the details close on their icon, on Escape, or on a
+  click outside while the focus is still in the details or on the body, as the
+  details of a Cluster do (SPEC-0004, P15), and stays on the control that a
+  click outside gave it to.
+
+- Decided while implementing the second part, after the last review of the
+  first: the case of the placement that counts its passes over the objects of
+  the Cluster counts too what the rows read of each object, the calls of
+  `followedReferencesOf` and of `ownersOf`, from 150 to 300 restored Machines,
+  which grow as the Machines do, at most twice, so that a row that read every
+  node or every object for each object under Other objects fails it. Four cases
+  pin the mechanisms by which the rows place what an object under Other objects
+  holds as a pass of every row over every object places it, each on the
+  smallest set on which the review found it to change the tree: what a node
+  placed in a pass owns after it joins that pass; what it owns before it waits
+  for the next pass; the objects that the nodes own are read in the order of
+  the objects of the Cluster; and the row of the claims reads again the nodes
+  that its own pass made.
+- Decided while implementing the second part, where the order of the rows of P7
+  and the passes of the rows part: the row of the owners places, in one pass
+  over the objects of the Cluster in their order, every object that it can
+  place, and an object that it places makes a node under which the same pass
+  places what that object owns after it, by its owner, where an earlier row of
+  P7 would place it by its own rule: an IPAddress that its claim controls and
+  that the `status.addressRef` of the claim names, by its owner rather than by
+  that reference, when the row of the owners places the claim, as under the row
+  of an owner of a kind that cannot be read; and a claim that a MachineSet
+  controls, by its owner rather than by its controller, when that row places the
+  MachineSet. The parent is the same; the placement that the details say and the
+  order of P14 among the siblings differ. The placement keeps it, as the whole
+  settle of the first part did, and unit cases pin it.
+- Decided while implementing the second part: the first settle of the rows,
+  before any object goes under Other objects, still runs every row over every
+  object until they place nothing more, so a chain of owners in which each
+  object comes before its owner in the order of the objects of the Cluster, its
+  head a node, takes as many passes as it has links, the square of its length;
+  the chains of owners of Cluster API are a few levels deep.
+- Decided while implementing the second part: the first loads of the read wait
+  for the first load of the store of the Clusters itself, never for that of
+  whatever store the read has built, which a case of the read pins with the
+  host registering the API of the Machines alone at first.
+
+- Decided while implementing the second part, after its reviews, where P17 and
+  P19 give the error boundaries: what the page computes is computed inside
+  them. The page renders its header, the title, the search, how many nodes
+  match and the refresh, and, inside the boundary of the tree, a child that
+  builds the tree, evaluates the model, counts, searches and gives the
+  notices, and draws them, the tree and the drawer, so that an error there
+  leaves the header, with the error page in the place of the tree; the child
+  tells the header how many nodes match. The drawer computes the details of
+  its node inside a boundary of its own, keyed by the node, so that an error
+  there leaves the tree, and takes its title from the address alone; it goes
+  with the tree when the tree fails. Two cases plant a throw, one in the tree
+  and one in the details of a node.
+- Decided while implementing the second part, after its reviews, where P19
+  gives the tree its error page and P23 its refresh: the key of the boundary of
+  the tree counts the refreshes, so that the refresh of the header, which an
+  error of the tree leaves in place, draws the tree again once what threw is
+  gone; the boundary was keyed by the Cluster alone, so the error page stayed
+  until the user left the page.
+- Decided while implementing the second part, after its reviews, where P19
+  and P23 do not say in which namespace a node that the tree does not hold can
+  still be loading: in the one where the tree reads its kind alone, that of
+  the Cluster, or, for the ClusterClasses, the one that the class reference of
+  the Cluster names now, and in no other (P6). There the details show the
+  spinner while the first load of that kind runs. In any other namespace they
+  never do: an object named there is not read, "Not read: the tree of the
+  Cluster `<namespace>/<name>` reads no `<noun of the kind>` in the namespace
+  `<namespace>`", or, for one that was there, as the class whose reference
+  names another namespace now, no longer in the tree (`addressKindRead` of
+  `cluster-tree.ts`). They name the object as its row would, with its
+  namespace for an address of four parts.
+- Decided while implementing the second part, after its reviews, where P23
+  keeps the details of an object that goes open: when the Cluster goes, once
+  the page showed its tree in this mount, every object of its tree goes with
+  it, and the details that are open stay, saying that their object is no
+  longer in the tree, until the user closes them. While the Clusters of its
+  namespace cannot be read, refused, failed, or not read again after a
+  refresh, the drawer goes with the tree, whose place says why, since what the
+  tree held is not known then; and the page shows no drawer for a Cluster that
+  it never found in this mount, whose tree held no node, so that no details
+  say of a tree that was never shown that it was read.
+- Decided while implementing the second part, after its reviews, where P13
+  moves the scroll of the list in a layout effect: the page reads the offset
+  of the list's element before React changes the rows, in
+  `getSnapshotBeforeUpdate` of a class component that renders nothing, since
+  Chromium clamps that offset to the shorter list once rows go at its end, and
+  takes the first row in view from that offset, never from the clamped one;
+  then, in the same commit and before the paint, it sets the scroll to that
+  offset moved by the height of the rows inserted or removed above that row.
+  Taken from the clamped offset, rows removed while the user sits at the
+  bottom of the tree moved the rows in view a second time, which a case of the
+  page shows on a list that clamps its scroll as Chromium does.
+- Decided while implementing the second part, after its reviews, where P15 is
+  silent on what the user expands or collapses during a search: it acts on what
+  the search shows, at once, against what the search expands, so that a node
+  that the user expands shows every node under it, those that match or not,
+  and one that the user collapses none (`toggledInSearch` and `rowsOf` of
+  `tree-rows.ts`); the expansions of the user are not changed, and come back
+  as they were once the search is cleared, and other words start a search of
+  their own, with nothing expanded or collapsed by the user. Before, a click on
+  the button of a node, Right or Left changed the expansions of the user
+  alone, which nothing showed until the search was cleared.
+- Decided while implementing the second part, after its reviews, as P15 means
+  the focus that goes to the tree: the page gives it to the element of the
+  tree as that element is drawn, once the first loads have ended, with
+  `preventScroll`, unless a control holds the focus, as the search in which
+  the user typed while the tree loaded. Before, it stayed on the body, and Tab
+  reached the search and the refresh first.
+- A fact of the host seen in Freelens 2.1.0, after the probe, which settles
+  the role that P18 left open: between the element with the role `treegrid`
+  and a row, the host puts the element of the `Table`, `div.Table`, and that
+  of its virtual list, `div.VirtualList`, with no role, and the element of the
+  list that scrolls, `div.list`, with the role `list`, so the rows sit in a
+  list for assistive technology. The session of the screenshots of the second
+  part, run in Freelens dev 2.1.0 in both variants of the theme `freelens` on
+  a branch that is no part of this spec, read it in the DOM, by the roles of
+  the elements between the element of the tree and a row; it did not read the
+  tree of accessibility.
+- Decided while implementing the second part, after that run: the fallback of
+  P18 applies. The element of the tree owns the rows that the virtual list
+  draws by `aria-owns`, which names their ids in their order in the document;
+  the page names them again whenever the list draws a row or takes one away,
+  from the reference on an element of each row, since the list draws other
+  rows on a scroll with no render of the page, and it alone writes the
+  attribute, which React does not render (`ownedRows` of `tree-keys.ts`). The
+  check in the tree of accessibility of the frame, through CDP, that each row
+  drawn is a row of the treegrid, at its level, with its cells as gridcells,
+  and the header a row of columnheaders (Tests, "In Freelens", step 5), is
+  left to the session of the third part, which also says whether the element
+  with the role `list`, left with no row, stays in that tree.
+- Decided while implementing the second part, after its reviews, so that the
+  code follows the note above on P18: once a change of the reads removes the
+  active node from the tree, the nearest node above it that the rows show
+  becomes active, above it in the tree in which the page last showed it, whose
+  nodes above the active node the page keeps from one render to the next, and
+  the next key move starts there; the code gave the root.
+- Decided while implementing the second part, after its reviews, in place of
+  what the note above on the cell Replicas says of the contract `v1beta1`: a
+  control plane at the contract `v1beta1` is counted by the fields of that
+  contract, `spec.replicas`, `status.replicas`, `status.readyReplicas`,
+  `status.updatedReplicas` and `status.unavailableReplicas`, which names no
+  available replicas: the cell and the details count its available Machines as
+  the Cluster counts them, the desired less the unavailable ones, none below 0,
+  and none while either is not written
+  (core/reconcilers/cluster/cluster_controller_status.go:150-159), and the
+  tooltip says so, as "Available: 2 Machines, the desired less 1 unavailable";
+  its up to date Machines are `status.updatedReplicas`
+  (internal/contract/controlplane.go:212-261). The unit object of that
+  contract holds its fields alone.
+- Decided while implementing the second part, after its reviews: the cell
+  Replicas of Workers, the counters that the Cluster keeps of its workers,
+  says in its tooltip, as the list says it, that a MachinePool of the Cluster
+  has no Machines and that its counters count the instances of its provider,
+  from the result of the Cluster (`poolsWithoutMachinesOf` of `context.ts`,
+  which the list uses too; SPEC-0004, P8).
+- Decided while implementing the second part, after its reviews, where P17
+  gives a MachineHealthCheck its targets as links: a target that the tree does
+  not hold, a Machine gone since the MachineHealthCheck wrote `status.targets`,
+  or one whose kind could not be read and that no row holds, is its kind and
+  its name as text, with why in its tooltip in the words of P12, as the details
+  of a Cluster show a reference that opens nothing (SPEC-0004, P18); the
+  details dropped it, with no word.
+- Decided while implementing the second part, after its reviews, where P18
+  shows the outline of the row of the active node "while the element has the
+  focus": the stylesheet draws it on `:focus-visible` of the element of the
+  tree, so the browser shows it when the focus came from the keyboard or a key
+  acts in the tree, and not after a click of the mouse until a key is pressed,
+  as it shows the focus of a control of the host (browser behavior, not in
+  these sources); after a click, the hover and the selected row of the host
+  show where the user is, and the outline says where the keys act once they
+  are used. So does the focus that the page gives the tree as it is drawn,
+  after the click that opened the page.
+- Decided while implementing the second part, after its reviews: the line of
+  "Tests", "Unit", for `cluster-details-v1beta2.test.tsx` that asks for "an
+  owner of Cluster API" as a button that opens the tree at its node is not
+  followed. The owners of a Cluster stay text in the drawer of the page of the
+  Clusters, in the panel in the details of the host and in the details of the
+  root, as SPEC-0004, P32 has them: the tree of a Cluster holds the objects
+  under it, never an owner of the Cluster, so such a button would name no node
+  of that tree. The owners in the details of every other node link to their
+  nodes when the tree holds them, as P5 says, and an owner that is the Cluster
+  to the root (the note above on P5 and P17).
+- Decided while implementing the second part, after its reviews, where P2 and
+  P15 are silent on a node that the address names while the search holds
+  words, as a link of the details names it: it is shown among the rows of the
+  search, active and scrolled to, with the nodes above it, those that the
+  search hid joining the nodes that it expands, as the nodes above a match do,
+  and one that the user collapsed during the search expanded again; the nodes
+  above it that the rows show expanded stay as they are, so nothing that the
+  user expanded closes, the count of the matches stays the search's own, and
+  other words start a search with nothing added (`revealedInSearch` and
+  `withReveals` of `tree-rows.ts`). Before, the node was shown in the
+  expansions of the user alone, which the search does not show: its details
+  opened with no row, and the first match of the search became the active node.
+- Decided while implementing the second part, after the first run of its CI,
+  in which the session of the Clusters of SPEC-0004 still expected what its
+  "Tests", "In Freelens", 4 and 5 say: that session follows P3 and P5. Its
+  step 4, on `rolling-out`, checks that the control plane, each part of the
+  workers, the class and each name of the subjects of the lines that name the
+  MachineDeployment are one button and no link, that no line of a message
+  holds a link, and that the metadata holds none, with the namespace the badge
+  of the host; it clicks the control plane alone, since each button leaves the
+  page of the Clusters, and reads in the address of the frame the page of the
+  tree and its parameters, the Cluster and the node of the KubeadmControlPlane,
+  then the title of that page, the title of its drawer and the details of that
+  node; it then opens the page of the Clusters and the details of the Cluster
+  again, as at its start, never through the history of the frame (the note
+  below on the way back), and checks on them the badge of the
+  namespace. The node that each other button opens stays with the unit tests of
+  the details, and the way in from the panel in the details of the host with
+  the session of the third part (Tests, "In Freelens", 3). Its step 5 expects
+  the row Tree after the metadata and before the status (P3).
+- Decided while implementing the second part, where P5 opens the tree from
+  every name in a message that names an object of Cluster API of the Cluster
+  that the view read, and the parser of SPEC-0003 gives the kind of a subject
+  as the message writes it, alone or in the plural (SPEC-0003, P27): the
+  lookups of the names of a subject, in the details of a Cluster and in those
+  of a node, take the kind either way, through one function, `subjectKindsOf`
+  of `cluster-details.ts`, which writes the plural as the project writes it,
+  with the pluralizer that also names the definition of each kind
+  (util/conditions/merge_strategies.go:452, 488-494;
+  util/contract/contract.go:29): the kind and `es` when it ends in `ss`, and
+  the kind and `s` otherwise, the plural of the definition of each kind that
+  the extension models, in the capitals of the kind, which a unit case
+  compares. Before, they looked a name up by the kind as written, so that a
+  subject in the plural, as `* Machines <a>, <b>:` of the WorkerMachinesUpToDate
+  of `rolling-out`, stayed text while `* Machine <name>:` opened the tree; the
+  same held for a Cluster, which a name opens in its details, and for the
+  object of a provider that a reference of the Cluster names, which a name
+  opens in the details of the host (SPEC-0004, P18). A kind of a provider that
+  the pluralizer writes otherwise, as one that ends in `y`, is found under the
+  kind alone.
+- A fact of the host seen in a run in CI on Freelens 2.1.0, in the session of
+  the Clusters: after the navigation from a reference of the details of a
+  Cluster, on the page of the Clusters, to the page of the tree,
+  `history.back()` of the frame did not bring back the details of the Cluster
+  within the wait of the session; the run does not say whether the page of the
+  Clusters came back without them or did not come back. H12 covered the way
+  back to the page of the tree from another page. The session no longer relies
+  on the history for this way back: its step 4 opens the page of the Clusters
+  and the details of the Cluster again (the note above on that session). A
+  probe of the session of the screenshots, on a branch that is no part of this
+  spec, looks at this way back, through the history of the frame and through
+  the back arrow of the top bar of the host.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

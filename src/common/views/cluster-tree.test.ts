@@ -3,8 +3,17 @@ import { EXPECTED_TREES, outlineRows, TREE_CLUSTERS } from "../../../integration
 import { CAPTURE, fixtureSet, STATES } from "../../../test/fixture-sets";
 import { resolved, treeKeyOf, treeOutline, treeSourceOf } from "../../../test/tree-sources";
 import { statusOf } from "../status/index";
-import { buildTree, evaluateTree, indexTree, kindWords, TreeBuilds, unreadWords } from "./cluster-tree";
+import {
+  addressKindRead,
+  buildTree,
+  evaluateTree,
+  indexTree,
+  kindWords,
+  TreeBuilds,
+  unreadWords,
+} from "./cluster-tree";
 import { clusterContextOf, StatusMemo } from "./context";
+import * as objectFields from "./objects";
 import * as references from "./references";
 
 import type { OutlineRow } from "../../../integration/__tests__/tree-expectations";
@@ -573,11 +582,226 @@ ${TAIL}
     expect(under(rows, "Other objects")).toEqual(["KubeadmConfigTemplate freelens-capi-healthy-orphan"]);
   });
 
-  it("places what each object under Other objects holds in passes over the objects of the Cluster that do not grow with them (P16)", () => {
+  // An object of a kind, made from one of the fixtures, in the namespace of healthy, with the label of its Cluster, no
+  // owner references and no status, as a case writes it; the claims and the addresses from those of no-status.
+  function made(kind: string, name: string): Writable {
+    const object = structuredClone(named(setOf(kind.startsWith("IPAddress") ? "no-status" : "healthy"), kind));
+
+    object.metadata = { name, namespace: HEALTHY, labels: { "cluster.x-k8s.io/cluster-name": HEALTHY } };
+    delete object.status;
+    if (kind === "IPAddressClaim") object.spec.clusterName = HEALTHY;
+    if (kind === "IPAddress") delete object.spec.claimRef;
+    return object;
+  }
+
+  function ownerOf(object: Writable, controller = false) {
+    return {
+      apiVersion: object.apiVersion,
+      kind: object.kind,
+      name: object.metadata.name,
+      ...(controller ? { controller: true } : {}),
+    };
+  }
+
+  // The four mechanisms by which the rows place what an object under Other objects holds as a pass of every row over
+  // every object places it, each on the smallest set that the review of the first part found it to change.
+  it("places in one pass of the row of the owners what an object placed in that pass owns after it: a claim that a MachineSet controls, by its owner", () => {
+    // healthy, and an IPAddress with no owner, which goes under Other objects; a MachineSet of the Cluster that the
+    // IPAddress owns, with no flag of controller, which the row of the owners places under it; and a claim of the
+    // Cluster that the MachineSet controls, which comes after the MachineSets in the order of the objects of the
+    // Cluster: the same pass of the row of the owners places it, by its owner, before the row of the claims would
+    // place it by its controller, as a pass over every object does (SPEC-0005, "Notes and deviations").
+    const address = made("IPAddress", "freelens-capi-healthy-address");
+    const set = made("MachineSet", "freelens-capi-healthy-set");
+    const claim = made("IPAddressClaim", "freelens-capi-healthy-claim");
+
+    set.metadata.ownerReferences = [ownerOf(address)];
+    claim.metadata.ownerReferences = [ownerOf(set, true)];
+
+    const tree = treeOf([...setOf("healthy"), address, set, claim], HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "IPAddress freelens-capi-healthy-address",
+      "  MachineSet freelens-capi-healthy-set",
+      "    IPAddressClaim freelens-capi-healthy-claim",
+    ]);
+    expect(
+      nodeOf<ObjectNode>(tree, "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-healthy-claim").placement,
+    ).toEqual({ by: "owner", owner: "cluster.x-k8s.io/MachineSet/freelens-capi-healthy-set" });
+  });
+
+  it("leaves to the next pass what an object placed in a pass owns before it: a claim that an IPAddress controls, by its controller", () => {
+    // healthy, and a KubeadmControlPlane of the Cluster that the Cluster does not name, which goes under Other
+    // objects; an IPAddress that it owns, which the row of the owners places under it; and a claim that the IPAddress
+    // controls, which comes before the IPAddresses in the order of the objects of the Cluster: a pass over every object
+    // visited the claim before its IPAddress was a node, so the row of the claims places it, by its controller.
+    const plane = made("KubeadmControlPlane", "freelens-capi-healthy-other-plane");
+    const address = made("IPAddress", "freelens-capi-healthy-address");
+    const claim = made("IPAddressClaim", "freelens-capi-healthy-claim");
+
+    address.metadata.ownerReferences = [ownerOf(plane)];
+    claim.metadata.ownerReferences = [ownerOf(address, true)];
+
+    const tree = treeOf([...setOf("healthy"), plane, address, claim], HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "KubeadmControlPlane freelens-capi-healthy-other-plane",
+      "  IPAddress freelens-capi-healthy-address",
+      "    IPAddressClaim freelens-capi-healthy-claim",
+    ]);
+    expect(
+      nodeOf<ObjectNode>(tree, "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-healthy-claim").placement,
+    ).toEqual({ by: "controller", owner: "ipam.cluster.x-k8s.io/IPAddress/freelens-capi-healthy-address" });
+  });
+
+  it("places what an object under Other objects controls in the order of the objects of the Cluster: of two Machines that name one object, the first in that order holds it", () => {
+    // healthy with its MachineSet m5gtb with no owner references, which goes under Other objects with its Machines,
+    // 5pzv9 before 2xxxg in the order of the store, both naming one KubeadmConfig that the namespace does not hold, as
+    // the case writes them: its row goes under 5pzv9, the first of them in the order of the objects of the Cluster, as
+    // a pass over every Machine places it, whatever their names.
+    const objects = setOf("healthy");
+    const shared = "freelens-capi-healthy-shared";
+    const other = `${SET}-5pzv9`;
+
+    delete named(objects, "MachineSet", SET).metadata.ownerReferences;
+    for (const machine of [named(objects, "Machine", WORKER), named(objects, "Machine", other)]) {
+      machine.spec.bootstrap.configRef.name = shared;
+    }
+
+    const store = [
+      ...objects.filter((object) => object.kind !== "Machine" || object.metadata.name !== WORKER),
+      named(objects, "Machine", WORKER),
+    ];
+    const tree = treeOf(store, HEALTHY);
+    const id = `bootstrap.cluster.x-k8s.io/KubeadmConfig/${shared}`;
+
+    expect(parentOf(tree, id)).toBe(`Machine ${other}`);
+    expect(nodeOf<ReferenceNode>(tree, id).namedBy.map((each) => each.id)).toEqual([
+      machineId(other),
+      machineId(WORKER),
+    ]);
+  });
+
+  it("reads again, in the row of the claims, the IPAddress that a pass of that row placed: a claim that it controls, by its controller", () => {
+    // healthy, and a claim of the Cluster with no owner, whose status.addressRef names an IPAddress: it goes under Other
+    // objects, and the row of the claims places that IPAddress under it; the IPAddress, whose spec.claimRef names a
+    // second claim; and that second claim, which the IPAddress controls: the row of the claims places it under the
+    // IPAddress, by its controller, once it reads the IPAddress that its own pass placed.
+    const first = made("IPAddressClaim", "freelens-capi-healthy-claim-a");
+    const second = made("IPAddressClaim", "freelens-capi-healthy-claim-b");
+    const address = made("IPAddress", "freelens-capi-healthy-address");
+
+    for (const claim of [first, second]) claim.status = { addressRef: { name: address.metadata.name } };
+    second.metadata.ownerReferences = [ownerOf(address, true)];
+    address.spec.claimRef = { name: second.metadata.name };
+
+    const tree = treeOf([...setOf("healthy"), first, second, address], HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "IPAddressClaim freelens-capi-healthy-claim-a",
+      "  IPAddress freelens-capi-healthy-address",
+      "    IPAddressClaim freelens-capi-healthy-claim-b",
+    ]);
+    expect(
+      nodeOf<ObjectNode>(tree, "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-healthy-claim-b").placement,
+    ).toEqual({ by: "controller", owner: "ipam.cluster.x-k8s.io/IPAddress/freelens-capi-healthy-address" });
+  });
+
+  it("places an IPAddress that its claim owns by that owner when the row of the owners places the claim, where P7 places it by the reference of the claim", () => {
+    // healthy with the DevMachines refused; the claim of no-status, of the Cluster, controlled by the DevMachine of the
+    // worker Machine 2xxxg, its status.addressRef naming the IPAddress of no-status, which the claim controls: the row
+    // of the owners places the claim under the row of that DevMachine, which the references of its Machine made, and,
+    // in the same pass, the IPAddress under the claim, by its owner, though an earlier row of P7 places an IPAddress
+    // by the reference of its claim; its parent is the same (SPEC-0005, "Notes and deviations").
+    const claim = made("IPAddressClaim", "freelens-capi-healthy-claim");
+    const address = made("IPAddress", "freelens-capi-healthy-address");
+    const devMachine = `infrastructure.cluster.x-k8s.io/DevMachine/${WORKER}`;
+
+    claim.metadata.ownerReferences = [
+      { apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2", kind: "DevMachine", name: WORKER, controller: true },
+    ];
+    claim.status = { addressRef: { name: address.metadata.name } };
+    address.metadata.ownerReferences = [ownerOf(claim, true)];
+
+    const tree = treeOf([...setOf("healthy"), claim, address], HEALTHY, {
+      failures: { "infrastructure.cluster.x-k8s.io/DevMachine": [REFUSED] },
+    });
+    const addressId = "ipam.cluster.x-k8s.io/IPAddress/freelens-capi-healthy-address";
+
+    expect(tree.parents.get("ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-healthy-claim")).toBe(devMachine);
+    expect(parentOf(tree, addressId)).toBe("IPAddressClaim freelens-capi-healthy-claim");
+    expect(nodeOf<ObjectNode>(tree, addressId).placement).toEqual({
+      by: "owner",
+      owner: "ipam.cluster.x-k8s.io/IPAddressClaim/freelens-capi-healthy-claim",
+    });
+  });
+
+  it("puts under Other objects an object that a template owns before the templates are placed, and a template that a template there owns beside it, each with the reason that names its owner", () => {
+    // healthy, and, as the case writes them: a KubeadmConfig that the DevMachineTemplate of the control plane alone
+    // controls, which goes under Other objects before the templates are placed; a KubeadmConfigTemplate that the
+    // Cluster owns and that no object names, which goes under Other objects; and a KubeadmConfigTemplate that the latter
+    // controls, which the row of the owners does not place, since it places no template after the templates are placed,
+    // and which goes beside it. Each says that its owners are not nodes of the tree, naming the template, which is one
+    // by then. Cluster API makes neither (SPEC-0005, "Notes and deviations").
+    const objects = setOf("healthy");
+    const config = made("KubeadmConfig", "freelens-capi-healthy-held-by-template");
+    const owner = made("KubeadmConfigTemplate", "freelens-capi-healthy-orphan-owner");
+    const owned = made("KubeadmConfigTemplate", "freelens-capi-healthy-orphan-owned");
+    const template = named(objects, "DevMachineTemplate", "freelens-capi-healthy-rclml");
+
+    config.metadata.ownerReferences = [ownerOf(template, true)];
+    owner.metadata.ownerReferences = [{ apiVersion: "cluster.x-k8s.io/v1beta2", kind: "Cluster", name: HEALTHY }];
+    owned.metadata.ownerReferences = [ownerOf(owner, true)];
+
+    const tree = treeOf([...objects, config, owner, owned], HEALTHY);
+
+    expect(under(treeOutline(tree), "Other objects")).toEqual([
+      "KubeadmConfig freelens-capi-healthy-held-by-template",
+      "KubeadmConfigTemplate freelens-capi-healthy-orphan-owned",
+      "KubeadmConfigTemplate freelens-capi-healthy-orphan-owner",
+    ]);
+    expect(
+      nodeOf<ObjectNode>(tree, "bootstrap.cluster.x-k8s.io/KubeadmConfig/freelens-capi-healthy-held-by-template")
+        .placement,
+    ).toEqual({
+      by: "reason",
+      reason: {
+        code: "owners-not-in-tree",
+        owners: [
+          { group: "infrastructure.cluster.x-k8s.io", kind: "DevMachineTemplate", name: "freelens-capi-healthy-rclml" },
+        ],
+      },
+    });
+    expect(
+      nodeOf<ObjectNode>(tree, "bootstrap.cluster.x-k8s.io/KubeadmConfigTemplate/freelens-capi-healthy-orphan-owned")
+        .placement,
+    ).toEqual({
+      by: "reason",
+      reason: {
+        code: "owners-not-in-tree",
+        owners: [
+          {
+            group: "bootstrap.cluster.x-k8s.io",
+            kind: "KubeadmConfigTemplate",
+            name: "freelens-capi-healthy-orphan-owner",
+          },
+        ],
+      },
+    });
+    expect(tree.nodes.has(`infrastructure.cluster.x-k8s.io/DevMachineTemplate/${template.metadata.name}`)).toBe(true);
+  });
+
+  it("places what each object under Other objects holds in passes over the objects of the Cluster that do not grow with them, reading what the rows read of each object as many times whatever their number (P16)", () => {
     // healthy with more worker Machines like 2xxxg, each with its DevMachine and its KubeadmConfig, all three with no
     // owner references, as after a restore: each Machine goes under Other objects and holds the two objects that it
     // names. Each pass of a row of P7 over the objects of the Cluster reads them from the index once; with every row
-    // run again over every object after each object under Other objects, the passes would grow with the Machines.
+    // run again over every object after each object under Other objects, the passes would grow with the Machines. The
+    // rows read the references of an object through followedReferencesOf and its owners through ownersOf: from 150
+    // to 300 Machines those reads grow as the Machines do, at most twice, where a row that read every node or every
+    // object for each object under Other objects would make them four times as many.
+    const followed = vi.spyOn(references, "followedReferencesOf");
+    const owners = vi.spyOn(objectFields, "ownersOf");
+    const reads = new Map<number, { followed: number; owners: number }>();
     const passes = (count: number): number => {
       const objects = setOf("healthy");
       const restored = Array.from({ length: count }, (_, at) => {
@@ -597,8 +821,13 @@ ${TAIL}
       const source = treeSourceOf([...objects, ...restored.flat()]);
       const index = indexTree(source.clusters, source.objects);
       const byCluster = new CountedReads(index.byCluster);
+
+      followed.mockClear();
+      owners.mockClear();
+
       const outcome = buildTree({ ...index, byCluster }, HEALTHY, HEALTHY);
 
+      reads.set(count, { followed: followed.mock.calls.length, owners: owners.mock.calls.length });
       if (outcome.state !== "found") throw new Error(`No tree: ${outcome.state}`);
       expect(under(treeOutline(outcome.tree), "Other objects")).toEqual(
         restored
@@ -613,7 +842,19 @@ ${TAIL}
       return byCluster.reads;
     };
 
-    expect(passes(300)).toBe(passes(150));
+    try {
+      expect(passes(300)).toBe(passes(150));
+
+      const [few, many] = [reads.get(150), reads.get(300)];
+
+      expect(few?.followed).toBeGreaterThan(150);
+      expect(few?.owners).toBeGreaterThan(150);
+      expect(many?.followed).toBeLessThanOrEqual(2 * (few?.followed ?? 0));
+      expect(many?.owners).toBeLessThanOrEqual(2 * (few?.owners ?? 0));
+    } finally {
+      followed.mockRestore();
+      owners.mockRestore();
+    }
   });
 
   it("leaves out, while the MachineSets load, their Machines and what those Machines own or name, never under Other objects", () => {
@@ -1372,6 +1613,93 @@ describe("a node that cannot be read (P12)", () => {
       expect(statuses.get(id)?.pending, id).toBe(true);
     }
     expect(treeOutline(tree).filter((row) => /^(Other objects|KubeadmConfig |Machines)/.test(row.text))).toEqual([]);
+  });
+});
+
+describe("the reads of the kind of an address whose node the tree does not hold (P19, P23)", () => {
+  const CORE = "cluster.x-k8s.io";
+  const CLASSES = "freelens-capi-classes";
+  const OTHER = "freelens-capi-other-classes";
+
+  // The indexes and the tree of the Cluster of a state, from the reads that the case gives.
+  function sourced(state: string, objects: readonly Writable[], options: TreeSourceOptions = {}) {
+    const name = TREE_CLUSTERS[state];
+    const source = treeSourceOf(objects as unknown as KubeObjectData[], {
+      cluster: { namespace: name, name },
+      ...options,
+    });
+    const index = indexTree(source.clusters, source.objects);
+    const outcome = buildTree(index, name, name);
+
+    if (outcome.state !== "found") throw new Error(`No tree of ${name}`);
+    return { index, tree: outcome.tree };
+  }
+
+  // healthy, with the class reference of its Cluster naming a namespace of its own, which holds the class.
+  function classIn(namespace: string): Writable[] {
+    const objects = setOf("healthy");
+
+    named(objects, "Cluster").spec.topology.classRef.namespace = namespace;
+    named(objects, "ClusterClass").metadata.namespace = namespace;
+    return objects;
+  }
+
+  it("are pending while the first load of the kind runs in the namespace where the tree reads it, for the spinner of the details", () => {
+    const { index, tree } = sourced("healthy", setOf("healthy"), {
+      pending: ["infrastructure.cluster.x-k8s.io/DevMachine"],
+    });
+
+    expect(addressKindRead(index, tree, "infrastructure.cluster.x-k8s.io", "DevMachine", HEALTHY)).toEqual({
+      state: "pending",
+    });
+    expect(addressKindRead(index, tree, CORE, "Machine", HEALTHY)).toEqual({ state: "read" });
+    // A kind that the reads never tried is not being read.
+    expect(addressKindRead(index, tree, "infrastructure.example.test", "ExampleMachine", HEALTHY)).toEqual({
+      state: "read",
+    });
+  });
+
+  it("are never pending in a namespace where the tree does not read the kind, out of the filter of the reads or in it, as the namespace of the class is", () => {
+    // The read of the tree holds the namespace of its class in its filter, and loads the Machines in the namespace of
+    // the Cluster alone.
+    const { index, tree } = sourced("healthy", classIn(CLASSES), { namespaces: [HEALTHY], filter: [CLASSES, HEALTHY] });
+
+    expect(index.objects.reads.filter?.namespaces).toEqual([CLASSES, HEALTHY]);
+    expect(addressKindRead(index, tree, CORE, "Machine", "other-namespace")).toEqual({
+      state: "not-read",
+      noun: "Machines",
+    });
+    expect(addressKindRead(index, tree, CORE, "Machine", CLASSES)).toEqual({ state: "not-read", noun: "Machines" });
+    expect(addressKindRead(index, tree, CORE, "Machine", HEALTHY)).toEqual({ state: "read" });
+  });
+
+  it("are never pending for the class in a namespace that its reference no longer names, and pending in the one that it names now while that loads", () => {
+    // The class reference moved from the namespace CLASSES to OTHER, whose ClusterClasses still load.
+    const { index, tree } = sourced("healthy", classIn(OTHER), {
+      classNamespace: OTHER,
+      pending: ["cluster.x-k8s.io/ClusterClass"],
+    });
+
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", CLASSES)).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", HEALTHY)).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", OTHER)).toEqual({ state: "pending" });
+  });
+
+  it("read no ClusterClass anywhere for a Cluster that names no class", () => {
+    const state = "without-topology";
+    const { index, tree } = sourced(state, setOf(state));
+
+    expect(tree.classNamespace).toBeUndefined();
+    expect(addressKindRead(index, tree, CORE, "ClusterClass", TREE_CLUSTERS[state])).toEqual({
+      state: "not-read",
+      noun: "ClusterClasses",
+    });
   });
 });
 

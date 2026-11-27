@@ -98,6 +98,24 @@ export const host = {
   navigate: vi.fn<(location: string) => void>(),
   showDetails: vi.fn<(selfLink: string, resetSelected?: boolean) => void>(),
   navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async () => undefined),
+  // The parameters of the address of the frame, by their names, which a page parameter that the extension creates
+  // reads, as `kube-details`, the parameter of the details of the host.
+  params: observable.map<string, string>({}, { deep: false }),
+  // `hideDetails` of the extension API, which writes `kube-details` with an empty value, as the host does.
+  hideDetails: vi.fn(() => {
+    runInAction(() => host.params.set("kube-details", ""));
+  }),
+  // The rows that the virtual list of a table draws, by their ids, of those that it has: all of them unless a test
+  // gives the window of the list.
+  drawnRows: undefined as ((ids: readonly string[]) => readonly string[]) | undefined,
+  // The virtual lists of the tables mounted, each of which draws its rows again when it is told to.
+  lists: new Set<() => void>(),
+  // A scroll of the virtual lists to another window of rows: each draws the rows of that window again, as the virtual
+  // list of the host does on a scroll, with no render of the page that holds it.
+  scrollRows(window: (ids: readonly string[]) => readonly string[]) {
+    host.drawnRows = window;
+    for (const draw of host.lists) draw();
+  },
   // While set, a `loadAll` of a store of the extension's own class waits for it before it reads, as a list of the
   // host waits for its answer; `deferLoads` sets it and gives the function that lets the loads end.
   loadGate: undefined as Promise<void> | undefined,
@@ -129,6 +147,9 @@ export const host = {
     host.navigate.mockReset();
     host.showDetails.mockReset();
     host.navigateExtension.mockClear();
+    runInAction(() => host.params.clear());
+    host.hideDetails.mockClear();
+    host.drawnRows = undefined;
     host.loadGate = undefined;
   },
   registerApi(api: StubApi, store?: unknown) {
@@ -541,26 +562,28 @@ class Drawer extends React.Component<StubDrawerProps> {
 }
 
 // An item of the drawer with the classes that the host gives it (drawer-item.tsx): `DrawerItem` with the class of the
-// view, then its name and its value.
-function DrawerItem(props: {
-  name?: React.ReactNode;
-  hidden?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-  "data-testid"?: string;
-}) {
-  if (props.hidden) return null;
-  return React.createElement(
-    "div",
-    {
-      "data-testid": props["data-testid"],
-      "data-drawer-item": "",
-      className: ["DrawerItem", props.className].filter(Boolean).join(" "),
-    },
-    React.createElement("span", { "data-drawer-item-name": "", className: "name" }, props.name),
-    React.createElement("span", { className: "value" }, props.children),
-  );
-}
+// view, then its name and its value. Its calls are recorded, so that a case can make the item of a row throw.
+const DrawerItem = vi.fn(
+  (props: {
+    name?: React.ReactNode;
+    hidden?: boolean;
+    className?: string;
+    children?: React.ReactNode;
+    "data-testid"?: string;
+  }) => {
+    if (props.hidden) return null;
+    return React.createElement(
+      "div",
+      {
+        "data-testid": props["data-testid"],
+        "data-drawer-item": "",
+        className: ["DrawerItem", props.className].filter(Boolean).join(" "),
+      },
+      React.createElement("span", { "data-drawer-item-name": "", className: "name" }, props.name),
+      React.createElement("span", { className: "value" }, props.children),
+    );
+  },
+);
 
 function DrawerTitle(props: { children?: React.ReactNode }) {
   return React.createElement("h6", null, props.children);
@@ -638,20 +661,111 @@ const KubeObjectMeta = vi.fn(
   },
 );
 
-function Table(props: { children?: React.ReactNode; "data-testid"?: string }) {
-  return React.createElement("div", { "data-testid": props["data-testid"], "data-host-table": "" }, props.children);
+interface StubTableProps {
+  children?: React.ReactNode;
+  className?: string;
+  selectable?: boolean;
+  virtual?: boolean;
+  items?: { getId(): string }[];
+  getTableRow?: (uid: string) => React.ReactElement | null | undefined;
+  selectedItemId?: string;
+  "data-testid"?: string;
 }
 
-function TableHead(props: { children?: React.ReactNode }) {
-  return React.createElement("div", { "data-host-table-head": "" }, props.children);
+// The table of the host (freelens:packages/core/src/renderer/components/table/table.tsx): an element with its classes
+// alone, the head that the page gives it, and its rows; with `virtual`, the rows that `getTableRow` gives for its
+// items, inside the virtual list of the host, an element of the class `VirtualList`, which takes the class of the
+// table too, around the element of the list that scrolls, of the class `list`
+// (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx). The virtual list draws the rows of
+// its window, all of them here unless a test gives the window (`host.drawnRows`), and draws them again on its own when a
+// test scrolls it (`host.scrollRows`). Its calls are recorded, so that a test reads the props that a page gave at each
+// render.
+const Table = vi.fn((props: StubTableProps) => {
+  const { children, className, selectable, virtual, items = [], getTableRow, selectedItemId } = props;
+  const [, draw] = React.useReducer((count: number) => count + 1, 0);
+
+  React.useEffect(() => {
+    host.lists.add(draw);
+    return () => {
+      host.lists.delete(draw);
+    };
+  }, []);
+  const content = React.Children.toArray(children) as React.ReactElement[];
+  const head = content.filter((child) => child.type === TableHead);
+  const ids = items.map((item) => item.getId());
+  const drawn = host.drawnRows === undefined ? ids : host.drawnRows(ids);
+  const rows = virtual
+    ? React.createElement(
+        "div",
+        {
+          key: "virtual-list",
+          className: ["VirtualList", className].filter(Boolean).join(" "),
+          "data-selected-item-id": selectedItemId,
+        },
+        React.createElement(
+          "div",
+          { className: "list" },
+          drawn.map((id) => getTableRow?.(id) ?? null),
+        ),
+      )
+    : content.filter((child) => child.type !== TableHead);
+
+  return React.createElement(
+    "div",
+    {
+      className: ["Table", className, selectable ? "selectable" : "", virtual ? "virtual" : ""]
+        .filter(Boolean)
+        .join(" "),
+      "data-testid": props["data-testid"],
+      "data-host-table": "",
+    },
+    ...head,
+    rows,
+  );
+});
+
+// The head, the rows and the cells of the table of the host, each of which spreads every prop that it does not use on
+// its element (freelens:packages/core/src/renderer/components/table/table-head.tsx, table-row.tsx, table-cell.tsx).
+function TableHead(props: { children?: React.ReactNode; className?: string; sticky?: boolean; flat?: boolean }) {
+  const { children, className, sticky, flat, ...rest } = props;
+
+  return React.createElement(
+    "div",
+    { className: ["TableHead", className].filter(Boolean).join(" "), "data-host-table-head": "", ...rest },
+    children,
+  );
 }
 
-function TableRow(props: { children?: React.ReactNode; "data-testid"?: string }) {
-  return React.createElement("div", { "data-testid": props["data-testid"], "data-host-table-row": "" }, props.children);
+function TableRow(props: {
+  children?: React.ReactNode;
+  className?: string;
+  selected?: boolean;
+  nowrap?: boolean;
+  testId?: string;
+  "data-testid"?: string;
+}) {
+  const { children, className, selected, nowrap, testId, ...rest } = props;
+
+  return React.createElement(
+    "div",
+    {
+      className: ["TableRow", className, selected ? "selected" : ""].filter(Boolean).join(" "),
+      "data-testid": testId,
+      "data-host-table-row": "",
+      ...rest,
+    },
+    children,
+  );
 }
 
-function TableCell(props: { children?: React.ReactNode; "data-testid"?: string }) {
-  return React.createElement("div", { "data-testid": props["data-testid"] }, props.children);
+function TableCell(props: { children?: React.ReactNode; className?: string; title?: React.ReactNode }) {
+  const { children, className, title, ...rest } = props;
+
+  return React.createElement(
+    "div",
+    { ...rest, className: ["TableCell", className].filter(Boolean).join(" ") },
+    title ?? children,
+  );
 }
 
 // The compact duration of the host, for the thresholds that the details name.
@@ -692,14 +806,97 @@ function Badge(props: {
   );
 }
 
+interface StubIconProps {
+  material?: string;
+  svg?: string;
+  small?: boolean;
+  interactive?: boolean;
+  focusable?: boolean;
+  disabled?: boolean;
+  tooltip?: React.ReactNode;
+  onClick?: (event: React.MouseEvent) => void;
+  "data-testid"?: string;
+  [attribute: string]: unknown;
+}
+
+// The icon of the host (freelens:packages/ui-components/icon/src/icon.tsx): interactive with a click, which a disabled
+// one drops, with a stop of Tab unless it is disabled, Enter and Space pressing it, and every other prop on its element;
+// its tooltip hidden next to it.
+function Icon(props: StubIconProps) {
+  const { material, svg, small, interactive, focusable = true, disabled, tooltip, onClick, ...rest } = props;
+  const isInteractive = interactive ?? Boolean(onClick);
+
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement("i", {
+      ...rest,
+      "data-icon": material ?? "svg",
+      "data-disabled": disabled ? "true" : undefined,
+      tabIndex: isInteractive && focusable && !disabled ? 0 : undefined,
+      onClick: isInteractive ? (event: React.MouseEvent) => (disabled ? undefined : onClick?.(event)) : undefined,
+      onKeyDown: isInteractive
+        ? (event: React.KeyboardEvent<HTMLElement>) => {
+            if (event.nativeEvent.code === "Enter" || event.nativeEvent.code === "Space") {
+              event.currentTarget.click();
+              event.preventDefault();
+            }
+          }
+        : undefined,
+    }),
+    tooltipOf(tooltip, rest["data-testid"] as string | undefined),
+  );
+}
+
+// The search of the host (freelens:packages/core/src/renderer/components/input/search-input.tsx): it takes the focus
+// when it mounts unless `autoFocus` is false, and calls the `onKeyDown` of the page before its own, which clears its
+// words on Escape and stops the key there.
+function SearchInput(props: {
+  value?: string;
+  autoFocus?: boolean;
+  placeholder?: string;
+  onChange?: (value: string, event: unknown) => void;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  onClear?: () => void;
+  "data-testid"?: string;
+}) {
+  const { value, autoFocus = true, placeholder = "Search...", onChange, onKeyDown, onClear } = props;
+
+  return React.createElement("input", {
+    "data-testid": props["data-testid"] ?? "host-search-input",
+    "data-autofocus": String(autoFocus),
+    value: value ?? "",
+    autoFocus,
+    placeholder,
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange?.(event.target.value, event),
+    onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+      onKeyDown?.(event);
+      if (event.nativeEvent.code === "Escape") {
+        if (onClear === undefined) onChange?.("", event);
+        else onClear();
+        event.stopPropagation();
+      }
+    },
+  });
+}
+
+// A parameter of the address of the frame, which reads and writes the parameters that a test sets in `host.params`.
+function createPageParam(init: { name: string; defaultValue?: string }) {
+  return {
+    name: init.name,
+    get: () => host.params.get(init.name) ?? init.defaultValue,
+    set: (value: string) => runInAction(() => host.params.set(init.name, value)),
+    clear: () => runInAction(() => host.params.set(init.name, "")),
+  };
+}
+
 export const Renderer = {
   Component: {
     Badge,
     Drawer,
     DrawerItem,
     DrawerTitle,
-    Icon: (props: { material?: string; svg?: string }) =>
-      React.createElement("i", { "data-icon": props.material ?? "svg" }),
+    Icon,
     KubeObjectAge: (props: { object: { metadata?: { creationTimestamp?: string } } }) =>
       React.createElement("span", { "data-testid": "host-age" }, props.object.metadata?.creationTimestamp),
     KubeObjectListLayout,
@@ -709,6 +906,7 @@ export const Renderer = {
     MaybeLink,
     NamespaceSelectBadge: (props: { namespace: string }) =>
       React.createElement("span", { "data-testid": "host-namespace" }, props.namespace),
+    SearchInput,
     ReactiveDuration: (props: { timestamp?: string }) =>
       React.createElement("span", { "data-testid": "host-duration" }, props.timestamp),
     Spinner: (props: { "data-testid"?: string }) =>
@@ -725,6 +923,8 @@ export const Renderer = {
   Navigation: {
     getDetailsUrl: (selfLink: string) => `?kube-details=${encodeURIComponent(selfLink)}`,
     showDetails: (selfLink: string, resetSelected?: boolean) => host.showDetails(selfLink, resetSelected),
+    hideDetails: () => host.hideDetails(),
+    createPageParam,
     navigate: (location: string) => host.navigate(location),
   },
   // The base of the extension's own renderer: the host gives it its name, and
