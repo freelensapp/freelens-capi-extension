@@ -108,6 +108,14 @@ export const host = {
   // The rows that the virtual list of a table draws, by their ids, of those that it has: all of them unless a test
   // gives the window of the list.
   drawnRows: undefined as ((ids: readonly string[]) => readonly string[]) | undefined,
+  // The virtual lists of the tables mounted, each of which draws its rows again when it is told to.
+  lists: new Set<() => void>(),
+  // A scroll of the virtual lists to another window of rows: each draws the rows of that window again, as the virtual
+  // list of the host does on a scroll, with no render of the page that holds it.
+  scrollRows(window: (ids: readonly string[]) => readonly string[]) {
+    host.drawnRows = window;
+    for (const draw of host.lists) draw();
+  },
   // While set, a `loadAll` of a store of the extension's own class waits for it before it reads, as a list of the
   // host waits for its answer; `deferLoads` sets it and gives the function that lets the loads end.
   loadGate: undefined as Promise<void> | undefined,
@@ -667,10 +675,19 @@ interface StubTableProps {
 // items, inside the virtual list of the host, an element of the class `VirtualList`, which takes the class of the
 // table too, around the element of the list that scrolls, of the class `list`
 // (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx). The virtual list draws the rows of
-// its window, all of them here unless a test gives the window (`host.drawnRows`). Its calls are recorded, so that a test
-// reads the props that a page gave at each render.
+// its window, all of them here unless a test gives the window (`host.drawnRows`), and draws them again on its own when a
+// test scrolls it (`host.scrollRows`). Its calls are recorded, so that a test reads the props that a page gave at each
+// render.
 const Table = vi.fn((props: StubTableProps) => {
   const { children, className, selectable, virtual, items = [], getTableRow, selectedItemId } = props;
+  const [, draw] = React.useReducer((count: number) => count + 1, 0);
+
+  React.useEffect(() => {
+    host.lists.add(draw);
+    return () => {
+      host.lists.delete(draw);
+    };
+  }, []);
   const content = React.Children.toArray(children) as React.ReactElement[];
   const head = content.filter((child) => child.type === TableHead);
   const ids = items.map((item) => item.getId());

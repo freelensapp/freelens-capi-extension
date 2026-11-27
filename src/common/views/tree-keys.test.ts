@@ -12,6 +12,7 @@ import {
   HEAD_CELL_ATTRIBUTES,
   HEAD_ROW_ATTRIBUTES,
   keyAction,
+  ownedRows,
   revealScroll,
   rowAttributes,
   rowDomId,
@@ -246,6 +247,15 @@ describe("the attributes of the rows and of the header (P18)", () => {
     expect(CELL_ATTRIBUTES).toEqual({ role: "gridcell" });
     expect(HEAD_ROW_ATTRIBUTES).toEqual({ role: "row" });
     expect(HEAD_CELL_ATTRIBUTES).toEqual({ role: "columnheader" });
+  });
+});
+
+describe("the aria-owns of the element of the tree (P18)", () => {
+  it("names the rows drawn, in their order in the document, and none while no row is drawn", () => {
+    const rows = all.slice(3, 6).map((row) => rowDomId(row.node.id));
+
+    expect(ownedRows(rows)).toBe(rows.join(" "));
+    expect(ownedRows([])).toBeUndefined();
   });
 });
 

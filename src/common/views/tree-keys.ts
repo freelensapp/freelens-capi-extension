@@ -7,7 +7,8 @@
 //
 // - the tree is one stop of Tab, an element with the role `treegrid` around the table, which takes the keys of a tree,
 //   as a tree of a desktop application does, and names the row of the active node in `aria-activedescendant` once that
-//   row is drawn, and no row while it is not;
+//   row is drawn, and no row while it is not; it owns the rows drawn, by `aria-owns`, since the virtual list of the host
+//   puts them in an element with the role `list`;
 // - each row carries the role `row`, an id, its level, whether it is expanded when it has children, and whether its
 //   details are open; each of its cells the role `gridcell`; the header row the role `row`, and its cells
 //   `columnheader`;
@@ -176,6 +177,13 @@ export function activeOf(
 // (P18).
 export function activeDescendant(active: string | undefined, drawn: boolean): string | undefined {
   return active === undefined || !drawn ? undefined : rowDomId(active);
+}
+
+// The value of `aria-owns` of the element of the tree: the ids of the rows that the virtual list draws, in their order
+// in the document, which the element owns since the list puts them in an element of its own with the role `list`, as
+// Freelens 2.1.0 does (P18, "Notes and deviations"); none while the list draws no row.
+export function ownedRows(ids: readonly string[]): string | undefined {
+  return ids.length === 0 ? undefined : ids.join(" ");
 }
 
 // How many rows a window of the list holds, for Page Up and Page Down, at least one.

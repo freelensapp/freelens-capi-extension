@@ -3337,6 +3337,28 @@ the contract label of the definition for a control plane of a provider; and
   `preventScroll`, unless a control holds the focus, as the search in which
   the user typed while the tree loaded. Before, it stayed on the body, and Tab
   reached the search and the refresh first.
+- A fact of the host seen in Freelens 2.1.0, after the probe, which settles
+  the role that P18 left open: between the element with the role `treegrid`
+  and a row, the host puts the element of the `Table`, `div.Table`, and that
+  of its virtual list, `div.VirtualList`, with no role, and the element of the
+  list that scrolls, `div.list`, with the role `list`, so the rows sit in a
+  list for assistive technology. The session of the screenshots of the second
+  part, run in Freelens dev 2.1.0 in both variants of the theme `freelens` on
+  a branch that is no part of this spec, read it in the DOM, by the roles of
+  the elements between the element of the tree and a row; it did not read the
+  tree of accessibility.
+- Decided while implementing the second part, after that run: the fallback of
+  P18 applies. The element of the tree owns the rows that the virtual list
+  draws by `aria-owns`, which names their ids in their order in the document;
+  the page names them again whenever the list draws a row or takes one away,
+  from the reference on an element of each row, since the list draws other
+  rows on a scroll with no render of the page, and it alone writes the
+  attribute, which React does not render (`ownedRows` of `tree-keys.ts`). The
+  check in the tree of accessibility of the frame, through CDP, that each row
+  drawn is a row of the treegrid, at its level, with its cells as gridcells,
+  and the header a row of columnheaders (Tests, "In Freelens", step 5), is
+  left to the session of the third part, which also says whether the element
+  with the role `list`, left with no row, stays in that tree.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

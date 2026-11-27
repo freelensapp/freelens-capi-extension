@@ -605,6 +605,9 @@ tree of a Cluster does (SPEC-0005):
   the focus as it is drawn, with no scroll, unless a control holds it, takes
   the keys and prevents their default, and names the active row in
   `aria-activedescendant` once that row is drawn, and no row while it is not;
+  it owns the rows drawn by `aria-owns`, in their order, named again as the
+  list draws others, since the virtual list of the host puts its rows in an
+  element with the role `list` (SPEC-0005, "Notes and deviations");
   each row carries the role `row`, an id, `aria-level`, `aria-selected`, and
   `aria-expanded` when it has children, and each of its cells the role
   `gridcell`, and the header row the role `row` with cells of the role

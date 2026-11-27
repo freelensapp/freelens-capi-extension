@@ -18,6 +18,9 @@
 //
 // The scroll of the list:
 //
+// - the virtual list of the host puts its rows in an element with the role `list`, so the element of the tree owns the
+//   rows that the list draws, by `aria-owns`, named again as the list draws other rows, which it does on a scroll with
+//   no render of the page (P18; "Notes and deviations");
 // - the virtual list of the host scrolls to its `selectedItemId` at every render, so the page gives it only in the
 //   render after a key move, after the details close and for a node that the address names, and clears it once the
 //   row is drawn; it then brings the row whole into view itself, by the scroll of the list's element, which the list
@@ -57,6 +60,7 @@ import {
   HEAD_CELL_ATTRIBUTES,
   HEAD_ROW_ATTRIBUTES,
   keyAction,
+  ownedRows,
   revealScroll,
   rowAttributes,
   windowRows,
@@ -309,8 +313,10 @@ class TreePage {
   readonly drawn = new Map<string, boolean>();
   readonly #refs = new Map<string, (element: HTMLElement | null) => void>();
 
+  #owning = false;
+
   // A reference to an element of the row of a node, the same function for each node, so that a render attaches none
-  // again.
+  // again. A row drawn or taken away names the rows that the tree owns again, once the list has drawn all of its rows.
   refOf(id: string, changed: () => void): (element: HTMLElement | null) => void {
     let ref = this.#refs.get(id);
 
@@ -320,11 +326,35 @@ class TreePage {
 
         if (this.drawn.get(id) === drawn) return;
         this.drawn.set(id, drawn);
+        this.#ownRowsSoon();
         if (id === this.active || id === this.target) changed();
       };
       this.#refs.set(id, ref);
     }
     return ref;
+  }
+
+  #ownRowsSoon(): void {
+    if (this.#owning) return;
+    this.#owning = true;
+    queueMicrotask(() => {
+      this.#owning = false;
+      this.ownRows();
+    });
+  }
+
+  // Names in `aria-owns` of the element of the tree the rows that the list draws, in their order in the document (P18).
+  // The page alone writes the attribute, which React does not render, so that no render of the page clears it.
+  ownRows(): void {
+    const element = this.tree.current;
+
+    if (element === null) return;
+
+    const rows = listElementOf(element)?.querySelectorAll<HTMLElement>('[role="row"][id]') ?? [];
+    const owned = ownedRows([...rows].map((row) => row.id));
+
+    if (owned === undefined) element.removeAttribute("aria-owns");
+    else if (element.getAttribute("aria-owns") !== owned) element.setAttribute("aria-owns", owned);
   }
 
   // The state of the rows for this render: the expansion at first, once, with the node that the address names shown and

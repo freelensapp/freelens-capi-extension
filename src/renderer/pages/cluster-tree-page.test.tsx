@@ -1015,6 +1015,31 @@ describe("the keys and the focus of the tree (P18)", () => {
     expect(document.activeElement).toBe(search());
   });
 
+  it("owns the rows that the virtual list draws, in their order in the document, by aria-owns, and again once the list draws other rows on a scroll", async () => {
+    await opened();
+
+    const owned = () => tree().getAttribute("aria-owns")?.split(" ");
+
+    expect(owned()).toEqual(rowElements().map((row) => row.id));
+    expect(owned()).toEqual(rowIds().map(rowDomId));
+
+    // The list draws another window of rows, on a scroll, with no render of the page.
+    act(() => host.scrollRows((ids) => ids.slice(2, 5)));
+    await settle();
+
+    expect(rowElements()).toHaveLength(3);
+    expect(owned()).toEqual(rowIds().slice(2, 5).map(rowDomId));
+
+    // An expansion, which the page renders, inserts rows: they are owned in their order.
+    host.drawnRows = undefined;
+    fireEvent.click(within(rowOf(WORKERS)).getByTestId("capi-tree-expander"));
+    await settle();
+
+    expect(rowIds()).toContain(DEPLOYMENT);
+    expect(owned()).toEqual(rowElements().map((row) => row.id));
+    expect(owned()).toEqual(rowIds().map(rowDomId));
+  });
+
   it("names no row in aria-activedescendant while the row of the active node is not drawn", async () => {
     await opened();
 
