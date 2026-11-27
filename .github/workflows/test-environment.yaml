@@ -25,11 +25,14 @@ on:
       - build/**
       - e2e/**
       - integration/fixtures/**
+      - integration/__tests__/cluster-tree-real.tests.ts
       - integration/__tests__/clusters-real.tests.ts
       - integration/__tests__/clusters-sveltos.tests.ts
       - integration/__tests__/expected-refusals.ts
       - integration/__tests__/extension-helpers.ts
       - integration/__tests__/real-project-checks.ts
+      - integration/__tests__/tree-outline.ts
+      - integration/__tests__/tree-page.ts
       - package.json
       - pnpm-lock.yaml
       - src/main/**
@@ -448,13 +451,14 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      # The sessions of the real tier in Freelens dev (SPEC-0004, "With the real project"): the view against
-      # clusterctl, and S6 with the Sveltos extension, which open the cluster of the real project through the profile
-      # and reach it through the scripts, which check the target before every request. They write only to that
-      # cluster: a label on freelens-capi-md and the definitions of Sveltos, which they remove at their end. The
-      # sessions are deterministic, so a failure is not retried; they wait for the objects of the real project that
-      # its controllers still write, five minutes at most for each wait. A step that reaches its limit fails, as a case
-      # that reaches its own does, and loses the report of the sessions after it, which a run of one file gives again.
+      # The sessions of the real tier in Freelens dev (SPEC-0004, "With the real project"; SPEC-0005, "With the real
+      # project"): the view and the tree of a Cluster against clusterctl, and S6 with the Sveltos extension, which open
+      # the cluster of the real project through the profile and reach it through the scripts, which check the target
+      # before every request. They write only to that cluster: a label on freelens-capi-md and the definitions of
+      # Sveltos, which they remove at their end. The sessions are deterministic, so a failure is not retried; they wait
+      # for the objects of the real project that its controllers still write, five minutes at most for each wait. A
+      # step that reaches its limit fails, as a case that reaches its own does, and loses the report of the sessions
+      # after it, which a run of one file gives again.
       - name: Run the sessions of the real tier in Freelens dev
         run: timeout 2400 pnpm --color=always test:integration:real-project --reporter=verbose --reporter=github-actions --includeTaskLocation
         env:
