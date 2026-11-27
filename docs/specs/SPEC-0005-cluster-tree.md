@@ -3292,6 +3292,12 @@ the contract label of the definition for a control plane of a provider; and
   with the tree when the tree fails. Two cases plant a throw, one in the tree
   and one in the details of a node.
 - Decided while implementing the second part, after its reviews, where P19
+  gives the tree its error page and P23 its refresh: the key of the boundary of
+  the tree counts the refreshes, so that the refresh of the header, which an
+  error of the tree leaves in place, draws the tree again once what threw is
+  gone; the boundary was keyed by the Cluster alone, so the error page stayed
+  until the user left the page.
+- Decided while implementing the second part, after its reviews, where P19
   and P23 do not say in which namespace a node that the tree does not hold can
   still be loading: in the one where the tree reads its kind alone, that of
   the Cluster, or, for the ClusterClasses, the one that the class reference of

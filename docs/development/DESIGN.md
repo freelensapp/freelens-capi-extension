@@ -631,17 +631,17 @@ tree of a Cluster does (SPEC-0005):
   deviations").
 - **Live.** The view follows the watches of its stores and polls nothing; its
   header holds a refresh that reads its stores again, which keep their rows
-  while it loads, as the reload after a 410 does: a refresh that fails is said
-  as one, with its time, and its kind is held back. The refresh is disabled,
-  with a tooltip that says why, while a first load of a kind runs, also of a
-  kind that a reference names later, since a refresh would end it. The details
-  that are open follow their object: when it goes, or its Cluster with it once
-  the view showed its tree, they stay open and say that it is no longer in the
-  tree, until the user closes them, while a Cluster that the view never found
-  opens no details; those of an object in a namespace where the tree does not
-  read its kind say that it is not read, and never show the spinner, which
-  stands for a kind that still loads where the tree reads it (SPEC-0005, P19,
-  P23, "Notes and deviations").
+  while it loads, as the reload after a 410 does, and draws the tree again in
+  the place of its error page: a refresh that fails is said as one, with its
+  time, and its kind is held back. The refresh is disabled, with a tooltip that
+  says why, while a first load of a kind runs, also of a kind that a reference
+  names later, since a refresh would end it. The details that are open follow
+  their object: when it goes, or its Cluster with it once the view showed its
+  tree, they stay open and say that it is no longer in the tree, until the user
+  closes them, while a Cluster that the view never found opens no details; those
+  of an object in a namespace where the tree does not read its kind say that it
+  is not read, and never show the spinner, which stands for a kind that still
+  loads where the tree reads it (SPEC-0005, P19, P23, "Notes and deviations").
 
 ## What the details never show
 

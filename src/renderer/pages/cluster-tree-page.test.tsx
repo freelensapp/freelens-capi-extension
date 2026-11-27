@@ -475,6 +475,37 @@ describe("the states of the tree (P13, P19)", () => {
     expect(screen.queryByTestId("capi-tree")).toBeNull();
   });
 
+  it("draws the tree again on the refresh of the header once its error page shows, the refresh enabled", async () => {
+    let fail = true;
+    const real = TreeBuilds.prototype.treeOf;
+    const treeOf = vi.spyOn(TreeBuilds.prototype, "treeOf").mockImplementation(function (
+      this: TreeBuilds,
+      ...args: Parameters<TreeBuilds["treeOf"]>
+    ) {
+      if (fail) throw new TypeError("the tree failed once");
+      return real.apply(this, args);
+    });
+
+    onTestFinished(() => treeOf.mockRestore());
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    serveTree(objectsOfStates(["healthy"]));
+    render(pageOf(paramsOf()));
+    await settle();
+
+    expect(screen.getByText("TypeError: the tree failed once")).toBeDefined();
+    expect(screen.queryByTestId("capi-tree")).toBeNull();
+
+    // What made the tree throw is gone, as a change of the reads takes it away; the refresh is enabled.
+    fail = false;
+    expect(screen.getByTestId("capi-tree-refresh").dataset.disabled).toBeUndefined();
+    fireEvent.click(screen.getByTestId("capi-tree-refresh"));
+    await settle();
+
+    expect(screen.queryByText("TypeError: the tree failed once")).toBeNull();
+    expect(screen.getByTestId("capi-tree")).toBeDefined();
+    expect(rowIds()[0]).toBe(ROOT);
+  });
+
   it("shows the error page in the drawer alone when the details of a node throw, the tree and the header kept", async () => {
     const details = vi.mocked(nodeDetailsOf);
     const real = details.getMockImplementation() as typeof nodeDetailsOf;

@@ -33,7 +33,8 @@
 // What the page computes is computed inside the error boundary that P17 and P19 give it, so that an error leaves the
 // header, and the tree when it is in the details: the page renders its header and, inside the boundary of the tree, a
 // child that builds the tree, evaluates the model, counts and searches, and renders the tree and the drawer; the drawer
-// computes the details of the node inside a boundary of its own (P17, P19).
+// computes the details of the node inside a boundary of its own (P17, P19). The key of the boundary of the tree counts
+// the refreshes, so that the refresh of the header draws the tree again after an error (P23).
 //
 // The details of a node are the `Drawer` of the host over the tree (`tree-details-drawer.tsx`). A click on a row stops
 // there as it opens them, so that the listener of the host on the window does not close them at once (H11), and while
@@ -561,6 +562,9 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
   // How many nodes the search matches, which the tree says once it has searched.
   const [matches, setMatches] = useState<number | undefined>(undefined);
   const [tick, rerender] = useReducer((count: number) => count + 1, 0);
+  // How many times the refresh read the tree again, in the key of the boundary of the tree, so that a refresh draws
+  // the tree again after an error that the boundary caught (P19, P23).
+  const [refreshes, refreshed] = useReducer((count: number) => count + 1, 0);
   // Closes the details, the same function for the life of the page, which reads the address and the rows that the page
   // drew last when it runs: the row of the node is scrolled to, then brought whole into view, and the focus goes back to
   // the tree when the closing asks for it (P17). The parameters of a page are the same for its life.
@@ -617,11 +621,14 @@ const TreeView = observer(({ namespace, name, details, extension }: TreeViewProp
           aria-disabled={refreshDisabled}
           disabled={refreshDisabled}
           tooltip={refreshDisabled ? REFRESH_WAIT : REFRESH_WORDS}
-          onClick={() => read.refresh()}
+          onClick={() => {
+            read.refresh();
+            refreshed();
+          }}
           data-testid="capi-tree-refresh"
         />
       </div>
-      <ErrorBoundary extension={extension} resetKey={`${namespace}/${name}`}>
+      <ErrorBoundary extension={extension} resetKey={`${namespace}/${name}/${refreshes}`}>
         <TreeContent
           namespace={namespace}
           name={name}
