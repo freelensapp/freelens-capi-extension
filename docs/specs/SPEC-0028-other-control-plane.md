@@ -3185,6 +3185,8 @@ item above, and these were decided while implementing it:
   from the cluster that it reads, so that no command reads a cluster with the
   kinds of another, which a unit case of a command could not see, the commands
   that need a cluster having none.
+- Decided while implementing: the kit stays cited at `v0.1.5`, the version at
+  which this spec read it, though AGENTS.md follows `v0.1.6` since.
 - Seen while implementing, on a machine at hand with Linux on amd64, where the
   machine shut its Linux down between two commands and its Docker started the
   node of the cluster of the captures again: the webhooks of Cluster API
