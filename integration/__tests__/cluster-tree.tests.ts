@@ -9,7 +9,8 @@
 // P22, which it makes itself. The root page is 1280 by 900 CSS pixels, as the probe had it (H1, H2, H3). It checks:
 //
 // 1. the tree of the Cluster of each state, opened by its address, every node expanded, against the expected trees,
-//    and the marks of the objects of the table of SPEC-0003; and, 1024 px wide, the rows of `rolling-out`;
+//    the marks of the objects of the table of SPEC-0003, and the parts of each cell of marks apart; and, 1024 px wide,
+//    the rows of `rolling-out`;
 // 2. the expansion at first and the counts of `healthy`, `rolling-out` and `deleting`, and that the first rows are
 //    drawn once the answers to the lists of the page have arrived, from an observer of the DOM and the resource timing
 //    of the frame;
@@ -72,6 +73,7 @@ import {
   linesOf,
   marksProblems,
   moveScrollProblem,
+  partsProblems,
   removalScroll,
   rowsLost,
   waitingReads,
@@ -101,6 +103,7 @@ import {
   accessibilityTreeOf,
   activeOf,
   activeRecords,
+  allMarksCells,
   allRows,
   answersOf,
   detailsOf,
@@ -481,7 +484,7 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
   });
 
   it(
-    "shows the tree of the Cluster of every state, every node a row under its node at its depth, with the marks that SPEC-0003 gives its objects; and, 1024 px wide, rows of one line whose names show whole or cut and whole in their tooltip, the columns of state at their minimum width (1; P7, P9, P12, P14)",
+    "shows the tree of the Cluster of every state, every node a row under its node at its depth, with the marks that SPEC-0003 gives its objects and the parts of each cell of marks apart; and, 1024 px wide, rows of one line whose names show whole or cut and whole in their tooltip, the columns of state at their minimum width (1; P7, P9, P12, P14)",
     async () => {
       const { session, frame } = opened();
       const problems: string[] = [];
@@ -501,6 +504,8 @@ describe.skipIf(definitions === undefined)("the tree of a Cluster", () => {
           problems.push(`${state.name}: the rows are\n${outlineText(outline)}\nexpected\n${outlineText(expected)}`);
         }
         problems.push(...marksProblems(rows, EXPECTED_MARKS[state.name]).map((problem) => `${state.name}: ${problem}`));
+        // The parts of each cell of marks, its marks, its notes and its spinners, each apart from the one before it.
+        problems.push(...partsProblems(await allMarksCells(tree)).map((problem) => `${state.name}: ${problem}`));
         if (["rolling-out", "deleting", "no-status"].includes(state.name)) {
           await scrollListTo(tree, 0);
           await shot(`${state.name}-expanded`);

@@ -2539,11 +2539,13 @@ the class of its column (AGENTS.md, "Workflows").
    gives a row have the health, the tone, the activities and the marks that it
    gives them at the time of the session, as the session of the Clusters reads
    them (SPEC-0003, "The fixtures of SPEC-0002 give these results"; SPEC-0004,
-   "Notes and deviations"); and, with the root page at 1024 by 900 CSS pixels,
-   every row of the tree of `rolling-out`, every node expanded, is one line of
-   33 px, the name of each row shows whole, or cut with an ellipsis and whole
-   in its tooltip, and the cells of its columns of state keep at least their
-   minimum width (P9).
+   "Notes and deviations"); the parts of each cell of Activity and Condition,
+   its marks, its notes and its spinners, stand at least 2 px apart along their
+   line, read from the boxes of their elements (SPEC-0004, P12); and, with the
+   root page at 1024 by 900 CSS pixels, every row of the tree of `rolling-out`,
+   every node expanded, is one line of 33 px, the name of each row shows whole,
+   or cut with an ellipsis and whole in its tooltip, and the cells of its
+   columns of state keep at least their minimum width (P9).
 2. The expansion at first of `healthy`, `rolling-out` and `deleting`, and the
    counts of each node shown (P11, P13); and no row before the first loads
    have ended: an observer of the DOM, which the session installs in the frame

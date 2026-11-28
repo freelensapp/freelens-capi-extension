@@ -1314,14 +1314,16 @@ logged by either process:
   "Tests", "In Freelens, on the definitions and the fixtures"), at 1280 by 900
   CSS pixels: the tree of the Cluster of every state, opened by its address,
   every node expanded, against the expected trees of `tree-expectations.ts` and
-  the marks of SPEC-0003, and, 1024 px wide, the rows of `rolling-out` on one
-  line, read from the lines that the browser gives each text of their cells and
-  not from the scroll height of a cell, which a mark of state exceeds on one
-  line, with their names whole or cut with an ellipsis and whole in their
-  tooltip; the expansion at first and the counts of `healthy`, `rolling-out` and
-  `deleting`, with the first rows drawn, which an observer of the DOM records in
-  the frame, once the answers to the lists of the page have arrived, read from
-  the resource timing of the frame; the ways in from the details of a Cluster
+  the marks of SPEC-0003, with the parts of each cell of marks, its marks, its
+  notes and its spinners, at least 2 px apart, read from the boxes of their
+  elements, and, 1024 px wide, the rows of `rolling-out` on one line, read from
+  the lines that the browser gives each text of their cells and not from the
+  scroll height of a cell, which a mark of state exceeds on one line, with their
+  names whole or cut with an ellipsis and whole in their tooltip; the expansion
+  at first and the counts of `healthy`, `rolling-out` and `deleting`, with the
+  first rows drawn, which an observer of the DOM records in the frame, once the
+  answers to the lists of the page have arrived, read from the resource timing
+  of the frame; the ways in from the details of a Cluster
   and from the panel in the details of the host, and one Back, with the address
   of the frame before the click, after it and after the Back logged; the details
   of a node over the page, Escape and their icon with the focus on the tree, and
