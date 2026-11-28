@@ -404,9 +404,10 @@ that it watches them however the node of the cluster started, and waits until
 their webhooks answer a server-side dry run of the objects of a Cluster, which
 stores nothing. Each state is read once its check holds, two readings agree,
 and a third one agrees with them after `clusterctl describe cluster` of its
-Cluster, run with the pinned clusterctl and its default flags; a state that can
-no longer be reached stops its capture at once, and one that is not reached in
-time fails it. The capture of each state removes its workload cluster before
+Cluster, run with the pinned clusterctl and its default flags: when an object
+changed meanwhile, or clusterctl or that reading failed, the readings start
+again; a state that can no longer be reached stops its capture at once, and one
+that is not reached in time fails it. The capture of each state removes its workload cluster before
 and after it, the helper Cluster with that of `kamaji-provisioning`, its quota
 with its namespace, and the finalizer of the scripts first.
 

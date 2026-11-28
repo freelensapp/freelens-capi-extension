@@ -3144,7 +3144,9 @@ item above, and these were decided while implementing it:
   of the helper of `kamaji-provisioning`, and the `missed` of every state that
   has one.
 - Decided while implementing: `clusterctl describe cluster` runs with its
-  default flags once two readings agree, and the third reading follows it; the
+  default flags once two readings agree, and the third reading follows it; a
+  failure of either starts the readings again, as a reading that failed does,
+  within the deadline of the state; the
   README writes the six cells as a list, a cell that the tool leaves empty as
   `empty`, and the digests of the files as a list; the run of CI is the address
   of the run and of its attempt, from the variables that GitHub Actions sets,

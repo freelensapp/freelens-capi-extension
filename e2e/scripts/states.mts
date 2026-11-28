@@ -312,9 +312,27 @@ export interface Wait {
   minutes: number;
 }
 
+// What `describe` printed, and the versions of the objects of the namespace read right after it; or why either failed.
+function describedThenRead(
+  project: NamespaceReader,
+  namespace: string,
+  describe: () => string,
+): { described: string; versions: Map<string, string> } | { failure: string } {
+  try {
+    const described = describe();
+
+    return { described, versions: versionsOf(readNamespace(project.kubectl, namespace, project.resources)) };
+  } catch (error) {
+    return {
+      failure: `clusterctl did not describe the Cluster, or the objects could not be read after it: ${error instanceof Error ? error.message : error}`,
+    };
+  }
+}
+
 // Reads the namespace until its objects hold the state of `wait`, and, when `stable`, until two readings of them agree.
 // With `describe`, which runs once two readings agree, the namespace is read a third time, and the readings start again
-// when an object changed meanwhile, so that what `describe` printed is of the moment of the readings that it returns.
+// when an object changed meanwhile, so that what `describe` printed is of the moment of the readings that it returns; a
+// failure of `describe` or of that third reading is tried again as a reading that failed, within the deadline.
 async function waitFor(
   project: NamespaceReader,
   namespace: string,
@@ -352,26 +370,32 @@ async function waitFor(
       if (previous && sameVersions(previous, versions)) {
         if (!describe) return { objects, capturedAt: at };
 
-        const described = describe();
-        const third = versionsOf(readNamespace(project.kubectl, namespace, project.resources));
+        const after = describedThenRead(project, namespace, describe);
 
-        if (sameVersions(versions, third)) return { objects, capturedAt: at, described };
-        project.log(
-          `${namespace}: these objects changed while clusterctl described the Cluster, and the readings start again: ${changedKeys(versions, third).join(", ")}`,
-        );
-        previous = third;
+        if ("versions" in after && sameVersions(versions, after.versions)) {
+          return { objects, capturedAt: at, described: after.described };
+        }
+        if ("versions" in after) {
+          project.log(
+            `${namespace}: these objects changed while clusterctl described the Cluster, and the readings start again: ${changedKeys(versions, after.versions).join(", ")}`,
+          );
+          previous = after.versions;
+          await (project.pause ?? delay)(2_000);
+          continue;
+        }
+        // The readings start again, as after a reading that failed.
+        missing = after.failure;
+      } else {
+        if (previous && Date.now() - changedSaidAt >= 30_000) {
+          project.log(
+            `${namespace}: the state holds, and these objects changed between two readings: ${changedKeys(previous, versions).join(", ")}`,
+          );
+          changedSaidAt = Date.now();
+        }
+        previous = versions;
         await (project.pause ?? delay)(2_000);
         continue;
       }
-      if (previous && Date.now() - changedSaidAt >= 30_000) {
-        project.log(
-          `${namespace}: the state holds, and these objects changed between two readings: ${changedKeys(previous, versions).join(", ")}`,
-        );
-        changedSaidAt = Date.now();
-      }
-      previous = versions;
-      await (project.pause ?? delay)(2_000);
-      continue;
     }
     previous = undefined;
     if (missing !== said || Date.now() - saidAt >= 60_000) {

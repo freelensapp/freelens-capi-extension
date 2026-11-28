@@ -4669,6 +4669,59 @@ describe("the waits of the captures of Kamaji", () => {
     await expect(state.capture(project, state.namespace)).rejects.toThrow(`can no longer be reached: ${why}`);
   });
 
+  it("read the namespace again after clusterctl, and start the readings again when an object changed meanwhile (SPEC-0028, P6)", async () => {
+    const state = kamajiState("kamaji-healthy");
+    const first = READ_STATES["kamaji-healthy"](state.namespace, "1");
+    const changed = READ_STATES["kamaji-healthy"](state.namespace, "2");
+    const { project } = capturesProject({ [state.namespace]: [first, first, changed] });
+    let runs = 0;
+
+    project.describe = () => {
+      runs += 1;
+      return `the output of run ${runs} of clusterctl`;
+    };
+
+    const captured = await state.capture(project, state.namespace);
+
+    expect(captured.objects).toEqual(changed);
+    expect(captured.described).toBe("the output of run 2 of clusterctl");
+  });
+
+  it("try clusterctl and the reading after it again when either fails, as a reading that failed (SPEC-0028, P6)", async () => {
+    const state = kamajiState("kamaji-healthy");
+    const read = READ_STATES["kamaji-healthy"](state.namespace, "1");
+    const described = capturesProject({ [state.namespace]: [read] });
+    let runs = 0;
+
+    described.project.describe = () => {
+      runs += 1;
+      if (runs === 1) throw new Error("clusterctl describe failed with 1");
+      return `the output of run ${runs} of clusterctl`;
+    };
+    expect((await state.capture(described.project, state.namespace)).described).toBe(
+      "the output of run 2 of clusterctl",
+    );
+
+    // The third reading failing once, after a run of clusterctl whose output it would have kept.
+    const third = capturesProject({ [state.namespace]: [read] });
+    const kubectl = third.project.kubectl;
+    let reads = 0;
+
+    third.project.kubectl = (args, options) => {
+      if (args[0] === "get" && args[1] === fixtureResourcesOn("captures").join(",")) {
+        reads += 1;
+        if (reads === 3) throw new Error("kubectl get failed with 1");
+      }
+      return kubectl(args, options);
+    };
+
+    const captured = await state.capture(third.project, state.namespace);
+
+    expect(captured.objects).toEqual(read);
+    expect(reads).toBe(6);
+    expect(third.requests.filter((request) => request[0] === "describe")).toHaveLength(2);
+  });
+
   it("change a state that starts from kamaji-healthy only once kamaji-healthy holds, its counters copied (SPEC-0028, P5)", async () => {
     const state = kamajiState("kamaji-scaling");
     const notCopied = READ_STATES["kamaji-healthy"](state.namespace, "1");
