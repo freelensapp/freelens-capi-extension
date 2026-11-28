@@ -1,6 +1,6 @@
 # SPEC-0005: The tree of a Cluster
 
-- **Status:** Approved
+- **Status:** Verified
 - **Milestone:** `M1` (see [ROADMAP.md](../development/ROADMAP.md))
 - **Reviewed project:** Cluster API `v1.14.4`, commit
   `4356c154f4a76b8939748ef7ebc2d0793ffe47e8`
@@ -3932,3 +3932,14 @@ spec says of 2.0.0 stays a fact of the host, as probed then.
   Kamaji sets of SPEC-0028 hold a control plane of a provider at the contract
   `v1beta2`, which "Notes and deviations" lists among the captures still
   missing: only the one at `v1beta1` stays missing.
+- Verified on 2026-11-28: the three pull requests of the spec, the tree built
+  from what it reads (#26), the page (#28) and the sessions (#29), and the fix of
+  the parts of a cell of marks that touched (#30), are merged, and every job of
+  CI ran green on `main` after them, the sessions of the tree on Freelens 2.1.0
+  included: on the fixtures of every state, with the second identity, and on the
+  real project against `clusterctl describe cluster`. The check of the themes,
+  in the freelens and the High Contrast themes of 2.1.0, dark and light, the
+  sessions in Freelens running on 2.1.0 alone since the maintainer's decision of
+  2026-11-26, is recorded with the screenshots of #28, #29 and #30. Each planted
+  run of the session of the tree failed where it should, in the run of the
+  branch of the screenshots of #29. The spec has no other manual check.
