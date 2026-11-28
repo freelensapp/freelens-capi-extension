@@ -3610,6 +3610,7 @@ describe("the README of a Kamaji set", () => {
     }
     expect(text).toContain("`172.18.255.200:6443`");
     expect(text).toContain(`Captured by the run ${run}`);
+    expect(text).toContain(`offset from the moment of the capture, from \`${CAPTURE_TIME}\`,`);
     expect(readme).toContain(
       "- REPLICAS: `0/1`\n- AVAILABLE: empty\n- READY: empty\n- UP TO DATE: empty\n- STATUS: `False`\n- REASON: `NotAvailable`",
     );

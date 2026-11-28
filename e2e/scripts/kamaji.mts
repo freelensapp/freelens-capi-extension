@@ -10,7 +10,7 @@
 // no other command knows these states.
 
 import { assertDigest, ensure, sha256 } from "./checks.mts";
-import { FIXTURE_FINALIZER, PROBE_TIME_WORDS } from "./fixtures.mts";
+import { CAPTURE_TIME, FIXTURE_FINALIZER, PROBE_TIME_WORDS } from "./fixtures.mts";
 import { kamajiCluster, podQuota } from "./manifests.mts";
 import {
   condition,
@@ -708,7 +708,7 @@ export function kamajiReadme(
     `\`pnpm e2e:fixtures:capture:kamaji ${state.name}\` captures them again, on the cluster of the captures, and \`pnpm e2e:fixtures:up ${state.name}\` applies them to the cluster of the definitions (\`docs/development/TESTING.md\`).`,
   ].join(" ");
   const cleaning = [
-    "Every time is written as its offset from the moment of the capture, from `2026-01-01T00:00:00Z`, and every generation as its distance from the generations that the status of its object observed, the TenantControlPlane by its own `status.observedGeneration` alone, its other observed generations kept as captured. What the API server adds is left out: the identifiers, the versions and the managed fields.",
+    `Every time is written as its offset from the moment of the capture, from \`${CAPTURE_TIME}\`, and every generation as its distance from the generations that the status of its object observed, the TenantControlPlane by its own \`status.observedGeneration\` alone, its other observed generations kept as captured. What the API server adds is left out: the identifiers, the versions and the managed fields.`,
     "So are the Secrets, the ConfigMaps, the Deployments, the Services and the Pods of the namespace, and the DataStore, which has no namespace.",
     ...(probeTimes
       ? [
