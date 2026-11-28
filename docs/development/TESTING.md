@@ -806,6 +806,14 @@ curl -fsSL https://raw.githubusercontent.com/metallb/metallb/<tag>/config/manife
 curl -fsSL https://get.helm.sh/helm-<version>-linux-amd64.tar.gz.sha256sum
 ```
 
+`pnpm e2e:pins:check` checks each file of the pin of Kamaji against its digest,
+and two ties of that pin are checked by hand, with the first two commands of
+the Kamaji chart above, whenever it changes: that its commit is the one of the
+tag of its version, since the version names the image that helm installs and
+the commit the files of the chart; and that its files are every file of
+`charts/kamaji` at that commit, since a file left out of the pins is left out
+of the chart that helm installs.
+
 ## Safety
 
 The scripts follow the rules of the kit for development and tests, and those

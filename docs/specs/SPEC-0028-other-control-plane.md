@@ -3075,7 +3075,11 @@ item above, and these were decided while implementing it:
   the blobs at the commit, and `pnpm e2e:pins:check` downloads each file from
   its source and checks it; the digest of `kamaji-etcd` is the `digest` that the
   index of `https://clastix.github.io/charts` records for its archive, from
-  which `pnpm e2e:pins:check` downloads it.
+  which `pnpm e2e:pins:check` downloads it. That the commit is the one of the
+  tag of the version, and that the files of the pin are every file of
+  `charts/kamaji` at that commit, are checked by hand whenever the pin changes,
+  with the commands that TESTING.md gives ("The pins"); both hold at the pins
+  of this pull request.
 - Decided while implementing: `helm dependency build` takes the repository that
   the lock names only once `helm repo add` has added it, which the scripts do
   in the homes of helm in their state folder, so that no repository of the user
