@@ -491,9 +491,9 @@ const CONNTRACK_HOST: ConntrackHost = {
   log: (line) => console.log(line),
 };
 
-// On the host of the cluster of the captures, `net.netfilter.nf_conntrack_max` at the value that kube-proxy computes for
-// the processors of the host, before any worker joins a tenant (SPEC-0028, P3; L4). A value that the scripts cannot set
-// stops the command, since no worker becomes ready without it.
+// On the host of the cluster of the captures, `net.netfilter.nf_conntrack_max` at the value that kube-proxy computes
+// for the processors of the host, before any worker joins a tenant (SPEC-0028, P3; L4). A value that the scripts cannot
+// set stops the command, since no worker becomes ready without it.
 function setConntrackMax(): void {
   raiseConntrackMax(CONNTRACK_HOST, cpus().length);
 }
@@ -1755,9 +1755,9 @@ export const CAPTURE_LEAVES_OUT = `The states of the captures of Kamaji, ${KAMAJ
 // Brings workload clusters of the cluster of the captures into the states of the Kamaji captures (SPEC-0028, P5 to P7),
 // one at a time, since the pool of MetalLB has one address, each in its own namespace, with its helper Cluster for
 // `kamaji-provisioning`, writes the objects of each one into its fixture set, with the SHA-256 of each YAML file in its
-// README and of every file of the set in the log, and deletes them. It refuses a cluster of the captures whose providers are not those of the
-// pins, at their releases, and nothing else. A capture that fails is reported after the others, and makes the command
-// fail; its fixture set stays as it was.
+// README and of every file of the set in the log, and deletes them. It refuses a cluster of the captures whose
+// providers are not those of the pins, at their releases, and nothing else. A capture that fails is reported after the
+// others, and makes the command fail; its fixture set stays as it was.
 async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
   assertCapturesHost(process.platform, process.arch);
 

@@ -888,17 +888,16 @@ of SPEC-0002:
   clusters of the test of S7, named `freelens-capi-s7-infra-only` and
   `freelens-capi-s7-cp-only`, which it deletes at its end with their namespace.
 - **The cluster of the captures of Kamaji.** `pnpm e2e:cluster:up:kamaji` and
-  `pnpm e2e:fixtures:capture:kamaji` run on Linux on amd64 alone, and refuse
-  any other system or processor before any request; the capture changes the
-  host only once it has checked the cluster of the captures and its providers.
-  They write to the cluster
-  of the captures and to the containers of its workload clusters, as the real
-  project, and to one setting of the kernel of the host besides the limits of
-  inotify, `net.netfilter.nf_conntrack_max`, whose value before they changed it
-  they record in the state folder once they have set it, and which
-  `pnpm e2e:cluster:down` gives back, also when Docker or kind keep it from
-  deleting anything, and with no sudo when the host holds it already, failing
-  and keeping the state when it cannot (SPEC-0028, P2, P3). `down`
+  `pnpm e2e:fixtures:capture:kamaji` run on Linux on amd64 alone, and refuse any
+  other system or processor before any request; the capture changes the host
+  only once it has checked the cluster of the captures and its providers. They
+  write to the cluster of the captures and to the containers of its workload
+  clusters, as the real project, and to one setting of the kernel of the host
+  besides the limits of inotify, `net.netfilter.nf_conntrack_max`, whose value
+  before they changed it they record in the state folder once they have set it,
+  and which `pnpm e2e:cluster:down` gives back, also when Docker or kind keep it
+  from deleting anything, and with no sudo when the host holds it already,
+  failing and keeping the state when it cannot (SPEC-0028, P2, P3). `down`
   deletes that cluster, before the cluster of the definitions, and the
   containers of its workload clusters, those of the helper of
   `kamaji-provisioning` among them, when the state folder records that cluster.

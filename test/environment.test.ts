@@ -3464,9 +3464,9 @@ describe("the times of the probe of core inside its messages", () => {
 });
 
 // What `clusterctl describe cluster` prints with its default flags, as clusterctl v1.14.4 pads its table
-// (internal/util/tree/tree.go:70-81) and the probes saw it (SPEC-0028, L22): each column as wide as its widest cell with
-// its padding, two spaces after a cell of a row and one after a title of the header, and the lines after the first of a
-// message under it.
+// (internal/util/tree/tree.go:70-81) and the probes saw it (SPEC-0028, L22): each column as wide as its widest cell
+// with its padding, two spaces after a cell of a row and one after a title of the header, and the lines after the first
+// of a message under it.
 function describeOutput(rows: string[][]): string {
   const header = ["NAME", "REPLICAS", "AVAILABLE", "READY", "UP TO DATE", "STATUS", "REASON", "SINCE", "MESSAGE"];
   const widths = header.map((title, index) =>
@@ -3488,8 +3488,8 @@ function describeOutput(rows: string[][]): string {
     .join("\n");
 }
 
-// What `clusterctl describe cluster` printed for kamaji-provisioning (SPEC-0028, L22), each line as it was, the names of
-// its Cluster swapped for others of the same length.
+// What `clusterctl describe cluster` printed for kamaji-provisioning (SPEC-0028, L22), each line as it was, the names
+// of its Cluster swapped for others of the same length.
 const DESCRIBED_AS_PRINTED = [
   "NAME                                       REPLICAS AVAILABLE READY UP TO DATE STATUS REASON        SINCE MESSAGE",
   "Cluster kamaji/demo                        0/1                                 False  NotAvailable  2s    * RemoteConnectionProbe: Remote connection not established yet",
@@ -4489,8 +4489,8 @@ function edits(...all: ReadingEdit[]): ReadingEdit {
 const TENANT_STATE = "status.kubernetesResources.version.status";
 const TENANT_DEPLOYMENT = "status.kubernetesResources.deployment";
 
-// The waits of the two states whose tenant no longer answers (SPEC-0028, P5; "Notes and deviations"), each as an edit of
-// the readings of the state that makes them miss that wait alone.
+// The waits of the two states whose tenant no longer answers (SPEC-0028, P5; "Notes and deviations"), each as an edit
+// of the readings of the state that makes them miss that wait alone.
 const UNREACHABLE_WAITS: [string, ReadingEdit][] = [
   ["no Pod of the tenant ending", setField("TenantControlPlane", `${TENANT_DEPLOYMENT}.terminatingReplicas`, 1)],
   ["the probe of core failed", setCondition("Cluster", "RemoteConnectionProbe", "True", "ProbeSucceeded")],
