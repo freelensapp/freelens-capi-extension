@@ -3890,6 +3890,25 @@ the contract label of the definition for a control plane of a provider; and
   the extension registers, under the id that the host makes from the name of
   the package, before the address of either page, and that no other address
   waits for one.
+- Decided after the merge of the third part, from its screenshots of the check
+  of the themes: in the cell Condition a note that follows a note touched it,
+  "N/A15 objects" on the Cluster of `deleting`, the words N/A of a node with no
+  health and the counts of what it holds (P11). The stylesheet of the marks set
+  a mark after a mark, and a note after a mark, a quarter of an em apart, never
+  a note after a note. Each part of a cell of marks now stands a quarter of an
+  em after the part before it, a mark or a note in whichever order, and the
+  spinner of a part that waits for its inputs is a note of the cell
+  (`MarkSpinner`), so that it stands apart and at the middle of the line as the
+  notes do (DESIGN.md, "The status model in lists and details"). Step 1 reads
+  the parts of the cells of Activity and Condition of every row of every state
+  from the boxes of their elements, and fails on a part less than 2 px after the
+  one before it. Against the stylesheet of the merge it failed on eight rows of
+  six states, each a note 0 px after a note: the Cluster, the
+  MachineDeployment, the MachineSet and the Machine of `deleting`, and a Machine
+  of `scaling-down` and of `remediation`, with N/A before their counts; and the
+  Clusters of `machine-pool-without-machines` and `no-status`, whose note of the
+  MachinePools of unknown health touched their counts. Every other part stood
+  apart.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this
