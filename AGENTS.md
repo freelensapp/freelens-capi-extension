@@ -222,10 +222,12 @@ pnpm test:integration:real-project # vitest, the sessions of the real tier, agai
 
 # Test environment (docs/development/TESTING.md)
 pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
-pnpm e2e:cluster:up:definitions   # The definitions of Cluster API alone, on another kind cluster
+pnpm e2e:cluster:up:definitions   # The definitions of Cluster API and of Kamaji alone, on another kind cluster
+pnpm e2e:cluster:up:kamaji        # The cluster of the captures of Kamaji, on Linux on amd64 alone; resumes
 pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters
 pnpm e2e:pins:check               # Downloads every pinned file and checks it, with no cluster
 pnpm e2e:fixtures:capture <state> # Captures the fixtures of a state, or of all, from the real project
+pnpm e2e:fixtures:capture:kamaji <state> # Captures a Kamaji state, or all, from the cluster of the captures
 pnpm e2e:fixtures:up <state>      # Applies the fixtures of a state, or of all, to the cluster of the definitions
 pnpm e2e:fixtures:down            # Removes the fixtures from the cluster of the definitions
 pnpm e2e:fixtures:check           # Applies each fixture set, reads it back and compares it with its files
@@ -1150,6 +1152,7 @@ problem does not show.
 | `integration-tests.yaml` | the integration tests in `integration/`, against Freelens dev                                                                                                               |
 | `mise-lock-check.yaml`   | on a change to `mise.lock`: no checksum changed for an unchanged tool version                                                                                               |
 | `e2e-pins-check.yaml`    | on a change to the pins or the scripts of the test environment: `pnpm e2e:pins:check`                                                                                       |
+| `kamaji-capture.yaml`    | when it is dispatched alone, on a branch made for it: the captures of the Kamaji states, uploaded as an artifact of the folders of their sets alone (SPEC-0028, P7)         |
 | `test-environment.yaml`  | the fixtures and the real project of the test environment, with the tests of the real tier and, in Freelens dev on each release, its sessions (docs/development/TESTING.md) |
 | `cleanup-cache.yaml`     | on a closed pull request: deletes the caches of its merge ref                                                                                                               |
 

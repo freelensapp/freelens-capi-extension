@@ -3061,6 +3061,129 @@ request updates the row of the roadmap (kit, `docs/specs.md`, "The roadmap").
    grant on the TenantControlPlanes, and each session that the row Tenant
    reaches changes with it.
 
+The first pull request, the captures with no set, implements the list of its
+item above, and these were decided while implementing it:
+
+- Decided while implementing: the pins of P3 are five objects of the pins file,
+  each refused without its digest, as the others: `kamajiProvider`, its release
+  and the SHA-256 of its two files; `kamaji`, its edge release, the one kind of
+  release that it publishes, the commit of that tag, and the SHA-256 of each of
+  the 27 files of `charts/kamaji` at that commit, by its path, each path inside
+  that folder, `Chart.yaml`, `Chart.lock`, `values.yaml` and the two definitions
+  of P8 required among them; `kamajiEtcd`, `metallb` and `helm`, each one file
+  with its version and its SHA-256. The digests of the chart were computed from
+  the blobs at the commit, and `pnpm e2e:pins:check` downloads each file from
+  its source and checks it; the digest of `kamaji-etcd` is the `digest` that the
+  index of `https://clastix.github.io/charts` records for its archive, from
+  which `pnpm e2e:pins:check` downloads it.
+- Decided while implementing: `helm dependency build` takes the repository that
+  the lock names only once `helm repo add` has added it, which the scripts do
+  in the homes of helm in their state folder, so that no repository of the user
+  applies; the folder `charts` of the chart must then hold the pinned archive
+  alone, checked against its pin, and the pinned helm must report the version
+  of its pin.
+- Decided while implementing: the third definition of the folder `crds` of the
+  chart, that of the KubeconfigGenerator, is not applied on the first tier,
+  which P8 does not name; the first tier takes from the release of the provider
+  every document of kind `CustomResourceDefinition`, the KamajiControlPlane and
+  its template, each with its label `cluster.x-k8s.io/provider` given the
+  value `control-plane-kamaji`, and refuses a definition without one such label
+  in its metadata.
+- Decided while implementing: the one address of the pool of MetalLB is 56
+  below the end of the IPv4 subnet of the network `kind`, `<prefix>.255.200` of
+  a /16 as the probes took it, and a subnet smaller than a /24 or not IPv4 is
+  refused; the pool and its L2 advertisement are applied again every 2 s, 60
+  times at most, once the controller and the speaker of MetalLB have rolled
+  out; the DataStore `default` is waited for by its `status.ready`.
+- Decided while implementing: the scripts give the host the value of
+  `net.netfilter.nf_conntrack_max` that kube-proxy computes whenever the host
+  has another one, a higher one too, since kube-proxy writes it whenever it
+  differs (L4); they count the processors that Node lists; they record the
+  value before their first change once, in the folder of the cluster of the
+  captures; and a value that they cannot set stops the command, where the
+  limits of inotify only warn, since no worker becomes ready without it (L4).
+  `down` gives it back, and fails, keeping the state, when it cannot.
+  `pnpm e2e:fixtures:capture:kamaji` sets it too, and refuses any system but
+  Linux on amd64, as `pnpm e2e:cluster:up:kamaji`.
+- Decided while implementing: a Cluster of a Kamaji state is named as its
+  namespace, as the clusters of the captures of SPEC-0002 are, and so are its
+  KamajiControlPlane and its tenant; the KamajiControlPlane names the DataStore
+  `default`, the address `10.128.0.10` for the Service of CoreDNS in the service
+  network of the Cluster, and the `kubelet` of the first probe, `cgroupfs`
+  `systemd` and the address type `InternalIP`, with which its worker joined
+  (L4). `kamaji-version-refused` asks for the minor after
+  `workloadKubernetesVersion` of the pins, `v1.38.0`, computed and not pinned.
+- Decided while implementing: the waits of P5, state by state, in
+  `e2e/scripts/kamaji.mts`: `kamaji-provisioning` once its DevCluster is
+  provisioned, the Cluster `InfrastructureReady` `True`, its tenant made and
+  waiting at `TenantControlPlaneAddressReady` `False` `Pending`, stopped when
+  the tenant gets an address; `kamaji-scaling` and `kamaji-upgrading` once the
+  Deployment of the tenant reports the Pod that the quota refused,
+  `ReplicaFailure` `True`, stopped when the change went through;
+  `kamaji-not-ready` deletes the Pods of the tenant by the selector that its
+  TenantControlPlane writes; and the objects that sum up a worker Machine past
+  its grace are its `Ready`, the `MachinesReady` of its MachineSet and of its
+  MachineDeployment and the `WorkerMachinesReady` of its Cluster, each no longer
+  `True` (K23).
+- Decided while implementing: `clusterctl describe cluster` runs with its
+  default flags once two readings agree, and the third reading follows it; the
+  README writes the six cells as a list, a cell that the tool leaves empty as
+  `empty`, and the digests of the files as a list; the run of CI is the address
+  of the run and of its attempt, from the variables that GitHub Actions sets,
+  and a set captured outside CI says so.
+- Decided while implementing: the fixed value of a checksum is
+  `00000000000000000000000000000000`, given to every string that is not empty
+  under a key `checksum` in the status of a TenantControlPlane; an empty one,
+  no checksum, stays. The toggles of P8 set `spec.dataStoreSchema` to
+  `test-environment` and `spec.dataStoreOverrides` to an empty list.
+- Decided while implementing: `capture-kamaji` has its own list of states,
+  `KAMAJI_STATES`; every other command refuses a Kamaji state, naming the one
+  that takes it, and `capture` says, as it starts, that it leaves them out. The
+  artifact of the workflow names the nine folders one by one, with
+  `if-no-files-found: error`, and a step prints the SHA-256 of each file of the
+  sets from outside the scripts, besides the scripts.
+- Seen while implementing, on a machine at hand with Linux on amd64, where the
+  machine shut its Linux down between two commands and its Docker started the
+  node of the cluster of the captures again: the webhooks of Cluster API
+  refused the first apply of a capture, and the Kamaji control plane provider,
+  started again with the node, watched no TenantControlPlane, its log naming no
+  source of that kind (K8), so that the scale of `kamaji-scaling` never reached
+  its KamajiControlPlane. Decided while implementing: before its first state,
+  the capture waits for every Deployment of the controllers of the cluster,
+  starts the provider again once the cluster serves TenantControlPlanes, and
+  sends a server-side dry run of the objects of a Cluster of Kamaji until the
+  webhooks answer; and it removes the workload clusters of every Kamaji state
+  and of the helper, which a run that was stopped can leave holding the one
+  address of the pool. In CI the node does not start again between the two
+  commands, and the start of the provider costs some seconds.
+- Seen while implementing, on that machine, with the scripts of this pull
+  request: `pnpm e2e:cluster:up:kamaji` took about five minutes, and the nine
+  states were captured one at a time, each set passing every check that the
+  unit cases make of the sets of the repository, written as the scripts write
+  it, every owner in it, nothing that a cleaning leaves out, no time inside a
+  text, a generation that the first tier can give each object, no checksum but
+  the fixed value, and each file the one whose SHA-256 its README holds. In
+  shape: `kamaji-provisioning`, four objects, its KamajiControlPlane with
+  `TenantControlPlaneCreated` `True` and `TenantControlPlaneAddressReady` `False`
+  `Pending` alone, no counter and an empty version, its tenant with no status,
+  its Cluster with `desiredReplicas` 1 alone, and the row `0/1`, three cells
+  empty, `False` `NotAvailable`; its Cluster at the phase Provisioned, its
+  DevCluster provisioned, where the first probe read it Provisioning 8 s after
+  its apply (L8). Every state with a worker, thirteen objects, but
+  `kamaji-deleting`, seven, its worker gone with its ClusterResourceSetBinding,
+  its Cluster at `WaitingForControlPlaneDeletion`, and its KamajiControlPlane
+  deleting at generation 2, its conditions and `Available` `True` observing 1.
+  `kamaji-scaling` at 3 asked and 1 of each counter, `Unknown`, the quota having
+  refused a Pod; `kamaji-upgrading` with no replica up to date and its old
+  version, `Upgrading`, `Available` `True`; `kamaji-version-refused` with
+  `TenantControlPlaneCreated` `False` `Pending` observing generation 2 and
+  `Available` `True` observing 1; `kamaji-sleeping` and `kamaji-not-ready` at 0
+  of 0 and 0 of 1, the probe of core failed and the worker Machine `Unknown`
+  `ConnectionDown` past its grace, the time of the last probe moved in their
+  messages; `kamaji-paused` with no `Paused` on its KamajiControlPlane. The
+  sets stay out of the repository: those to commit come from a run of the
+  workflow of the captures (P7).
+
 The first revision of this draft took the facts of the first probe of the
 provider, L1 to L20, and of the probe of the host, H1 to H11, and the two
 reviews of the first draft, of 14 findings and of 25; the second took the facts
