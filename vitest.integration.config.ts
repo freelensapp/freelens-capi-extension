@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 export const REAL_PROJECT_SESSIONS = [
   "integration/__tests__/clusters-real.tests.ts",
   "integration/__tests__/clusters-sveltos.tests.ts",
+  "integration/__tests__/cluster-tree-real.tests.ts",
 ];
 
 // The integration tests attach to Freelens dev over CDP and drive one app, so

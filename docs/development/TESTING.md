@@ -32,12 +32,20 @@ SPEC-0003 those of the trial of S7 ("Tests", "With the real project: S7"). The
 status model is read on the fixtures by `src/common/status/fixtures.test.ts`
 (SPEC-0003, "Tests"). `pnpm test:integration` runs the integration tests,
 described in `AGENTS.md`: the session of the template, which installs the
-extension, the session of the fixtures, and the sessions of the Clusters of
+extension, the session of the fixtures, the sessions of the Clusters of
 SPEC-0004, that of the fixtures of every state and the restricted one, which
-opens the page as a second identity ("Continuous integration", "Safety").
-`pnpm test:real-project` runs the tests of the real tier, and
-`pnpm test:integration:real-project` the sessions of the real tier in Freelens
-dev ("Tests of the real tier").
+opens the page as a second identity, and the session of the tree of a Cluster
+of SPEC-0005, on the fixtures of every state and on a large Cluster that it
+makes, with the cases of the tree in the restricted session ("Continuous
+integration", "Safety"). What the sessions of the tree read and decide, and
+the expectations that they read, are tested with no app by
+`test/tree-outline.test.ts`, `test/tree-checks.test.ts` and
+`test/tree-expectations.test.ts`, the large Cluster by
+`test/large-cluster.test.ts`, the second identity by
+`test/restricted-access.test.ts`, and what the sessions of the real tier
+compare by `test/real-project-checks.test.ts`. `pnpm test:real-project` runs
+the tests of the real tier, and `pnpm test:integration:real-project` the
+sessions of the real tier in Freelens dev ("Tests of the real tier").
 
 ## The test environment
 
@@ -142,23 +150,23 @@ says how the state was reached and a YAML file for each kind of its objects,
 which live in a namespace of their own, named as the workload cluster of the
 state, so that the fixtures of every state can be on the first tier at once.
 
-| State                           | Namespace                             | How the real project was brought into it                                                                                                             |
-| ------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provisioning`                  | `freelens-capi-provisioning`          | A Cluster with a managed topology, its control plane held before kubeadm by a command that the scripts give its template                             |
-| `healthy`                       | `freelens-capi-healthy`               | A Cluster with a managed topology, two workers and kindnet, once every condition is at its normal value and every Machine is checked healthy         |
-| `machine-without-node`          | `freelens-capi-without-node`          | A MachineSet beside the topology, whose Node registers with a provider ID that is not the one of its Machine                                         |
-| `rolling-out`                   | `freelens-capi-rolling-out`           | `clusterctl alpha rollout restart` of the MachineDeployment, while a new Machine starts                                                              |
-| `scaling-up`                    | `freelens-capi-scaling-up`            | The topology asks for three control plane Machines and a second worker, while they start                                                             |
-| `scaling-up-held`               | `freelens-capi-scaling-up-held`       | The MachineDeployment scaled by its own replicas while the control plane upgrades, which the preflight checks of the MachineSet hold                 |
-| `scaling-down`                  | `freelens-capi-scaling-down`          | The topology asks for one worker of two, while a pre-drain hook of the scripts holds the deletion of the other                                       |
-| `paused`                        | `freelens-capi-paused`                | `spec.paused` of the Cluster                                                                                                                         |
-| `deleting`                      | `freelens-capi-deleting`              | The Cluster deleted, while a pre-terminate hook of the scripts holds a worker                                                                        |
-| `upgrading`                     | `freelens-capi-upgrading`             | The version of the topology moved from `workloadKubernetesUpgradeFrom` of the pins to `workloadKubernetesVersion`, while the control plane rolls out |
-| `without-topology`              | `freelens-capi-without-topology`      | A Cluster that names its parts, written by the scripts from the schemas, once every condition is at its normal value                                 |
-| `machine-pools`                 | `freelens-capi-machine-pools`         | A Cluster whose only workers are a MachinePool, with no network add-on                                                                               |
-| `machine-pool-without-machines` | `freelens-capi-pool-without-machines` | Written by hand, from SPEC-0001 R2.66 to R2.69: a MachinePool whose provider keeps no Machines, which the development provider cannot show           |
-| `remediation`                   | `freelens-capi-remediation`           | Both workers marked for remediation with `maxInFlight` 1: one remediated, its deletion held by a hook of the scripts, the other deferred             |
-| `no-status`                     | `freelens-capi-no-status`             | One or two objects of each kind but the Docker kinds, as a user writes them, in a server-side dry run of their creation                              |
+| State                           | Namespace                             | How the real project was brought into it                                                                                                              |
+| ------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provisioning`                  | `freelens-capi-provisioning`          | A Cluster with a managed topology, its control plane held before kubeadm by a command that the scripts give its template                              |
+| `healthy`                       | `freelens-capi-healthy`               | A Cluster with a managed topology, two workers and kindnet, once every condition is at its normal value and every Machine is checked healthy          |
+| `machine-without-node`          | `freelens-capi-without-node`          | A MachineSet beside the topology, whose Node registers with a provider ID that is not the one of its Machine                                          |
+| `rolling-out`                   | `freelens-capi-rolling-out`           | `clusterctl alpha rollout restart` of the MachineDeployment, while a new Machine starts                                                               |
+| `scaling-up`                    | `freelens-capi-scaling-up`            | The topology asks for three control plane Machines and a second worker, while they start                                                              |
+| `scaling-up-held`               | `freelens-capi-scaling-up-held`       | The MachineDeployment scaled by its own replicas while the control plane upgrades, which the preflight checks of the MachineSet hold                  |
+| `scaling-down`                  | `freelens-capi-scaling-down`          | The topology asks for one worker of two, while a pre-drain hook of the scripts holds the deletion of the other                                        |
+| `paused`                        | `freelens-capi-paused`                | `spec.paused` of the Cluster                                                                                                                          |
+| `deleting`                      | `freelens-capi-deleting`              | The Cluster deleted, while a pre-terminate hook of the scripts holds a worker                                                                         |
+| `upgrading`                     | `freelens-capi-upgrading`             | The version of the topology moved from `workloadKubernetesUpgradeFrom` of the pins to `workloadKubernetesVersion`, while the control plane rolls out  |
+| `without-topology`              | `freelens-capi-without-topology`      | A Cluster that names its parts, written by the scripts from the schemas, once every condition is at its normal value                                  |
+| `machine-pools`                 | `freelens-capi-machine-pools`         | A Cluster whose only workers are a MachinePool, with no network add-on                                                                                |
+| `machine-pool-without-machines` | `freelens-capi-pool-without-machines` | Written by hand, from SPEC-0001 R2.66 to R2.69: a MachinePool whose provider keeps no Machines, which the development provider cannot show            |
+| `remediation`                   | `freelens-capi-remediation`           | Both workers marked for remediation with `maxInFlight` 1: one remediated, its deletion held by a hook of the scripts, the other deferred              |
+| `no-status`                     | `freelens-capi-no-status`             | One or two objects of each kind but the Docker kinds, as a user writes them, in a server-side dry run of their creation, the claim naming its Cluster |
 
 The files are YAML as kubectl writes it, with the keys in order and the
 sequences unindented under their key, quotes only where a value needs them, as
@@ -280,6 +288,35 @@ two times of the API server apart, and removes the set. The API server applies
 the schema of each definition to every object and to its status, its CEL rules
 included, so a fixture that does not pass it fails there; no schema is changed.
 
+### The large Cluster of the session of the tree
+
+The session of the tree of a Cluster tries the tree on a Cluster of 300
+Machines (SPEC-0005, P16, P22), which is no state of the fixtures: no capture
+can make 300 Machines on a runner, and the set is 2.8 MB of files. The session
+makes it at run time, in its last step, from the objects of `healthy`, read from
+their files, with `largeCluster` of `integration/__tests__/large-cluster.ts`:
+the Cluster of `healthy` with its objects in the namespace
+`freelens-capi-tree-large`, the namespace of no state, its two workers replaced
+by 300 copies of the first, each with its infrastructure machine and its
+bootstrap config, named apart in the order of their numbers and owned by its
+own objects, and the counters of its MachineDeployment, of its MachineSet, of
+its topology and of its workers, and the targets of its check of the workers,
+counting the copies: 922 objects. It applies them as `pnpm e2e:fixtures:up`
+applies a state, with `applyObjects` of `e2e/scripts/commands.mts`, and removes
+them as `pnpm e2e:fixtures:down` removes one, with `removeObjects`, both through
+the session that `openDefinitions` gives, with the target checked before every
+request, and both refusing, before any request, a namespace that is not one of
+the scripts, that is the namespace of a state, or that is the namespace of the
+second identity of the restricted session. The step that applies it has
+180 s and the hook that deletes it 240 s, three times what a local kind cluster
+took; the session logs both times, and the time of its step, which the first
+run in CI measured at 46.5 s, 85.4 s and 6.0 s. Vitest fails such a hook once it
+returns past its limit, and cannot cut one that hangs, since the hooks run
+kubectl synchronously: the timeouts of the scripts bound each of their requests
+instead, two minutes, and six for the deletion of the namespace. It deletes the
+namespace at its end, also when a step failed, as it deletes first one that a
+run that was killed left, and checks that it is gone.
+
 ## Tests of the real tier
 
 What only a controller answers is tried on the real project by the tests of
@@ -342,12 +379,13 @@ was killed left them.
 
 ### The sessions of the real tier in Freelens
 
-Two sessions of the integration tests open the cluster of the real project in
+Three sessions of the integration tests open the cluster of the real project in
 Freelens dev, through a copy of the kubeconfig of the scripts that the profile
 syncs, and reach it themselves through the scripts, with `openRealProject`, as
 a test of the real tier does: `pnpm test:integration:real-project` runs them,
 with `vitest.integration-real-project.config.ts`, and `pnpm test:integration`
-leaves them out (SPEC-0004, "With the real project"; P29, P33).
+leaves them out (SPEC-0004, "With the real project"; P29, P33; SPEC-0005, "With
+the real project").
 
 - `integration/__tests__/clusters-real.tests.ts` compares what the view says
   of `freelens-capi-md` and `freelens-capi-mp` with what
@@ -377,6 +415,18 @@ leaves them out (SPEC-0004, "With the real project"; P29, P33).
   server answers to a GET of the Sveltos extension to the groups of its own
   kinds, `*.projectsveltos.io`, is not an error of this view, and S6 leaves it
   out; one to a group that this view reads counts.
+- `integration/__tests__/cluster-tree-real.tests.ts` compares the tree of
+  `freelens-capi-md` and of `freelens-capi-mp`, every node expanded, with what
+  `clusterctl describe cluster` prints of them with `--show-machinesets`,
+  `--show-templates`, `--show-resourcesets`, `--echo` and `--grouping=false`,
+  which show every object on a row of its own: every row of an object a node of
+  the tree under the node of the row that holds it, at its depth, the virtual
+  rows of the tool read as the nodes Workers, Add-ons and Templates; every other
+  node of a kind that the tool leaves out; for every row with a status, the
+  condition that the health of its node rests on, from the summary of its
+  details; and the counters of the control plane and of the MachineDeployment,
+  from the tooltip of their cell Replicas. Each comparison reads both sides
+  again, five minutes at most, until they agree. It writes nothing.
 
 They write only to the cluster of the real project, through the scripts, and
 undo what they write at their end, also when a step failed: the session of S6
@@ -413,12 +463,21 @@ extension that the profile of Freelens dev has, and leaves none.
   a check failed (`AGENTS.md`). The restricted session,
   `integration/__tests__/clusters-restricted.tests.ts`, opens the same page as
   a second identity that it makes on that cluster, which may read part of it,
-  and deletes it at its end ("Safety"). The job has an hour, and its step of
-  the tests 25 minutes, limits set from the durations of the runs: in CI the
-  job took 5 minutes, and its step of the tests 3.3, with a case that waited
-  its 60 seconds. A step that reaches its limit fails, as a case that reaches
-  its own does, and loses the report of the sessions after it, which a run of
-  one file gives again.
+  and the page of the tree of the Cluster of `healthy`, and deletes it at its
+  end ("Safety"). The session of the tree, `integration/__tests__/cluster-tree.tests.ts`,
+  opens the tree of the Cluster of every state, with its expansion, its
+  details, its keys, its states that are not the happy one and its search,
+  reads it in the tree of accessibility of Chromium, follows it live through
+  writes of its own on `healthy`, which it undoes, and tries the large Cluster
+  ("The large Cluster of the session of the tree", "Safety"). The job has an
+  hour, and its step of the tests 25 minutes, the window of the marks of the
+  fixtures, limits set from the durations of the runs: in CI the job took 5
+  minutes, and its step of the tests 3.3, with a case that waited its 60
+  seconds, before the session of the tree; with it, the first run of its pull
+  request took 10 minutes, and the step of the tests 7.8, three cases failing,
+  one after its wait of 60 seconds (SPEC-0005, P22). A step that
+  reaches its limit fails, as a case that reaches its own does, and loses the
+  report of the sessions after it, which a run of one file gives again.
   The list of the host keys its columns by the names of the printer columns,
   and the definitions of MachineDeployment and KubeadmControlPlane at
   `v1beta2` name two columns `Available`, so React logs a repeated key in
@@ -669,10 +728,28 @@ cache of Docker, the images it pulled for the nodes and the load balancers;
 and the `kind` network of Docker, which kind shares between all its clusters.
 Removing the state folder removes what it holds.
 
+### The writes of the session of the tree
+
+The session of the tree of a Cluster writes to the cluster of the definitions
+alone, through the scripts, with `openDefinitions`, under the lock of the state
+folder, with the target checked before every request (SPEC-0005, "Tests", "In
+Freelens", 6, 9): on the objects of `healthy`, the annotation
+`cluster.x-k8s.io/paused` of a worker Machine, a Machine of its own,
+`freelens-capi-healthy-d2lgq-a0000`, and the condition `Ready` of another
+worker through the status subresource; and the large Cluster in its namespace
+("The large Cluster of the session of the tree"). It records the version that
+the answer to each write gives, and fails at once when it is the one before
+the write, so that its check of "Safety" tells its writes from those of the
+frame. It undoes each write at the end of its part, also when a check failed,
+and its end undoes what a part could not; it checks that its Machine and the
+namespace of the large Cluster are gone. A run that was killed in step 6 can
+leave a write on `healthy`, which the next apply of the fixtures replaces.
+
 ### The second identity of the restricted session
 
-The restricted session of SPEC-0004 (P23) opens the page of the Clusters as a
-user who may read part of the cluster of the definitions. It is the one
+The restricted session of SPEC-0004 (P23) opens the page of the Clusters, and
+the page of the tree of a Cluster (SPEC-0005, "With a restricted identity"), as
+a user who may read part of the cluster of the definitions. It is the one
 session with a kubeconfig other than those of the scripts, which never read
 it, and it follows these rules:
 
@@ -691,7 +768,11 @@ it, and it follows these rules:
   step lets the identity list and watch the namespaces over the whole cluster,
   as the frame of a cluster does, and read in `default` what the start page of
   Freelens reads there for a user who may not list the Nodes, the overview of
-  the workloads, and every kind that the page reads. A step that refuses a kind
+  the workloads, and every kind that the page and the tree of a Cluster read,
+  with those of the providers of the fixtures; read by their names, the
+  definitions are those of the control plane and of the infrastructure cluster
+  that the Clusters name, and those of the infrastructure machines and of their
+  templates that the tree of `healthy` reads. A step that refuses a kind
   in a namespace that the frame read before loads the frame again, which then
   keeps no version from which a watch of that namespace would start, so that
   the only reads refused are the lists and the gets that its cases expect,

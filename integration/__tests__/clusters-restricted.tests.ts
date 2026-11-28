@@ -16,14 +16,21 @@
 // 4. every kind of the page over the whole cluster, and no watch of every resource of the core group: the notice of a
 //    list that the host reads once and does not follow, and none with one namespace, where a label that kubectl sets
 //    reaches a search that showed no row, with no reload (P34);
+// 5. to 8. the tree of the Cluster of `healthy` (SPEC-0005, "With a restricted identity"): the Clusters refused in its
+//    namespace, Restricted in the place of the tree; the KubeadmConfigs, the Machines and the ClusterResourceSetBindings
+//    refused there, Partial, the notice of each kind and the tree that `tree-expectations.ts` writes for it, with the
+//    words of P12 in the cells of the nodes that cannot be read;
 // 3. S2, with an identity that may not list the definitions: a link to the infrastructure cluster when it may get its
-//    definition by its name, else text with the reason and the permission (P3).
+//    definition by its name, else text with the reason and the permission (P3);
+// 9. in the frame of case 3, the tree of `healthy` with the definition of the DevMachines refused: their nodes not read,
+//    with the reason and the permission, and the node of their kind; and with that definition, their rows.
 //
 // A step that refuses a kind in a namespace that the frame read before loads the frame again: the API of the host keeps
 // the version of its last list in each namespace, and a watch would start from it and be refused. Case 3 runs last,
 // in a frame loaded again once its access refuses the list of the definitions, which the host makes as the frame
-// starts and keeps. After a load of the frame the session opens the page itself, since the frame may start on the
-// start page of the host.
+// starts and keeps, and case 9 after it, in the same frame. After a load of the frame the session opens the page itself,
+// since the frame may start on the start page of the host. With TEST_SCREENSHOTS_DIR set, cases 5 and 6 take the
+// screenshots of Restricted and Partial for the check of the themes (SPEC-0005, "Manual verification").
 //
 // The identity is a ServiceAccount in a namespace of its own, with a token from a TokenRequest, which the session
 // writes, with the API server and the authority of the kubeconfig of the scripts, into a kubeconfig file in the folder
@@ -36,7 +43,7 @@
 // failed, deletes the file, every object of RBAC, the ServiceAccount and its namespace, and checks that they are gone.
 // The token is never logged.
 
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openDefinitions } from "../../e2e/scripts/commands.mts";
@@ -60,6 +67,8 @@ import {
 import {
   accessObjects,
   accessReviews,
+  CLUSTERS_PAGE_DEFINITIONS,
+  CLUSTERS_PAGE_KINDS,
   CONTROL_PLANE_DEFINITION,
   DEFINITIONS_PATH,
   extraObjects,
@@ -69,18 +78,26 @@ import {
   identityObjects,
   kubeconfigOf,
   listPath,
+  MACHINE_DEFINITION,
+  MACHINE_TEMPLATE_DEFINITION,
+  NAMED_DEFINITIONS,
   PAGE_KINDS,
   permissionsOf,
+  READ_KINDS,
   refusedDefinitions,
   refusedLists,
   wrongAnswers,
 } from "./restricted-access";
+import { EXPECTED_TREES, outlineRows, RESTRICTED_TREES } from "./tree-expectations";
+import { outlineOfRows, outlineTextOf } from "./tree-outline";
+import { detailsOf, expandAll, openTree, rowOf, settledRows, TREE_PAGE, tooltipLines, treeAddress } from "./tree-page";
 
 import type { Frame, Locator } from "playwright";
 
 import type { DefinitionsSession } from "../../e2e/scripts/commands.mts";
 import type { AppSession } from "./extension-helpers";
 import type { Access, Kind, ObjectKey } from "./restricted-access";
+import type { DrawnRow } from "./tree-page";
 
 const viewTimeout = { timeout: 60 * 1000 };
 const stepTimeout = 300 * 1000;
@@ -150,8 +167,39 @@ const INFRASTRUCTURE_DEFINITION_REFUSED: Access = {
   definitions: [CONTROL_PLANE_DEFINITION],
 };
 
+// The accesses of the cases of the tree of a Cluster (SPEC-0005, "With a restricted identity").
+function refusedInHealthy(plural: string): Access {
+  return { scope: "namespaces", refused: [{ plural, namespace: HEALTHY }], definitions: "list" };
+}
+
+const CLUSTERS_IN_HEALTHY = refusedInHealthy("clusters");
+const KUBEADMCONFIGS_IN_HEALTHY = refusedInHealthy("kubeadmconfigs");
+const MACHINES_IN_HEALTHY = refusedInHealthy("machines");
+const BINDINGS_IN_HEALTHY = refusedInHealthy("clusterresourcesetbindings");
+const MACHINE_DEFINITION_REFUSED: Access = {
+  scope: "namespaces",
+  refused: [],
+  definitions: [CONTROL_PLANE_DEFINITION, INFRASTRUCTURE_DEFINITION, MACHINE_TEMPLATE_DEFINITION],
+};
+const EVERY_DEFINITION_BY_NAME: Access = { scope: "namespaces", refused: [], definitions: [...NAMED_DEFINITIONS] };
+
+function kindOf(plural: string): Kind {
+  const kind = READ_KINDS.find((each) => each.plural === plural);
+
+  if (kind === undefined) throw new Error(`No kind ${plural} is read`);
+  return kind;
+}
+
+// What the tree says of a node that cannot be read, in its cell Status (SPEC-0005, P12).
+const KIND_NOT_READ = "Not read. Its kind could not be read in the namespace of the Cluster.";
+const DEFINITION_REFUSED =
+  "Not read. Its definition could not be read: reading it takes get on customresourcedefinitions of apiextensions.k8s.io, for that definition.";
+
 // The page of the Clusters in the frame of a cluster.
 const PAGE = extensionPageAddress("clusters");
+
+// The folder of the screenshots of the themes, when the run takes them.
+const screenshots = process.env.TEST_SCREENSHOTS_DIR || undefined;
 
 // What the notices of the page say of a refusal (src/common/views/read-state.ts).
 const LIST_PERMISSION =
@@ -298,10 +346,67 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
   // Leaves out, while a case runs, the refusals of the lists and of the gets that it expects from the frame of the
   // cluster of the identity, while that frame shows the page of the Clusters, or on any page for a refusal that comes
   // as the frame starts.
-  function expectRefusals(paths: readonly string[], { anyPage = false } = {}): () => void {
+  function expectRefusals(paths: readonly string[], { anyPage = false, page = PAGE } = {}): () => void {
     return opened().session.expectRefusals(
-      paths.map((path) => (anyPage ? { frameHost, path } : { frameHost, page: PAGE, path })),
+      paths.map((path) => (anyPage ? { frameHost, path } : { frameHost, page, path })),
     );
+  }
+
+  // Takes a screenshot of the root window into the folder of the screenshots, when there is one.
+  async function shot(name: string) {
+    if (screenshots === undefined) return;
+
+    const file = path.join(screenshots, `restricted-${name}.png`);
+
+    mkdirSync(screenshots, { recursive: true });
+    await opened().session.window.screenshot({ path: file });
+    console.log(`screenshot ${file}`);
+  }
+
+  // The tree of the Cluster of healthy, every node expanded, and its rows once none of them loads; its outline as
+  // `tree-expectations.ts` writes it.
+  async function treeOfHealthy(expected: string): Promise<{ tree: Locator; rows: DrawnRow[] }> {
+    const tree = await openTree(opened().frame, HEALTHY, HEALTHY_CLUSTER);
+
+    await expandAll(tree);
+
+    const rows = await settledRows(tree);
+
+    expect(outlineOfRows(rows)).toEqual(outlineRows(expected));
+    return { tree, rows };
+  }
+
+  function rowWith(rows: readonly DrawnRow[], text: string): DrawnRow {
+    const found = rows.filter((row) => outlineTextOf(row) === text);
+
+    if (found.length !== 1) throw new Error(`${found.length} rows are ${text}`);
+    return found[0];
+  }
+
+  // The notice of the tree for a kind that the identity may not read in the namespace of healthy (SPEC-0005, P19): its
+  // title, the message of the answer and the permission, and the nodes that it leaves unread.
+  async function expectNotice(kind: string, noun: string, plural: string, lines: readonly string[]) {
+    const notice = opened().frame.getByTestId(`capi-notice-kind-${kind}`);
+    const read = kindOf(plural);
+
+    await notice.waitFor(viewTimeout);
+
+    const text = (await notice.textContent()) ?? "";
+
+    expect(text).toContain(`The ${noun} could not all be read`);
+    expect(text).toContain(refusalMessage(listPath(read, HEALTHY)));
+    expect(text).toContain(
+      `Reading them takes get, list and watch on ${read.plural} of ${read.group}, in those namespaces or over the whole cluster.`,
+    );
+    for (const line of lines) expect(text).toContain(line);
+  }
+
+  // Leaves the page of the tree for the page with no Cluster, so that no read of the tree runs into the next case.
+  async function leaveTree() {
+    const { frame } = opened();
+
+    await navigateCluster(frame, TREE_PAGE);
+    await frame.getByTestId("capi-tree-no-cluster").waitFor(viewTimeout);
   }
 
   // Closes the details of the extension by the close icon of their drawer, as a person closes details that opened at
@@ -512,9 +617,9 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       const { session, frame } = opened();
       const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
-        ...refusedLists(CLUSTERS_IN_PAUSED, [HEALTHY, PAUSED]),
-        ...refusedLists(CLUSTERS_IN_PAUSED, "every"),
-        ...refusedLists(CLUSTERS_IN_BOTH, [HEALTHY, PAUSED]),
+        ...refusedLists(CLUSTERS_IN_PAUSED, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
+        ...refusedLists(CLUSTERS_IN_PAUSED, "every", CLUSTERS_PAGE_KINDS),
+        ...refusedLists(CLUSTERS_IN_BOTH, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
       ]);
 
       try {
@@ -599,8 +704,8 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       const { session, frame } = opened();
       const leftOutBefore = session.refusalsLeftOut().length;
       const stop = expectRefusals([
-        ...refusedLists(MACHINES_IN_PAUSED, [HEALTHY, PAUSED]),
-        ...refusedLists(MACHINES_IN_BOTH, [HEALTHY, PAUSED]),
+        ...refusedLists(MACHINES_IN_PAUSED, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
+        ...refusedLists(MACHINES_IN_BOTH, [HEALTHY, PAUSED], CLUSTERS_PAGE_KINDS),
       ]);
 
       try {
@@ -711,6 +816,190 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
   );
 
   it(
+    "case 5: the Clusters refused in the namespace of healthy, the tree of its Cluster says in its place that the user may not list them, with the message of the answer and the permission (SPEC-0005, P19)",
+    async () => {
+      const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
+      const stop = expectRefusals(refusedLists(CLUSTERS_IN_HEALTHY, [HEALTHY]), { page: TREE_PAGE });
+
+      try {
+        // The Clusters of healthy were read before: a frame loaded again.
+        await startStep(CLUSTERS_IN_HEALTHY, { reload: true });
+        await navigateCluster(frame, TREE_PAGE);
+        await frame.getByTestId("capi-tree-no-cluster").waitFor(viewTimeout);
+        await navigateCluster(frame, treeAddress(HEALTHY, HEALTHY_CLUSTER));
+
+        const restricted = frame.getByTestId("capi-tree-restricted");
+
+        await restricted.waitFor(viewTimeout);
+
+        const text = (await restricted.textContent()) ?? "";
+
+        expect(text).toContain(`You may not list the Clusters of the namespace ${HEALTHY}.`);
+        expect(text).toContain(refusalMessage(listPath(CLUSTERS, HEALTHY)));
+        expect(text).toContain(
+          "Reading them takes get, list and watch on clusters of cluster.x-k8s.io, in that namespace.",
+        );
+        expect(await frame.getByTestId("capi-tree").count()).toBe(0);
+        await shot("tree-restricted");
+        await leaveTree();
+        expectRefusalsSeen([listPath(CLUSTERS, HEALTHY)], leftOutBefore);
+        expect(await session.errors()).toEqual([]);
+      } finally {
+        stop();
+      }
+    },
+    stepTimeout,
+  );
+
+  it(
+    "case 6: the KubeadmConfigs refused in the namespace of healthy, the tree with the notice of Partial, their nodes not read under their Machines, the node of their kind with no row under it, and the Machines with their own health (SPEC-0005, P12, P19)",
+    async () => {
+      const { session } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
+      const stop = expectRefusals(refusedLists(KUBEADMCONFIGS_IN_HEALTHY, [HEALTHY]), { page: TREE_PAGE });
+
+      try {
+        // The tree of case 5 read the KubeadmConfigs of healthy: a frame loaded again.
+        await startStep(KUBEADMCONFIGS_IN_HEALTHY, { reload: true });
+
+        const { rows } = await treeOfHealthy(RESTRICTED_TREES["kubeadmconfigs-refused"]);
+
+        await expectNotice("KubeadmConfig", "KubeadmConfigs", "kubeadmconfigs", [
+          "Until they can be read, their nodes in the tree read as not read.",
+        ]);
+        for (const row of rows.filter((each) => outlineTextOf(each).startsWith("KubeadmConfig "))) {
+          expect(row.activityWords, row.id).toBe("Not read");
+          expect(row.status, row.id).toBe(KIND_NOT_READ);
+        }
+        // The node of the kind says the reason alone, since a KubeadmConfig names no kind of a provider.
+        expect(rowWith(rows, "KubeadmConfigs [not read]").status).toBe(KIND_NOT_READ);
+        for (const row of rows.filter((each) => outlineTextOf(each).startsWith("Machine "))) {
+          expect(row.health?.word, row.id).toBe("Healthy");
+        }
+        await shot("tree-partial");
+        await leaveTree();
+        expectRefusalsSeen([listPath(kindOf("kubeadmconfigs"), HEALTHY)], leftOutBefore);
+        expect(await session.errors()).toEqual([]);
+      } finally {
+        stop();
+      }
+    },
+    stepTimeout,
+  );
+
+  it(
+    "case 7: the Machines refused in the namespace of healthy, the node of their kind holding the Machines that own the KubeadmConfigs, no DevMachine, and the activities of what counts Machines Unknown, never Idle (SPEC-0005, P7, P12)",
+    async () => {
+      const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
+      const stop = expectRefusals(refusedLists(MACHINES_IN_HEALTHY, [HEALTHY]), { page: TREE_PAGE });
+      const kindWords = `${KIND_NOT_READ} The objects that only the Machines name are not read either, since the tree learns their kinds from them.`;
+
+      try {
+        await startStep(MACHINES_IN_HEALTHY, { reload: true });
+
+        const { tree, rows } = await treeOfHealthy(RESTRICTED_TREES["machines-refused"]);
+
+        await expectNotice("Machine", "Machines", "machines", [
+          "Until they can be read, their nodes in the tree read as not read, and so do the objects that only they name, since the tree learns their kinds from them.",
+        ]);
+
+        // The node of the kind: Not read, its reason and the words of the objects that only the Machines name, whole
+        // in the tooltip of its cell Status.
+        const kind = rowWith(rows, "Machines [not read]");
+
+        expect(kind.activityWords).toBe("Not read");
+        expect(kind.status).toBe(kindWords);
+        expect(
+          (await tooltipLines(frame, session.window, rowOf(tree, kind.id).getByTestId("capi-tree-status")))[0],
+        ).toBe(kindWords);
+        for (const row of rows.filter((each) => each.id.startsWith("cluster.x-k8s.io/Machine/"))) {
+          expect(row.activityWords, row.id).toBe("Not read");
+          expect(row.status, row.id).toBe(KIND_NOT_READ);
+        }
+
+        // A KubeadmConfig under its Machine says that its owner is of a kind not read.
+        const config = rowWith(rows, "KubeadmConfig freelens-capi-healthy-d2lgq-zqlcx");
+
+        expect(
+          (await tooltipLines(frame, session.window, rowOf(tree, config.id).getByTestId("capi-tree-name"))).join(" "),
+        ).toContain(`Its owner Machine freelens-capi-healthy-d2lgq-zqlcx is of a kind not read. ${KIND_NOT_READ}`);
+
+        // What counts Machines reads its activities Unknown, with the note of the model, never Idle.
+        for (const text of [
+          "MachineSet freelens-capi-healthy-md-0-m9x7h-m5gtb",
+          "MachineDeployment freelens-capi-healthy-md-0-m9x7h",
+          "KubeadmControlPlane freelens-capi-healthy-d2lgq",
+        ]) {
+          expect(
+            rowWith(rows, text).activities.map((mark) => mark.word),
+            text,
+          ).toEqual(["Unknown"]);
+        }
+
+        const deployment = rowWith(rows, "MachineDeployment freelens-capi-healthy-md-0-m9x7h");
+
+        await rowOf(tree, deployment.id).getByTestId("capi-tree-name-button").click();
+        await detailsOf(frame).getByTestId("capi-details-notes").waitFor(viewTimeout);
+        expect(await detailsOf(frame).getByTestId("capi-details-notes").textContent()).toContain(
+          "Not read, so not given to the status model: its Machines.",
+        );
+        await leaveTree();
+        expectRefusalsSeen([listPath(MACHINES, HEALTHY)], leftOutBefore);
+        expect(await session.errors()).toEqual([]);
+      } finally {
+        stop();
+      }
+    },
+    stepTimeout,
+  );
+
+  it(
+    "case 8: the ClusterResourceSetBindings refused in the namespace of healthy, the node of their kind, the resource of the ClusterResourceSet not read, never in no binding, and the ClusterResourceSet resting on ResourcesApplied alone (SPEC-0005, P10, P12)",
+    async () => {
+      const { session, frame } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
+      const stop = expectRefusals(refusedLists(BINDINGS_IN_HEALTHY, [HEALTHY]), { page: TREE_PAGE });
+
+      try {
+        await startStep(BINDINGS_IN_HEALTHY, { reload: true });
+
+        const { tree, rows } = await treeOfHealthy(RESTRICTED_TREES["bindings-refused"]);
+
+        await expectNotice("ClusterResourceSetBinding", "ClusterResourceSetBindings", "clusterresourcesetbindings", [
+          "Until they can be read, their nodes in the tree read as not read, and so do the resources of the ClusterResourceSets of the Cluster.",
+          "Until then, the ClusterResourceSets of the tree rest on ResourcesApplied alone, which the status model notes.",
+        ]);
+        expect(rowWith(rows, "ClusterResourceSetBindings [not read]").status).toBe(KIND_NOT_READ);
+
+        const entry = rowWith(rows, "ConfigMap cni-kindnet [not read]");
+
+        expect(entry.activityWords).toBe("Not read");
+        expect(entry.status).toBe(KIND_NOT_READ);
+
+        const set = rowWith(rows, "ClusterResourceSet cni-kindnet");
+
+        await rowOf(tree, set.id).getByTestId("capi-tree-name-button").click();
+
+        const details = detailsOf(frame);
+
+        await details.getByTestId("capi-details-notes").waitFor(viewTimeout);
+        expect(await details.getByTestId("capi-details-summary").textContent()).toContain("ResourcesApplied: True");
+        expect(await details.getByTestId("capi-details-notes").textContent()).toContain(
+          "Not read, so not given to the status model: its ClusterResourceSetBindings.",
+        );
+        await leaveTree();
+        expectRefusalsSeen([listPath(kindOf("clusterresourcesetbindings"), HEALTHY)], leftOutBefore);
+        expect(await session.errors()).toEqual([]);
+      } finally {
+        stop();
+      }
+    },
+    stepTimeout,
+  );
+
+  it(
     "case 3: a user who may not list the definitions sees the infrastructure cluster as a link when it may get its definition by its name, else as text with the reason and the permission (S2, P3)",
     async () => {
       const { session, frame } = opened();
@@ -722,8 +1011,12 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       // the get of the definition of the infrastructure cluster once the identity may not read it, from the page.
       const stopList = expectRefusals([DEFINITIONS_PATH], { anyPage: true });
       const stopGets = expectRefusals([
-        ...refusedDefinitions(DEFINITIONS_BY_NAME).filter((path) => path !== DEFINITIONS_PATH),
-        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED).filter((path) => path !== DEFINITIONS_PATH),
+        ...refusedDefinitions(DEFINITIONS_BY_NAME, CLUSTERS_PAGE_DEFINITIONS).filter(
+          (path) => path !== DEFINITIONS_PATH,
+        ),
+        ...refusedDefinitions(INFRASTRUCTURE_DEFINITION_REFUSED, CLUSTERS_PAGE_DEFINITIONS).filter(
+          (path) => path !== DEFINITIONS_PATH,
+        ),
       ]);
 
       try {
@@ -759,6 +1052,47 @@ describe.skipIf(definitions === undefined)("the Clusters for a user who may read
       } finally {
         stopList();
         stopGets();
+      }
+    },
+    stepTimeout,
+  );
+  it(
+    "case 9: in the frame that may not list the definitions, the definition of the DevMachines refused gives their nodes not read, with the reason and the permission, and the node of their kind; that definition given, their rows (SPEC-0005, P12; R6.5)",
+    async () => {
+      const { session } = opened();
+      const leftOutBefore = session.refusalsLeftOut().length;
+      const stop = expectRefusals([`${DEFINITIONS_PATH}/${MACHINE_DEFINITION}`], { page: TREE_PAGE });
+
+      try {
+        // The frame of case 3, whose host could not list the definitions as it started: no load of its own.
+        await grant(MACHINE_DEFINITION_REFUSED);
+
+        const refused = await treeOfHealthy(RESTRICTED_TREES["machine-definition-refused"]);
+
+        for (const row of refused.rows.filter((each) =>
+          each.id.startsWith("infrastructure.cluster.x-k8s.io/DevMachine/"),
+        )) {
+          expect(row.activityWords, row.id).toBe("Not read");
+          expect(row.status, row.id).toBe(DEFINITION_REFUSED);
+        }
+
+        const kind = rowWith(refused.rows, "DevMachine objects [not read]");
+
+        expect(kind.activityWords).toBe("Not read");
+        expect(kind.status).toBe(`${DEFINITION_REFUSED} Its objects are not shown, since they are never read.`);
+        await leaveTree();
+
+        // The definition given by its name: the rows of the DevMachines, and no node of their kind.
+        await grant(EVERY_DEFINITION_BY_NAME);
+
+        const given = await treeOfHealthy(EXPECTED_TREES.healthy);
+
+        expect(given.rows.filter((row) => row.id.startsWith("kind:"))).toEqual([]);
+        await leaveTree();
+        expectRefusalsSeen([`${DEFINITIONS_PATH}/${MACHINE_DEFINITION}`], leftOutBefore);
+        expect(await session.errors()).toEqual([]);
+      } finally {
+        stop();
       }
     },
     stepTimeout,

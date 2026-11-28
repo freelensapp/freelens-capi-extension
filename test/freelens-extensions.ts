@@ -97,7 +97,24 @@ export const host = {
   // The navigations of the frame: to an address, to the details of the host, and to a page of the extension.
   navigate: vi.fn<(location: string) => void>(),
   showDetails: vi.fn<(selfLink: string, resetSelected?: boolean) => void>(),
-  navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async () => undefined),
+  navigateExtension: vi.fn<(pageId?: string, params?: object) => Promise<void>>(async (pageId, params = {}) => {
+    host.pushExtensionPage(pageId, params);
+  }),
+  // The entries that the navigations to a page of the extension add to the history of the frame, as the host adds
+  // them: the address of the page with every parameter given, an empty one included, as the navigation of the
+  // extension writes it (freelens:packages/core/src/extensions/lens-renderer-extension.ts:108-139), and, when one is
+  // empty, the same address once more without it, which the observable history of the host pushes as it keeps the
+  // parameters of its address without the empty ones (freelens:packages/routing/src/observable-history.ts:157-189;
+  // freelens:packages/routing/src/search-params.ts:9-13). One Back goes to the entry before the last.
+  history: [] as string[],
+  pushExtensionPage(pageId: string | undefined, params: object) {
+    const search = new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]));
+    const kept = new URLSearchParams([...search].filter(([, value]) => value !== ""));
+    const address = (query: URLSearchParams) => `/${pageId ?? ""}${query.size > 0 ? `?${query.toString()}` : ""}`;
+
+    host.history.push(address(search));
+    if (kept.size !== search.size) host.history.push(address(kept));
+  },
   // The parameters of the address of the frame, by their names, which a page parameter that the extension creates
   // reads, as `kube-details`, the parameter of the details of the host.
   params: observable.map<string, string>({}, { deep: false }),
@@ -147,6 +164,7 @@ export const host = {
     host.navigate.mockReset();
     host.showDetails.mockReset();
     host.navigateExtension.mockClear();
+    host.history.length = 0;
     runInAction(() => host.params.clear());
     host.hideDetails.mockClear();
     host.drawnRows = undefined;
@@ -678,9 +696,26 @@ interface StubTableProps {
 // table too, around the element of the list that scrolls, of the class `list`
 // (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx). The virtual list draws the rows of
 // its window, all of them here unless a test gives the window (`host.drawnRows`), and draws them again on its own when a
-// test scrolls it (`host.scrollRows`). Its calls are recorded, so that a test reads the props that a page gave at each
-// render.
-const Table = vi.fn((props: StubTableProps) => {
+// test scrolls it (`host.scrollRows`). The `Table` of the extension API is the table of the host given its
+// dependencies by `withInjectables`, which renders it with the props that a layout effect of its own stored
+// (freelens:packages/core/src/renderer/components/table/table.tsx:316-323; `withInjectables` of
+// @ogre-tools/injectable-react 27.0.0, the version of the catalog of Freelens), so the table draws what a render of a
+// page gives it in the commit after that render, and its head with its rows; so does the stub. Its calls are recorded,
+// one for each render of the page, so that a test reads the props that a page gave at each render.
+const Table = vi.fn((props: StubTableProps) => React.createElement(DrawnLater, { props }));
+
+// What the table draws: the props of the last render of the page, which a layout effect stores, drawn by a table that
+// renders again only when they change, as the table of the host, an observer, does.
+function DrawnLater({ props }: { props: StubTableProps }) {
+  const [given, setGiven] = React.useState<StubTableProps | undefined>(undefined);
+
+  React.useLayoutEffect(() => {
+    setGiven(props);
+  }, [props]);
+  return given === undefined ? null : React.createElement(DrawnTable, given);
+}
+
+const DrawnTable = React.memo((props: StubTableProps) => {
   const { children, className, selectable, virtual, items = [], getTableRow, selectedItemId } = props;
   const [, draw] = React.useReducer((count: number) => count + 1, 0);
 

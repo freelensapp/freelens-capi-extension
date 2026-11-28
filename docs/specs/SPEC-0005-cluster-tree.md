@@ -1615,11 +1615,11 @@ has two tiers"), and no capture can make 300 Machines on a runner of CI. The
 session applies them as the scripts apply a state, the objects first, owners
 before their dependents, then the changes that give each its generation, then
 each status through the status subresource
-(`e2e/scripts/commands.mts:1366-1430`), through a function that the scripts
-export beside `openDefinitions` (`e2e/scripts/commands.mts:1307-1343`); and it
+(`e2e/scripts/commands.mts:1378-1441`), through a function that the scripts
+export beside `openDefinitions` (`e2e/scripts/commands.mts:1312-1345`); and it
 deletes that namespace at its end, also when a step failed, and checks that it
 is gone, before any other session runs, since the sessions run one at a time
-(`vitest.integration.config.ts:19-21`). The probe derived such a set from
+(`vitest.integration.config.ts:20-22`). The probe derived such a set from
 `healthy` with the reader and the writer of the scripts, 922 objects: 301
 Machines, 301 DevMachines, 301 KubeadmConfigs and the 19 other objects of the
 set; written as files, it is 18 files and 2.8 MB, which is why the session makes
@@ -1632,11 +1632,11 @@ So no test that reads every state changes: the check that the folders of the
 fixtures are the fifteen states (`src/common/status/fixtures.test.ts:158-185`),
 the states that the unit tests read from those folders
 (`test/fixture-sets.ts:22-25`), the states of the scripts
-(`test/environment.test.ts:2106-2112`), the sessions that read every state
+(`test/environment.test.ts:2118-2124`), the sessions that read every state
 (`integration/__tests__/clusters.tests.ts:60-71`;
-`integration/__tests__/clusters-restricted.tests.ts:90-109, 680`), and
+`integration/__tests__/clusters-restricted.tests.ts:107-126, 785`), and
 `pnpm e2e:fixtures:check`, which takes every state
-(`e2e/scripts/commands.mts:1540`). The generation is a pure function of a module
+(`e2e/scripts/commands.mts:1586`). The generation is a pure function of a module
 of the session, `integration/__tests__/large-cluster.ts`, with its unit test in
 `test/large-cluster.test.ts`, as `restricted-access.ts` is tested (SPEC-0004,
 "Notes and deviations"): every copy is named apart, every owner reference names
@@ -1645,16 +1645,16 @@ an object of the set, and the counters add up to the Machines.
 Time. The scripts applied the set of the probe in 52.6 s and deleted it in
 77.0 s, on a local kind cluster, the deletion longer since they remove the
 finalizer of each object with a call of its own (H24;
-`e2e/scripts/commands.mts:1352-1364`), and the page of the Clusters showed its
+`e2e/scripts/commands.mts:1357-1367`), and the page of the Clusters showed its
 300 workers at its first reading, 376 ms after the navigation, with 1.21 s of
 CPU of the renderer in 10.5 s and one long task of 188 ms (H24). So the
 session runs the large Cluster in a time of its own: the step that applies it
 has a limit of 180 s, and the hook that deletes it one of 240 s, about three
 times what the probe measured, a margin for the runners of CI, which the probe
 did not try (H25), in place of the 120 s of every other test and hook
-(`vitest.integration.config.ts:26-27`). Two limits of 25 minutes bound it: the
+(`vitest.integration.config.ts:27-28`). Two limits of 25 minutes bound it: the
 step of the tests of the integration workflow, which every session shares
-(`timeout 1500`, `.github/workflows/integration-tests.yaml:351`; TESTING.md,
+(`timeout 1500`, `.github/workflows/integration-tests.yaml:353`; TESTING.md,
 "Continuous integration"), and the window of the marks of the fixtures, which
 hold for 25 minutes after their apply, after which a session that checks them
 fails at its start (TESTING.md, "Continuous integration", "Safety"; SPEC-0004,
@@ -2428,18 +2428,21 @@ the tree live in `src/common/views/`, whose program has neither the DOM nor Node
   once the element has its height, for a row that a move leaves partly in view,
   and, in a layout effect, by the rows inserted or removed above the first row
   in view, on an element whose height and scroll the test gives, since the stub
-  has no layout; a search with the row of the active node out of view, which
-  gives no `selectedItemId` and sets no scroll of the list's element, seen
-  failing once against a page that brings the active node into view after a
-  search; the element of the tree with its role `treegrid`, its label, its one
-  stop of Tab and its keys, their default prevented, Page Up and Page Down
-  included; the attributes of each row read in the DOM, where the spread on
-  `TableRow` puts them, the header a `row` of `columnheader` cells and the
-  cells of every row `gridcell`, on a stub of the SDK whose `Table` draws the
-  rows of `getTableRow` inside an element of the class `VirtualList`, which the
-  page finds as it finds that of the host (freelens:virtual-list.tsx:144;
-  freelens@v2.0.0:virtual-list.tsx:131), and whose `TableRow`, `TableHead`
-  and `TableCell` spread their props as the host's do
+  has no layout, at the end of the list too, on a stub whose `Table` draws the
+  rows of a render of the page in the commit after it, as the `Table` of the
+  host does ("Notes and deviations"); a search with the row of the active node
+  out of view, which gives no `selectedItemId` and sets no scroll of the list's
+  element, seen failing once against a page that brings the active node into
+  view after a search; the element of the tree with its role `treegrid`, its
+  label, its one stop of Tab and its keys, their default prevented, Page Up and
+  Page Down included; the attributes of each row read in the DOM, where the
+  spread on `TableRow` puts them, the header a `row` of `columnheader` cells
+  and the cells of every row `gridcell`, on a stub of the SDK whose `Table`
+  draws the rows of `getTableRow` inside an element of the class `VirtualList`,
+  which the page finds as it finds that of the host
+  (freelens:virtual-list.tsx:144; freelens@v2.0.0:virtual-list.tsx:131), and
+  whose `TableRow`, `TableHead` and `TableCell` spread their props as the
+  host's do
   (`test/freelens-extensions.ts:633-647`; AGENTS.md, "Tests and tooling");
   every cell of a row, the counts of P11 included, with its text
   inside the element of the extension that cuts it with an ellipsis, found by
@@ -2694,11 +2697,11 @@ checks them (Unit):
 
 `integration/__tests__/cluster-tree-real.tests.ts`, in the job of the real
 project of `test-environment.yaml`, on both releases of its matrix (SPEC-0004,
-P33). It joins `REAL_PROJECT_SESSIONS` (`vitest.integration.config.ts:5-8`),
+P33). It joins `REAL_PROJECT_SESSIONS` (`vitest.integration.config.ts:5-9`),
 which the configuration of the real tier runs and the integration workflow
 leaves out (`vitest.integration-real-project.config.ts:13`;
-`vitest.integration.config.ts:17-18`), and the paths that start that job on a
-pull request (`.github/workflows/test-environment.yaml:21-47`). It compares the
+`vitest.integration.config.ts:18-19`), and the paths that start that job on a
+pull request (`.github/workflows/test-environment.yaml:21-50`). It compares the
 tree of `freelens-capi-md` and of `freelens-capi-mp` with what
 `clusterctl describe cluster` prints of them with `--show-machinesets`,
 `--show-templates`, `--show-resourcesets`, `--echo` and `--grouping=false`,
@@ -3083,7 +3086,9 @@ the contract label of the definition for a control plane of a provider; and
   part, with the session that applies it. Until the capture of P21 in the third
   part gives the claim of `no-status` its `spec.clusterName`, the expected tree
   of `no-status` holds no claim, and the case of P21 of `cluster-tree.test.ts`
-  writes the field.
+  writes the field. The third part gives the claim its field, the expected tree
+  of `no-status` the claim and its IPAddress under Other objects, and the case
+  of P21 reads the field from the set.
 - Decided while implementing, where P13 puts in the tests of the rows the case
   of no row before the first loads have ended: that case is a case of the read,
   `firstLoadsEnded` of `cluster-namespace-read.test.tsx` and of
@@ -3482,6 +3487,407 @@ the contract label of the definition for a control plane of a provider; and
   probe of the session of the screenshots, on a branch that is no part of this
   spec, looks at this way back, through the history of the frame and through
   the back arrow of the top bar of the host.
+
+- Decided while implementing the third part, where the Tests write the
+  expectations of the sessions in their steps: what the sessions of the tree
+  read in Freelens is written by hand in
+  `integration/__tests__/tree-expectations.ts`, as its expected trees are: the
+  marks of step 1 for the objects to which the table of SPEC-0003 gives a row,
+  each by the text of its row; the expansion at first of `healthy`,
+  `rolling-out` and `deleting`, with the rows collapsed and the counts of each;
+  the searches of step 7; the writes of step 6 and the counts after each; and
+  the trees of the restricted cases 6 to 9. `test/tree-expectations.test.ts`
+  checks each against what the model and the tree give the fixtures, the marks
+  at three times of the window of 25 minutes, so that a session that does not
+  find them finds a fault of the page. What a session decides from what it
+  reads is in pure functions of `integration/__tests__/tree-checks.ts`, which
+  `test/tree-checks.test.ts` feeds the rows that the page draws for every
+  state, made from its cells as the DOM holds them; the effect of each key,
+  written there from the table of P18, is compared with the handler of the page
+  on every row of every state. The sessions read the rows from the DOM through
+  `integration/__tests__/tree-page.ts` and `tree-outline.ts`, a row by the
+  identity of its node in the id of its element (P18), and never through a
+  search: the search that the session of the Clusters needs to find a row of
+  its list (SPEC-0004, "Notes and deviations") is step 7 here. After the
+  reviews of the third part, the reading of the rows from the DOM is one
+  function, `readDrawnRows` of `tree-outline.ts`, which the sessions run in the
+  frame and a case of `cluster-tree-page.test.tsx` runs on the page that it
+  renders in jsdom, where it finds the rows that `test/tree-read-rows.ts` makes
+  from the cells of the page, field by field, but their places, which jsdom
+  does not lay out.
+- Decided while implementing the third part, for step 1 at 1024 px: the name
+  of a row is cut by its badge or by its button, each of which cuts with an
+  ellipsis, and is whole in the first line of the tooltip of the badge, with the
+  role of an object of a provider after a comma; the columns of state are
+  Activity, Condition and Status, each at least at its minimum width of
+  `cluster-tree.module.scss`; a row is one line when it is 33 px high and no
+  cell of it overflows its height.
+- Decided while implementing the third part, after the first run of its CI, in
+  which step 1 found "a cell on more than one line" in the row of the Cluster
+  of `rolling-out`, 1024 px wide: the check, not the stylesheet, was wrong. It
+  took a cell whose scroll height exceeds its client height for a cell of two
+  lines; but a mark of state is a badge of the host with the padding of the
+  host and the border of `marks.module.scss`, about 25 px high, taller than the
+  17 px that the padding of 8 px of a cell of the host leaves in a row of 33 px
+  (freelens:packages/core/src/renderer/components/table/table-cell.scss:11-18;
+  freelens:packages/core/src/renderer/components/badge/badge.module.scss:34-39),
+  so it stands at the middle of its cell, into that padding, on one line, and
+  the scroll height of the cell, which counts the padding after the content,
+  exceeds its client height in every row that holds a mark, the Cluster the
+  first of them. No text of a cell of the tree can wrap: the cells, the element
+  that holds the content of each and the badges of the host keep their text on
+  one line, which a case of `styles.test.ts` checks (P9). So a row is one line
+  when it is 33 px high, when every text of its cells lies on one line, which
+  the pieces of the lines that the browser gives each text say, and when no
+  element of its cells stands above or below it (`lineProblems` of
+  `tree-checks.ts`); a failure names the cell by the test id of its content and
+  its words. For the record, the session logs the scroll height, the client
+  height and the height of the content of each cell of the first row, which
+  shows the marks standing into the padding.
+- Decided while implementing the third part, for step 2: the session reads the
+  answers to the lists of the page in the frame, from its resource timing, in
+  the clock of the frame, with the moment of the first rows that an observer of
+  the DOM records there: the requests that the session records reach it through
+  CDP later than the frame sees their answers, so their times would put an
+  answer after rows drawn once it had arrived. The answers that count are those
+  to the lists and the gets of the groups of the tree, in the namespace of its
+  Cluster and of the definitions, sent before the first rows, the list of the
+  Clusters of that namespace among them. The first rows are the first rows of
+  the tree once it settles, by their nodes and their `aria-expanded`, since the
+  virtual list draws a few rows before it has measured its height. A patch of
+  the branch of the screenshots plants a page that draws its rows as each load
+  ends. In the first run of that branch it failed the step on the rows of the
+  first frame, which were not the first rows of the tree once settled: on
+  `healthy` the KubeadmControlPlane drawn as a leaf and the ClusterClass in the
+  place of Workers; and on its expansion at first, computed on a partial read,
+  Workers collapsed on `rolling-out` and `deleting`. Its comparison with the
+  answers found nothing: every answer had ended before the first rows, since a
+  store takes an answer some time after it arrives, so the planted page drew
+  after the answers too. That part is not seen failing by this patch; the next
+  run of the patch, on its step alone, must show the rest again.
+- A fact of the host seen in a run in CI on Freelens 2.1.0, by the probe of the
+  way back of the session of the screenshots of the second part, on a branch
+  that is no part of this spec: the page of the Clusters had searched its list,
+  the button of the control plane opened the tree with the parameter `search`
+  empty in its address, and one Back, by the history of the frame or by the
+  back arrow of the top bar of the host, gave the same tree without that
+  parameter; the page of the Clusters came back with a second Back. The store
+  of the filters of the lists of the host keeps the search of a list in the
+  parameter `search`, and when a page whose search holds words is left, the
+  parameter turns empty and the store writes it again, which adds an entry to
+  the history
+  (freelens:packages/core/src/renderer/components/item-object-list/page-filters/store.ts:39-60,
+  at `v2.1.0`). Decided while implementing: step 3 checks the way back from a
+  list that holds no search, where one Back of the history of the frame brings
+  the page of the Clusters and the details of the Cluster again. The extra
+  entry is of the host, after a search of any of its lists, and the extension
+  does not work around it.
+- A fact of the host read in its sources at `v2.1.0`, after the first run of the
+  CI of the third part, in which one Back from the tree that the row Tree had
+  opened, from a list that held no search, did not bring the details of the
+  Cluster again: the navigation of an extension writes in the address every
+  parameter that it is given, an empty one included
+  (freelens:packages/core/src/extensions/lens-renderer-extension.ts:108-139),
+  and the observable history of the host keeps the parameters of its address
+  without the empty ones, and pushes the address that it keeps when it differs
+  (freelens:packages/routing/src/observable-history.ts:157-189;
+  freelens:packages/routing/src/search-params.ts:9-13). The row Tree gave
+  `details` empty, so the host added the address of the tree twice, with that
+  parameter and without it, and one Back gave the tree again. A `PageParam.set`
+  pushes too, unless it is given `replaceHistory`
+  (freelens:packages/core/src/renderer/navigation/page-param.ts:69-74).
+  Decided while implementing: the parameters that open the tree at its root are
+  `cluster` alone (`treeParams` of `tree-address.ts`), so that the way in adds
+  one entry and one Back comes back. The page of the tree, its drawer and the
+  details write no parameter as they mount; a click, a key and the closing of
+  the details write `details`, and add an entry each, as the details of the
+  page of the Clusters do (SPEC-0004, P6). A case of `index.test.tsx` and one
+  of `clusters-page-v1beta2.test.tsx` read the entries that the stub of the
+  navigation adds, as the host adds them; step 3 logs the address of the frame
+  and the length of the history of its window before the click, after it and
+  after the Back.
+- Decided while implementing the third part, for step 4: the drawer is over the
+  page and the dock when it spans the whole height of the frame, from 480 px,
+  and the details of the host are over those of a node when the drawer at the
+  middle of those of the node is that of the host; the search, which the drawer
+  covers, takes the focus by code, the frame holding the keyboard from the click
+  before it; that no node of Cluster API opens the details of the host is read
+  after the clicks on the KubeadmControlPlane and on a Machine.
+- Decided while implementing the third part, where P19 gives states that no step
+  reaches and the check of the themes photographs: a step of their own checks
+  the words of the page with no Cluster named, of an address with no Cluster,
+  of a Cluster that its namespace does not hold, of the details of a node that
+  the tree does not hold, and of an address that names no node.
+- Decided while implementing the third part, in place of what step 5 says of the
+  wheel: its two checks of the wheel run in step 9, on the large Cluster. With
+  ten rows drawn on each side of the window, the 28 rows of `healthy` all stay
+  drawn whatever the scroll of its list, so the wheel takes the active row out
+  of the window but never out of the document, and the element still names it;
+  the rows of the large Cluster are the ones that the list unmounts.
+- Decided while implementing the third part, for step 5: each move of a key is
+  read at the first frame after `aria-activedescendant` names its row, which an
+  observer of the DOM records in an animation frame, since the page names the
+  row in the render that draws it and brings it whole into view in the frame
+  after, before the browser paints it (P16). The scroll that a key leaves is
+  that of the moves of the page when it moved only for a row that was not whole
+  in view, and then shows that row whole: the virtual list of the host scrolls
+  to its selected row with the alignment `smart` of its library, which centers a
+  row far from those shown
+  (freelens:packages/core/src/renderer/components/virtual-list/virtual-list.tsx:126-136,
+  at `v2.1.0`), an offset that the session does not compute. Run with the
+  default of the keys not prevented, the step logs the scroll of the list before
+  and after each key, and asserts nothing of it (H16). So run in the first run
+  of the branch of the screenshots, the keys that moved within the rows in view
+  left the list where it was, so the browser scrolled nothing for them from the
+  element of the tree, which holds the list and is not the element that scrolls;
+  End and Page Down took it to 137 px and Home and Page Up back to 0, where the
+  page brings the row of each move whole into view.
+- Decided while implementing the third part, where P18 sees the check of the
+  focus after a click on a name fail against a page that lets the press of the
+  mouse focus the name: the click of a name gives the focus to the element of
+  the tree whatever its press did, so on such a page the focus is still on the
+  element when the wheel unmounts the row, and the check holds. The planted run
+  lets the press focus the name and drops the focus that the click gives the
+  element, and the check fails there, as the first run of the branch of the
+  screenshots showed in step 9; that the press focuses nothing is the guard
+  under the click, which no session tells apart.
+- Decided while implementing the third part, for step 6: the session writes
+  through the scripts, with `openDefinitions`, as AGENTS.md asks of a write that
+  is not a label: the annotation by a merge patch; the Machine by a creation,
+  `freelens-capi-healthy-d2lgq-a0000`, with the labels
+  `cluster.x-k8s.io/cluster-name` and `cluster.x-k8s.io/control-plane`, no
+  owner, its bootstrap by a data secret and its infrastructure reference to a
+  DevMachine that is not there; and the condition `Ready` by a JSON patch of the
+  status subresource that tests the type of the condition that it replaces. Each
+  write is undone at the end of its part, the end of the session undoing what a
+  part could not, and the Machine is checked gone once deleted. To show the
+  worker that the annotation pauses, the step first expands Workers, the
+  MachineDeployment and the MachineSet, as a user does; that the annotation
+  expands nothing is read as every row keeping its `aria-expanded`, and "with no
+  reload" as the element of the tree being the same element. The refresh is
+  followed until the answer to every list and get of the tree that the frame
+  sent after the click has ended in its resource timing, the requests that the
+  session records naming them. A patch of the branch of the screenshots plants a
+  refresh that empties its stores before it loads them, and
+  TEST_PLANT_COMPENSATION a list that drops the scroll that the page sets; the
+  first run of that branch reached neither check, since the step failed before
+  them on the Machine that it creates (the note below), so the next run must
+  show both failing.
+- Decided while implementing the third part, after the first run of its CI, in
+  which step 6 found the Machine that it creates with no row under it: as P13
+  says, a node that a watch adds once the tree is shown comes collapsed, since
+  only the user expands then, and the page follows it, while the step expected
+  the rows of every node. So the step asserts the row of the Machine alone, its
+  place first under the KubeadmControlPlane, its level, `aria-expanded` false
+  and its counts, `1 object: 1 not found`, then that the first row in view kept
+  its place, and only then expands the Machine by its button, as a user does,
+  and finds its DevMachine not found a level under it, since an expansion above
+  the view moves the rows in view, which the page does not compensate (P13).
+  The unit case takes the rows that the page shows from the expansions that it
+  keeps (`rowsStateOf` and `rowsOf` of `tree-rows.ts`), no longer the whole
+  outline. The deletion scrolls the list to the offset that `removalScroll` of
+  `tree-checks.ts` gives, in place of a scroll up from the end of the list by
+  more than the rows that go, which "Tests", "In Freelens", 6 says: on the tree
+  of `healthy`, 30 rows in a list of 787 px, which the first run measured, four
+  rows up from the end brought the rows that go into view, where no page moves
+  anything, so the check could not fail. The offset that it takes puts the rows
+  that go above the first row in view and the list short of its end: at its end
+  the browser, which keeps the scroll within the shorter list, takes it back by
+  their height as the page does, and a page that moves nothing would pass.
+- Decided while implementing the third part, for steps 8 and 9: step 8 is a test
+  of its own, after the write that TEST_PLANT_WRITE plants, and step 9 a group
+  of its own, which applies the large Cluster before its test, within 180 s, and
+  deletes it after it, within 240 s, the frame leaving the tree first. The
+  session deletes a namespace of the large Cluster that a run that was killed
+  left as it starts, and at its end when its group could not. Those limits hold
+  as Vitest applies them to a hook: it fails a hook that ran past its limit once
+  the hook returns, and cannot cut one that hangs, since the hooks run kubectl
+  synchronously; the timeouts of the scripts bound each of their requests
+  instead, two minutes, five for the statuses of a set and six for the deletion
+  of the namespace. In the first run of the branch of the screenshots, the
+  planted write failed step 8 with both of its messages, the PATCH of the frame
+  and the version of the Cluster of `healthy`, and nothing else of that step
+  failed.
+- Decided while implementing the third part, for the tree of accessibility of
+  step 5: the session reads it through a CDP session of the frame of the cluster
+  when Chromium renders the frame in a process of its own, else through that of
+  the page with the id of the frame, and finds the element of each row by its
+  backend node; a row is a row of the treegrid when the nearest node above it
+  that carries a role of its own, those that are ignored and those with the
+  roles generic, none, presentation and rowgroup left out, is the treegrid. It
+  logs whether a node with the role `list` stays in the treegrid, ignored or
+  not, and with how many children, which the run in CI says.
+- Decided while implementing the third part, for the check of the themes: its
+  jobs are those of 2.1.0, `freelens` and `high-contrast`, each dark and light,
+  set in the profile of Freelens dev by the `metadata.name` of the theme and its
+  variant, the preferences `theme` and `themeVariant`, on a branch made for
+  them; the session checks in both frames that `Renderer.Theme.activeTheme`
+  gives the theme and the variant of the profile. It photographs the trees of
+  `rolling-out`, `deleting` and `no-status` with every node expanded, from their
+  top; `deleting` as it opens, with its nodes not found; the details of a
+  Machine of `rolling-out`; the five states of the step of P19; and, from the
+  restricted session, Restricted and Partial.
+- Decided while implementing the third part, for the restricted cases: cases 5
+  to 8 each start in a frame loaded again, since the frame read the namespace of
+  `healthy` before, and case 9 runs after case 3, in its frame, whose host could
+  not list the definitions as it started; the refusals of a case are left out
+  on the page of the tree alone. "The nodes of the DevMachines as text" of case
+  9 is read as their cells of state, Not read, and their reason with the
+  permission, since their names are buttons by the note of the second part on
+  the nodes that cannot be read. Every access grants the kinds of the tree and
+  those of the providers of the fixtures, and the access of the definitions by
+  their names grants, beside the two of SPEC-0004, those of the DevMachines and
+  of the DevMachineTemplates, which the tree of `healthy` reads. After the
+  reviews of the third part, the cases of the page of the Clusters leave out the
+  refusals of the kinds and of the definitions that that page reads alone
+  (`CLUSTERS_PAGE_KINDS` and `CLUSTERS_PAGE_DEFINITIONS` of
+  `restricted-access.ts`), while every access still grants, and asks the
+  cluster about, the kinds of the tree as well: with them, those cases left out
+  refusals that the page of the Clusters never meets, such as a list of the
+  KubeadmConfigs over the whole cluster, which a regression of that page would
+  have hidden.
+- A fact of Freelens dev on Chromium, seen in the first run of the branch of the
+  screenshots of the third part, in its job of the theme `freelens` dark: the
+  restricted session loaded the frame of its cluster again for case 5, the
+  fourth time it did so in that run, and the frame did not start. Chromium had
+  refused 350 requests of its modules with `net::ERR_INSUFFICIENT_RESOURCES`,
+  each a module that the dev server serves, under `/@fs/` or `/@id/`, and every
+  case after it waited for a page that never came. Chromium refuses a request
+  when the renderer that sends it holds as many requests at once as Chromium
+  lets one process hold, and a frame of a cluster in Freelens dev asks the dev
+  server for each module of the renderer, thousands of them, so a load of the
+  frame meets that limit or not by how many of its requests are outstanding at
+  once. It does not follow from the session of the tree, which ran before: the
+  other three jobs of the themes ran the same two sessions in the same order
+  and their restricted session passed, and the job of the pull request loaded
+  that frame eight times with no refusal. Decided while implementing:
+  `openCluster` and `reloadClusterFrame` of `extension-helpers.ts` load such a
+  frame again once, as soon as a refusal arrives, and leave the refusals of the
+  first load out of the errors once the second rendered
+  (`isRefusedModuleLoad` of `expected-refusals.ts`), as they load a frame again
+  after a failed request of the dev file route (AGENTS.md, "Workflows"); a
+  refusal of any other request, or one of a frame that rendered with no second
+  load, counts.
+- Decided while implementing the third part, for the session on the real
+  project: the condition that the health of a node rests on is read from the
+  summary of its details, opened at the address of the node, and the condition
+  of a row of the tool is that of its printer: `Available` on a Cluster, a
+  MachineDeployment and a control plane, `Ready` on any other object, none on a
+  MachineSet or a MachinePool (internal/util/tree/tree.go:640-800). Its
+  counters are compared with the tooltip of the cell Replicas of the node.
+  After the first run of its CI, in which the hover of the cell Replicas of the
+  KubeadmControlPlane of both Clusters timed out, the drawer of the details of
+  the node read before it intercepting the pointer, since it covers the frame
+  from 480 px (H19) and the cell starts near there: the session closes the
+  details on Escape after each summary, pressed on the element of the tree, and
+  brings each row into the window of the list before it hovers its cell, since
+  the list draws only the rows near its window. The cell is found by its test
+  id, `capi-tree-replicas`, which the run found in the row of the control plane.
+- Decided while implementing the third part, for the large Cluster of P22: the
+  copies are of the first worker of `healthy`, each named with its number padded
+  to the width of 300, `freelens-capi-healthy-md-0-m9x7h-m5gtb-001` to `-300`,
+  so that they sort in the order of their numbers, the second worker of the set
+  left out; the MachineSet takes the annotations of the desired and of the most
+  replicas of its MachineDeployment at 300 and 301, and the MachineHealthCheck
+  of the workers its counts and its 300 targets. The scripts export
+  `applyObjects` and `removeObjects` beside `openDefinitions`, which refuse,
+  before any request, a namespace that is not one of the scripts,
+  `freelens-capi-` and a name, or that is the namespace of a state; and, after
+  the reviews of the third part, the namespace of the second identity of the
+  restricted session, whose ServiceAccount `removeObjects` would delete
+  (`ownNamespaceProblem`). An object in another namespace than the one given is
+  refused as not in that namespace, the namespace of a session.
+- Decided while implementing the third part, for the capture of P21: the claim
+  of `no-status` names its Cluster in its file as the dry run of the real
+  project answers it: the webhook of the claims of the release admits any claim
+  that it creates and defaults nothing, since it validates alone
+  (core/webhooks/admission/ipaddressclaim.go:34-53), so the file is written
+  from the claim that the scripts send. The job of the branch of the screenshots
+  captures the set on the real project and compares the capture with its files,
+  and `pnpm e2e:fixtures:check`, which the pull request runs, applies the set to
+  the cluster of the definitions and reads it back. In the first run of that
+  branch, the real project accepted the claim that names its Cluster, and the
+  capture gave the files of the set but for every `creationTimestamp`, one
+  second after `CAPTURE_TIME` where the files hold `CAPTURE_TIME` itself. The
+  scripts do not anchor the times on the earliest second of the objects: every
+  time is written as its offset from the moment of the capture, which a capture
+  of `no-status` reads, in whole seconds, before it sends the dry run, and the
+  API server stamps the objects when it answers that request, so they come out
+  at 0 or at 1 s after `CAPTURE_TIME`, as the second of the clock turns during
+  the request or not. That is the rule of the scripts, which say that a time is
+  its offset from the capture, and no change follows from it: the files keep
+  the capture that wrote them, and a capture of the same objects can differ
+  from them by that second. The job compares the folder of the set by the
+  status of git, so that a file that a capture adds counts too.
+- Decided while implementing the third part: the step of the tests of the
+  integration workflow keeps its limit of 25 minutes, the window of the marks of
+  the fixtures; the session logs the time of the apply and of the deletion of
+  the large Cluster and of its step, which the run of the pull request measures
+  on a runner (P22). Its first run applied the large Cluster in 46.5 s, ran its
+  step in 6.0 s and deleted it in 85.4 s, within their limits of 180 s and
+  240 s, which stay; the step of the tests took 7.8 minutes with every session,
+  three cases failing, one after a wait of 60 s.
+- Decided while implementing the third part, after the second run of its CI,
+  in place of the note of the second part that sets the scroll "in the same
+  commit", and of what P13 says of a layout effect that runs once the rows of a
+  render are in the DOM: in step 6, at the end of the list of `healthy` with
+  every node expanded, the first row in view was the row above it once the
+  Machine of the session showed, at the same top, 5 px above the window, so the
+  scroll had not moved at all, while the deletion of the same step, short of
+  the end of the list, kept its rows in place. The `Table` of the extension API
+  is the table of the host given its dependencies by `withInjectables`
+  (freelens:packages/core/src/renderer/components/table/table.tsx:316-323),
+  which renders it with the props that a layout effect of its own stored
+  (@ogre-tools/injectable-react 27.0.0, the version of the catalog of
+  Freelens), so the table and its virtual list draw the rows of a render of the
+  page in the commit after that render. The page set the scroll in its own
+  commit, on the list of before: short of its end that moved the rows of before,
+  and the next commit drew the new rows in their place; at its end the offset
+  moved by a row that arrives was past the end of the list of before, which
+  Chromium clamped. So `RowsInPlace` sits in the head of the table, which the
+  table renders with its rows, in the commit in which they change: it reads the
+  offset before that commit changes them, and moves the scroll once they are
+  in the DOM and before the paint. The `Table` of the stub of the SDK draws one
+  commit after the page as well; the case of the page test that brings a row
+  above the first row in view at the end of the list, which cuts that row by
+  5 px at its top as the session has it, failed against the page as the second
+  run had it, on that stub, and passed on the stub of before, which drew in the
+  commit of the page and so could not see it. A reproduction outside the
+  repository, React 19.3.1 and react-window 2.5.3 under a virtual list of the
+  shape of the host's, in Chromium, gave the same: the scroll held with a table
+  that draws in the commit of its parent, was clamped at the end of the list
+  with one that draws in the next commit, and held from the head of the table.
+- Decided while implementing the third part, after the second run of its CI, in
+  which each case of the restricted session that loads its frame again waited
+  60 s for the head of the list of the page of the Clusters, which the first
+  run had shown after each of its eight loads: the sessions navigate the frame
+  of a cluster to a page of the extension once its sidebar shows the root entry
+  of the extension, by the id that the host gives it
+  (`entryBeforeOpening` of `extension-pages.ts`, which `navigateCluster` of
+  `extension-helpers.ts` calls). A frame that starts draws its sidebar before it
+  loads the extensions, which it does once the cluster is ready and the catalog
+  holds its entities
+  (freelens:packages/core/src/renderer/frames/cluster-frame/init-cluster-frame/init-cluster-frame.ts:46-54);
+  it enables the pages of an extension, and shows its entries in the sidebar,
+  under one condition, once it has loaded it
+  (freelens:packages/core/src/renderer/routes/extension-route-registrator.injectable.tsx:44-54;
+  freelens:packages/core/src/renderer/components/layout/extension-sidebar-item-registrator.injectable.tsx:65);
+  and its layout takes an address that no enabled route serves to its start
+  page
+  (freelens:packages/core/src/renderer/frames/cluster-frame/cluster-frame-layout-child-component.injectable.tsx:41-42;
+  SPEC-0004, "Notes and deviations"). The session opened the page once the
+  sidebar of the new frame showed, so it raced the load of the extension:
+  `untilFrameRenders`, which the fix of the first run added, looks for the
+  sidebar every 250 ms and returns as soon as it shows, where
+  `frame.waitForSelector`, before it, returned later. From the load of the
+  frame to the navigation the first run took 8.23 to 8.68 s, and the page came
+  each time; the second took 7.44 to 8.24 s, and it never came, while case 4,
+  which loads no frame, showed it in the frame that case 2 had loaded 68 s
+  before, and the session logged no error at its end, so no frame failed to
+  load. A case of `index.test.tsx` checks that the entry is the root entry that
+  the extension registers, under the id that the host makes from the name of
+  the package, before the address of either page, and that no other address
+  waits for one.
 
 From the maintainer's decision of 2026-11-26 (SPEC-0001, "Notes and
 deviations"), the sessions in Freelens run on 2.1.0 alone; what a rule of this

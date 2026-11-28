@@ -4,9 +4,11 @@
  */
 
 // The refusals and the throttling that a session expects, and whether a response that Chromium reports as a failure is
-// one of them (SPEC-0004, P23, P29, "Notes and deviations"), as pure data and functions, which their unit test checks
-// with no app. The error collector of the sessions, in `extension-helpers.ts`, leaves out of the errors what a step
-// expects, and counts every other. Its name does not match `*.tests.ts`, so Vitest does not collect it as a session.
+// one of them (SPEC-0004, P23, P29, "Notes and deviations"), and the requests of the modules of Freelens dev that
+// Chromium refuses for lack of resources (SPEC-0005, "Notes and deviations"), as pure data and functions, which their
+// unit test checks with no app. The error collector of the sessions, in `extension-helpers.ts`, leaves out of the errors
+// what a step expects, and counts every other. Its name does not match `*.tests.ts`, so Vitest does not collect it as a
+// session.
 
 // The prefix under which a frame of a cluster sends the requests of the API of the cluster, on its own origin
 // (freelens:packages/core/src/common/vars.ts:16).
@@ -105,6 +107,26 @@ export function isExpectedThrottling(expected: readonly ExpectedThrottling[], re
     group !== undefined &&
     !VIEW_GROUPS.test(group) &&
     expected.some((throttling) => throttling.frameHost === request.host && group.endsWith(throttling.groupSuffix))
+  );
+}
+
+// Chromium refuses a request with `net::ERR_INSUFFICIENT_RESOURCES`, which it logs as "Failed to load resource", when the
+// renderer that sends it holds as many requests at once as Chromium lets one process hold. A frame of a cluster in
+// Freelens dev loads each module of the renderer as a request of its own, from the dev server, under `/@fs/`, `/@id/`,
+// `/@vite/` and `/node_modules/`, thousands of them, so a load of the frame can meet that limit, and the frame
+// then does not start (SPEC-0005, "Notes and deviations").
+const insufficientResourcesPattern = /^Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES$/;
+const devServerModulePattern = /^\/(?:@fs|@id|@vite|node_modules)\//;
+
+/**
+ * Whether a message of the console is the refusal of a request of a module of the dev server for lack of resources:
+ * its text, and its location a module that the dev server serves, never a request of the API of a cluster.
+ */
+export function isRefusedModuleLoad(text: string, url: string): boolean {
+  return (
+    insufficientResourcesPattern.test(text.trim()) &&
+    URL.canParse(url) &&
+    devServerModulePattern.test(new URL(url).pathname)
   );
 }
 

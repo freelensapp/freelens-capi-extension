@@ -1,9 +1,15 @@
 // The refusals and the throttling that a session expects, with no app (SPEC-0004, P23, P29, "Notes and deviations"):
 // which 403 and which 429 that Chromium reports the error collector leaves out, and which refusals a step waited for
-// and never saw.
+// and never saw; and which refusals of a request for lack of resources are of a module of Freelens dev (SPEC-0005,
+// "Notes and deviations").
 
 import { describe, expect, it } from "vitest";
-import { isExpectedRefusal, isExpectedThrottling, refusalsNotSeen } from "../integration/__tests__/expected-refusals";
+import {
+  isExpectedRefusal,
+  isExpectedThrottling,
+  isRefusedModuleLoad,
+  refusalsNotSeen,
+} from "../integration/__tests__/expected-refusals";
 
 import type { ExpectedRefusal, ExpectedThrottling, FailedResponse } from "../integration/__tests__/expected-refusals";
 
@@ -148,5 +154,34 @@ describe("the throttling that a session expects", () => {
         throttled({ url: `https://${FRAME}/apis/config.projectsveltos.io/v1beta1/clusterconfigurations` }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("the requests of the modules of Freelens dev that Chromium refuses for lack of resources", () => {
+  const refusal = "Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES";
+  const module = (path: string) => `https://${FRAME}${path}`;
+
+  it("are the refusals of a module that the dev server serves, as a load of the frame of a cluster met them in CI", () => {
+    expect(
+      isRefusedModuleLoad(
+        refusal,
+        module("/@fs/home/runner/work/x/freelens/packages/core/src/renderer/themes/active.injectable.ts"),
+      ),
+    ).toBe(true);
+    expect(isRefusedModuleLoad(refusal, module("/@id/__x00__freelens-runtime-external:node:assert"))).toBe(true);
+    expect(isRefusedModuleLoad(refusal, module("/@vite/client"))).toBe(true);
+    expect(isRefusedModuleLoad(refusal, module("/node_modules/.vite/deps/react.js?v=0a1b2c3d"))).toBe(true);
+  });
+
+  it("count a refusal of another request, another failure of a module, and a message with no address", () => {
+    expect(isRefusedModuleLoad(refusal, module("/api-kube/apis/cluster.x-k8s.io/v1beta2/clusters"))).toBe(false);
+    expect(isRefusedModuleLoad(refusal, module("/extension/freelensapp--capi-extension/renderer.js"))).toBe(false);
+    expect(
+      isRefusedModuleLoad(
+        "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        module("/@fs/home/runner/work/x/freelens/packages/core/src/renderer/themes/active.injectable.ts"),
+      ),
+    ).toBe(false);
+    expect(isRefusedModuleLoad(refusal, "")).toBe(false);
   });
 });

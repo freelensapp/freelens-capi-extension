@@ -14,7 +14,8 @@
 //   object is one row of the tree, so a value names one row; the value is only ever looked up among the nodes of the
 //   tree, and never sent. A virtual node and an entry of a binding have no details and no address.
 //
-// Any view opens the tree of a Cluster at an object by navigating to the page `cluster-tree` with both (P1, P2, P3, P5).
+// Any view opens the tree of a Cluster at an object by navigating to the page `cluster-tree` with both, and at its root
+// with `cluster` alone (P1, P2, P3, P5).
 
 import { detailsAddressOf, parseDetailsAddress } from "./details-address";
 
@@ -70,7 +71,12 @@ export function addressOf(group: string, kind: string, name: string, namespace?:
   return namespace === undefined ? `${group}/${kind}/${name}` : `${group}/${kind}/${namespace}/${name}`;
 }
 
-// The parameters of the page that open the tree of a Cluster, at a node with its details when one is named (P2).
-export function treeParams(namespace: string, name: string, node = ""): { cluster: string; details: string } {
-  return { cluster: detailsAddressOf(namespace, name), details: node };
+// The parameters of the page that open the tree of a Cluster, at a node with its details when one is named (P2), and
+// with no parameter `details` when none is: the navigation of the extension writes every parameter that it is given in
+// the address, an empty one included, and the history of the host keeps its parameters without the empty ones, so it
+// adds the address once more without it, and one Back would stay on the tree (SPEC-0005, "Notes and deviations").
+export function treeParams(namespace: string, name: string, node = ""): { cluster: string; details?: string } {
+  const cluster = detailsAddressOf(namespace, name);
+
+  return node === "" ? { cluster } : { cluster, details: node };
 }

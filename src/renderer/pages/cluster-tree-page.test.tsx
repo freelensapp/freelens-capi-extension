@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { observable, runInAction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { ROW_ID_PREFIX, readDrawnRows } from "../../../integration/__tests__/tree-outline";
 import { CAPTURE, fixtureSet } from "../../../test/fixture-sets";
 import { Common, host, Renderer } from "../../../test/freelens-extensions";
 import {
@@ -15,6 +16,7 @@ import {
   serve,
   TREE_APIS,
 } from "../../../test/host-stores";
+import { readRows } from "../../../test/tree-read-rows";
 import { objectsOfStates } from "../../../test/view-sources";
 import { TreeBuilds } from "../../common/views/cluster-tree";
 import { nodeDetailsOf } from "../../common/views/node-details";
@@ -29,6 +31,7 @@ import { ClusterTreePage } from "./cluster-tree-page";
 
 import type { Renderer as Extensions } from "@freelensapp/extensions";
 
+import type { ReadRow } from "../../../integration/__tests__/tree-outline";
 import type { HostObject } from "../../../test/host-stores";
 import type { Cluster } from "../api/cluster/cluster-v1beta2";
 
@@ -699,6 +702,53 @@ describe("the table of the tree (P9, P13, P16)", () => {
     expect(rowOf(DEV_CLUSTER).className.split(" ")).toContain("selected");
   });
 
+  // What the sessions in Freelens read of a row in the DOM (`readDrawnRows` of `tree-outline.ts`), against the rows that
+  // the unit tests of the sessions make from the cells of the page (`test/tree-read-rows.ts`): the ids and the attributes
+  // of the rows, the cells found by their test ids, the name and the role apart, the marks by their attributes, the
+  // condition as its whole text, the counts and the status. jsdom lays nothing out, so the places of the rows are left
+  // out, and the stub of the host writes the instant of an entry applied as it is given.
+  it("gives the sessions the rows that their unit tests make from the cells of the page (SPEC-0005, Tests, In Freelens)", async () => {
+    await opened();
+
+    const fields = (row: ReadRow) => ({
+      id: row.id,
+      level: row.level,
+      expanded: row.expanded,
+      selected: row.selected,
+      name: row.name,
+      role: row.role,
+      activities: row.activities,
+      activityWords: row.activityWords,
+      health: row.health,
+      stale: row.stale,
+      condition: row.condition,
+      counts: row.counts,
+      status: row.status.replace(/ at .+$/, " at <instant>"),
+      pending: row.pending,
+    });
+    const read = () => readDrawnRows(tree(), { prefix: ROW_ID_PREFIX, height: ROW_HEIGHT });
+
+    expect(read().map(fields)).toEqual(readRows("healthy", { expansion: "first" }).rows.map(fields));
+
+    // Add-ons and its ClusterResourceSet expanded: the ClusterResourceSet, the entry of its resource, applied at an
+    // instant, and the binding, each as the rows of every node expanded have them, but whether it is expanded.
+    const crs = "addons.cluster.x-k8s.io/ClusterResourceSet/cni-kindnet";
+
+    fireEvent.click(within(rowOf("virtual:add-ons")).getByTestId("capi-tree-expander"));
+    fireEvent.click(within(rowOf(crs)).getByTestId("capi-tree-expander"));
+
+    const every = new Map(readRows("healthy").rows.map((row) => [row.id, { ...fields(row), expanded: null }]));
+    const added = read().filter((row) => row.level >= 3);
+
+    expect(added.map((row) => row.id)).toEqual([
+      crs,
+      expect.stringMatching(/^entry:/),
+      "addons.cluster.x-k8s.io/ClusterResourceSetBinding/freelens-capi-healthy",
+    ]);
+    expect(added.map((row) => ({ ...fields(row), expanded: null }))).toEqual(added.map((row) => every.get(row.id)));
+    expect(added[1].status).toMatch(/^Applied at /);
+  });
+
   it("says in the tooltip of the replicas of Workers that a MachinePool of the Cluster has no Machines, as the list does", async () => {
     const name = "freelens-capi-pool-without-machines";
 
@@ -952,6 +1002,43 @@ describe("the table of the tree (P9, P13, P16)", () => {
 
     expect(after).not.toContain(OTHER_MACHINE);
     expect(after[Math.floor(list.scrollTop / ROW_HEIGHT)]).toBe(first);
+  });
+
+  it("keeps the first row in view in place, cut at its top, when a row arrives above it at the end of the list, which the table of the host draws in the commit after the page", async () => {
+    const { built } = await opened(MACHINE);
+
+    nextFrame();
+
+    // A list a little shorter than three rows, scrolled to its end, the first row in view cut by 5 px at its top, as
+    // the session of the tree has it when it creates its Machine (step 6).
+    const list = layOutClamped(3 * ROW_HEIGHT - 5);
+
+    list.scrollTop = 1_000_000;
+
+    const before = rowIds();
+    const offset = list.scrollTop;
+    const first = before[Math.floor(offset / ROW_HEIGHT)];
+    const machines = ownStore("Machine", built);
+    const added = changed("Machine", `${HEALTHY}-md-0-m9x7h-m5gtb-2xxxg`, (object) => {
+      object.metadata.name = `${HEALTHY}-md-0-m9x7h-m5gtb-0aaaa`;
+    });
+
+    expect(offset % ROW_HEIGHT).toBe(5);
+
+    // A Machine that sorts before the others arrives under the MachineSet, above the first row in view, as a watch
+    // brings it: the list grows by its row, and the page scrolls by it, in the commit in which the table draws it.
+    act(() => {
+      runInAction(() => machines.items.push(added));
+    });
+
+    const after = rowIds();
+
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.indexOf(`cluster.x-k8s.io/Machine/${HEALTHY}-md-0-m9x7h-m5gtb-0aaaa`)).toBeLessThan(
+      after.indexOf(first),
+    );
+    expect(after[Math.floor(list.scrollTop / ROW_HEIGHT)]).toBe(first);
+    expect(list.scrollTop).toBe(offset + ROW_HEIGHT);
   });
 
   it("gives no selectedItemId and sets no scroll after a search that keeps the row of the active node out of view", async () => {

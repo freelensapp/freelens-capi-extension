@@ -18,6 +18,11 @@ else:
 - for a view of one Cluster whose namespace the page does not read, the same
   kinds in that namespace alone, through stores of the extension's own class,
   one for each kind, which the host never holds (SPEC-0004, P31);
+- for the tree of a Cluster, always through stores of its own, those kinds and
+  the bootstrap configs and their templates, the ClusterResourceSets and their
+  bindings, and the IPAddressClaims and the IPAddresses, in the namespace of the
+  Cluster, and its ClusterClass in the namespace that its class reference names
+  (SPEC-0005, P6);
 - the objects of the providers that those kinds reference, at the version
   that the contract label of their definition gives;
 - the definitions of those kinds, from the store of definitions of the host,
@@ -47,7 +52,10 @@ kubeconfig actions, which hand it only to the user who asked.
   (SPEC-0001, H1 to H3). An unknown value is Unknown, never Healthy.
 - **The host.** The pages of the extension take out the row selection and
   the row menu of the host and open their own details; the kinds that have a
-  page are listed in `customResources`.
+  page are listed in `customResources`. The page of the tree of a Cluster has no
+  list layout of the host: it draws the `Table` of the host with virtual rows,
+  inside an element of its own with the role `treegrid`, which takes the keys
+  and the focus and owns the rows that the list draws (SPEC-0005, P9, P18).
 - **The stores of the host.** A page reads its stores as the host reads those
   of its own lists: the list layout of the host subscribes the store of the
   page and, as its dependent stores, those of the kinds that its model reads,
@@ -69,7 +77,12 @@ kubeconfig actions, which hand it only to the user who asked.
   one of the class of the model of each kind, and one of a generic class for
   each kind of a provider that the Cluster names, each built with the API that
   the host registered for its kind, never registered, loaded once on that
-  namespace and then watched, until the view closes (SPEC-0004, P31).
+  namespace and then watched, until the view closes (SPEC-0004, P31). The page
+  of the tree of a Cluster reads through such stores always, with the kinds of
+  the tree, the kinds of the providers that the references of what it read name
+  and its ClusterClass, as one read whose kinds are a parameter; it shows the
+  tree once the first load of each has ended, and its refresh loads every store
+  again, keeping what they hold until each answers (SPEC-0005, P6, P13, P23).
 - **The kinds of the operator.** They are read as every other kind, in the
   namespaces of the filter. Where the filter leaves out the namespace of a
   provider, the status model notes that the availability of its controller is
@@ -89,7 +102,9 @@ kubeconfig actions, which hand it only to the user who asked.
   of its objects and by the selectors that match it. Through stores of its
   own, it reads that namespace alone: a ClusterClass in another namespace and
   the kinds of the operator are not read for it, and the status model notes
-  them (SPEC-0004, P31).
+  them (SPEC-0004, P31). The tree of a Cluster reads its ClusterClass in the
+  namespace that the class reference names, which may be another (SPEC-0005,
+  P6).
 - **Freelens.** `engines.freelens` is `^2.1.0`, and the jobs of CI run
   Freelens 2.1.0 alone: the extension follows the latest release of Freelens
   (SPEC-0001, A8, amended in its "Notes and deviations").

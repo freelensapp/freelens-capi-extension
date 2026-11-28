@@ -32,11 +32,15 @@ import {
   workloadContainerIds,
 } from "../e2e/scripts/checks.mts";
 import {
+  applyObjects,
   COMMAND_NAMES,
   DOWN_WORKLOADS,
+  IDENTITY_NAMESPACE,
   onceItSucceeds,
+  ownNamespaceProblem,
   parseCommand,
   providersAgainstPins,
+  removeObjects,
   takeDown,
 } from "../e2e/scripts/commands.mts";
 import { everyPinnedFile, pinnedContent, sveltosChart, sveltosExtensionPackage } from "../e2e/scripts/downloads.mts";
@@ -46,6 +50,7 @@ import {
   cleanObject,
   creationLevels,
   FIXTURE_FINALIZER,
+  FIXTURE_RESOURCES,
   FIXTURES_FOLDER,
   fixtureFiles,
   HOST_BOOT_ID,
@@ -68,6 +73,7 @@ import {
   kindnetLabelArgument,
   kindnetManifest,
   kindnetResources,
+  objectsWithoutStatus,
   S7,
   s7Clusters,
   s7ClusterWithNoReference,
@@ -92,7 +98,13 @@ import {
 } from "../e2e/scripts/states.mts";
 import { parseDocuments, plainAllowed, stringifyDocuments } from "../e2e/scripts/yaml.mts";
 
-import type { DownOperations, InventoryProvider, Tier, Workload } from "../e2e/scripts/commands.mts";
+import type {
+  DefinitionsSession,
+  DownOperations,
+  InventoryProvider,
+  Tier,
+  Workload,
+} from "../e2e/scripts/commands.mts";
 import type { Fetch, PinnedFile } from "../e2e/scripts/downloads.mts";
 import type { KubeObject } from "../e2e/scripts/fixtures.mts";
 
@@ -2243,6 +2255,23 @@ describe("the states of the fixtures", () => {
     expect(selects({ matchExpressions: [{ key: "tier", operator: "Gt", values: ["1"] }] }, labels)).toBe(false);
   });
 
+  it("writes the objects of no-status as a user writes them, its claim naming its Cluster in spec.clusterName (SPEC-0005, P21)", () => {
+    const objects = objectsWithoutStatus("workload", "workload-namespace", {
+      kubernetes: "v1.37.0",
+      clusterApi: "v1.14.4",
+    }) as KubeObject[];
+
+    expect(objects.filter((object) => object.kind === "Cluster").map((cluster) => cluster.metadata.name)).toEqual([
+      "workload",
+    ]);
+    expect(objects.filter((object) => object.kind === "IPAddressClaim").map((claim) => claim.spec)).toEqual([
+      {
+        clusterName: "workload",
+        poolRef: { apiGroup: "ipam.test-environment.freelens.app", kind: "AddressPool", name: "workload" },
+      },
+    ]);
+  });
+
   it.each(["healthy", "paused"])(
     "finds in the set of %s every Machine that a MachineHealthCheck targets healthy",
     (name) => {
@@ -2253,6 +2282,96 @@ describe("the states of the fixtures", () => {
       if (name === "healthy") expect(notHealthy(objects)).toBeUndefined();
     },
   );
+});
+
+describe("the objects that a session applies to a namespace of its own", () => {
+  it("go to a namespace of the scripts that is no namespace of a state of the fixtures, whose objects they would replace, nor that of the restricted identity", () => {
+    expect(ownNamespaceProblem("freelens-capi-tree-large")).toBeUndefined();
+    for (const state of FIXTURE_STATES) {
+      expect(ownNamespaceProblem(state.namespace)).toBe(
+        `${state.namespace} is the namespace of the fixtures of ${state.name}`,
+      );
+    }
+    expect(ownNamespaceProblem(IDENTITY_NAMESPACE)).toBe(
+      "freelens-capi-restricted is the namespace of the second identity of the restricted session",
+    );
+    for (const namespace of ["default", "kube-system", "freelens-capi-", "freelens-capi-Large", "freelens-capi-x-"]) {
+      expect(ownNamespaceProblem(namespace), namespace).toBe(
+        `${namespace} is not a namespace of the scripts, freelens-capi- and a name`,
+      );
+    }
+    expect(ownNamespaceProblem(`freelens-capi-${"x".repeat(49)}`)).toBeUndefined();
+    expect(ownNamespaceProblem(`freelens-capi-${"x".repeat(50)}`)).toMatch(/is not a namespace of the scripts/);
+  });
+
+  it("are refused, before any request, in the namespace of a state, outside the namespaces of the scripts, or in another namespace than theirs", () => {
+    const requests: string[][] = [];
+    // A session whose kubectl records what it is asked, and answers nothing.
+    const session = {
+      kubectl: (args: string[]) => {
+        requests.push(args);
+        return "";
+      },
+    } as unknown as DefinitionsSession;
+    const elsewhere = {
+      apiVersion: "v1",
+      kind: "ConfigMap",
+      metadata: { name: "x", namespace: "freelens-capi-other" },
+    };
+
+    expect(() => applyObjects(session, "freelens-capi-healthy", [])).toThrow(
+      "freelens-capi-healthy is the namespace of the fixtures of healthy: the objects of a session go to a namespace of their own",
+    );
+    expect(() => removeObjects(session, "default")).toThrow(/^default is not a namespace of the scripts/);
+    expect(() => removeObjects(session, IDENTITY_NAMESPACE)).toThrow(
+      "freelens-capi-restricted is the namespace of the second identity of the restricted session: the objects of a session go to a namespace of their own",
+    );
+    expect(() => applyObjects(session, "freelens-capi-tree-large", [elsewhere])).toThrow(
+      "/ConfigMap/freelens-capi-other/x is not in freelens-capi-tree-large, the namespace of a session",
+    );
+    expect(requests).toEqual([]);
+  });
+
+  it("are applied once what the namespace held is removed, the finalizers of its objects first, then the namespace, which the apply creates again", () => {
+    const namespace = "freelens-capi-tree-large";
+    const resources = FIXTURE_RESOURCES.join(",");
+    const held = {
+      apiVersion: "cluster.x-k8s.io/v1beta2",
+      kind: "Machine",
+      metadata: { name: "m", namespace, finalizers: ["machine.cluster.x-k8s.io"] },
+    };
+    const requests: string[][] = [];
+    // A session whose kubectl records what it is asked, and answers as a namespace that holds one object with a
+    // finalizer until the apply creates it again, empty.
+    const session = {
+      kubectl: (args: string[]) => {
+        requests.push(args);
+        if (args[0] === "get" && args[1] === "namespace") return `namespace/${namespace}\n`;
+        if (args[0] === "get" && args[1] === resources) {
+          const created = requests.some((request) => request[0] === "create" && request[1] === "namespace");
+
+          return JSON.stringify({ items: created ? [] : [held] });
+        }
+        return "";
+      },
+    } as unknown as DefinitionsSession;
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      applyObjects(session, namespace, []);
+    } finally {
+      log.mockRestore();
+    }
+    expect(requests.map((args) => args.slice(0, 3).join(" "))).toEqual([
+      `get namespace ${namespace}`,
+      `get ${resources} --namespace`,
+      "patch machine.v1beta2.cluster.x-k8s.io m",
+      `delete namespace ${namespace}`,
+      `create namespace ${namespace}`,
+      `get ${resources} --namespace`,
+    ]);
+  });
 });
 
 describe("the fixture sets of the repository", () => {

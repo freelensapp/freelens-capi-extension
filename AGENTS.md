@@ -284,6 +284,10 @@ test/environment.test.ts         # Unit tests of the scripts of the test environ
 test/restricted-access.test.ts   # Unit tests of the second identity of the restricted session (SPEC-0004, P23)
 test/expected-refusals.test.ts   # Unit tests of the refusals that a session expects and leaves out of its errors
 test/real-project-checks.test.ts # Unit tests of what the sessions of the real tier compare
+test/large-cluster.test.ts       # Unit tests of the large Cluster of the session of the tree (SPEC-0005, P22)
+test/tree-read-rows.ts           # The rows of the page of the tree as the sessions read them, made from its cells
+test/tree-*.test.ts              # Unit tests of what the sessions of the tree read and decide, and of their
+                                 #   expectations, against the model and the tree of the fixtures
 test/real-project/               # Tests of the real tier, `*.tests.ts`: S7 on the real project, and its expectations
 environment-tests/               # Probes for the per-environment programs
 build/                           # Vite plugins: host modules, standard decorators, CSS module declarations
@@ -1297,9 +1301,55 @@ logged by either process:
   refuses `expect.poll` outside a test. Its end, also when a case failed,
   disconnects that cluster, deletes the file, every object that it made and
   the namespace, and checks that they are gone. The token is never logged.
+  The cases of the tree of a Cluster (SPEC-0005, "With a restricted identity")
+  open the page of the tree of the Cluster of `healthy`, each in a frame loaded
+  again: the Clusters refused in its namespace, Restricted in the place of the
+  tree; the KubeadmConfigs, the Machines and the ClusterResourceSetBindings
+  refused there, Partial, with the notice of each kind and the tree that
+  `tree-expectations.ts` writes for it, every node expanded; and, after S2, in
+  its frame, the definition of the DevMachines refused, their nodes not read
+  and the node of their kind, then given, their rows. The refusals of these
+  cases are left out on the page of the tree alone.
+- `cluster-tree.tests.ts` is the session of the tree of a Cluster (SPEC-0005,
+  "Tests", "In Freelens, on the definitions and the fixtures"), at 1280 by 900
+  CSS pixels: the tree of the Cluster of every state, opened by its address,
+  every node expanded, against the expected trees of `tree-expectations.ts` and
+  the marks of SPEC-0003, and, 1024 px wide, the rows of `rolling-out` on one
+  line, read from the lines that the browser gives each text of their cells and
+  not from the scroll height of a cell, which a mark of state exceeds on one
+  line, with their names whole or cut with an ellipsis and whole in their
+  tooltip; the expansion at first and the counts of `healthy`, `rolling-out` and
+  `deleting`, with the first rows drawn, which an observer of the DOM records in
+  the frame, once the answers to the lists of the page have arrived, read from
+  the resource timing of the frame; the ways in from the details of a Cluster
+  and from the panel in the details of the host, and one Back, with the address
+  of the frame before the click, after it and after the Back logged; the details
+  of a node over the page, Escape and their icon with the focus on the tree, and
+  the details of the host of a DevMachine over them; the states that are not the
+  happy one; Tab and the keys of P18 on `healthy`, each move whole in view at
+  the first frame that names its row, the roles in the DOM and in the tree of
+  accessibility of Chromium, read through CDP (`Accessibility.getFullAXTree`,
+  never the snapshot of Playwright); the tree live, an annotation, a Machine
+  created above the rows in view, collapsed as a node that a watch adds, then
+  expanded, and deleted with its rows above the view and the list short of its
+  end, the rows in view keeping their place, a status that changes the counts,
+  and a refresh that keeps every row drawn; the search; the check of "Safety";
+  and a large Cluster of 300 Machines that it makes and deletes
+  (docs/development/TESTING.md, "The large Cluster of the session of the tree"),
+  where the element of the tree keeps the focus while the wheel unmounts rows.
+  It writes through the scripts alone, with `openDefinitions`, records the
+  version that the answer to each write gives, and undoes each write at the end
+  of its part, also when a check failed. Its planted runs are TEST_PLANT_WRITE,
+  a write of the frame, which fails the check of "Safety";
+  TEST_PLANT_COMPENSATION, an own `scrollTop` of the list that drops what the
+  page sets; TEST_PLANT_FOCUS, a press of the mouse that focuses a name and a
+  click that gives the element no focus; and TEST_PLANT_KEYS, keys whose default
+  is not prevented, which it records. Two more plant the page itself on the
+  branch of the screenshots.
 
-The sessions of the real tier, `clusters-real.tests.ts` and
-`clusters-sveltos.tests.ts`, open the cluster of the real project instead, and
+The sessions of the real tier, `clusters-real.tests.ts`,
+`clusters-sveltos.tests.ts` and `cluster-tree-real.tests.ts`, open the cluster
+of the real project instead, and
 run in the job of the real project of `test-environment.yaml`, on each release
 of the matrix, with `pnpm test:integration:real-project`; `pnpm
 test:integration` leaves them out. Each reaches the real project through the
@@ -1336,6 +1386,17 @@ kubeconfig of the scripts for that cluster alone:
   to a group that this view reads (`expectThrottling` of the session of the
   app). Its end removes the label, uninstalls the Sveltos extension and deletes
   the definitions by their names, also when a step failed.
+- `cluster-tree-real.tests.ts` compares the tree of `freelens-capi-md` and of
+  `freelens-capi-mp`, every node expanded, with what `clusterctl describe
+  cluster` prints with every object on a row of its own (`TREE_FLAGS` of
+  `real-project-checks.ts`): every row of an object a node under the node of its
+  row, at its depth, every other node of a kind that the tool leaves out, the
+  condition that the health of each node rests on, from the summary of its
+  details, which it closes on Escape after each, since their drawer covers the
+  cells of the rows, and the counters of the control plane and of the
+  MachineDeployment, from the tooltip of their cell Replicas, each row brought
+  into the window of the list first; each side read again until they agree,
+  five minutes at most. It writes nothing.
 
 The tests are deterministic, so nothing retries them: the config sets no
 `retry`, and the workflow runs the step once, under `timeout 1500`, and the job
@@ -1346,16 +1407,22 @@ loses the report of the sessions after it, which a run of one file gives
 again. A retry
 repeats the same failure, and every view of a session waits its full timeout
 before it fails. The one exception is the cluster frame, which `openKindCluster`
-loads a second time when it did not render and the dev file route of Freelens
-failed a request meanwhile (see below); that failure is of Freelens dev, not of
-a test.
+and `reloadClusterFrame` load a second time when it did not render and the dev
+file route of Freelens failed a request meanwhile, or Chromium refused requests
+of its modules for lack of resources (see below); that failure is of Freelens
+dev, not of a test.
 
 The sessions reach the app through its renderer only; the main process, and
 with it the application menu, is out of reach of CDP. They navigate the root
 frame with `Renderer.Navigation.navigate` of the extension API, find the kind
 cluster with `Renderer.Catalog.catalogEntities` by its name, `kind-<name>`,
 and connect it by navigating to `/cluster/<id>` and disconnect it with the
-entity's `disconnect()`. `browser.close()` of a browser connected over CDP
+entity's `disconnect()`. They open a page of the extension in the frame of a
+cluster once the sidebar of the frame shows the root entry of the extension: a
+frame that starts draws its sidebar before it loads the extensions, and the
+host takes the address of a page that it has not enabled yet to its start page
+(`entryBeforeOpening` of `extension-pages.ts`; SPEC-0005, "Notes and
+deviations"). `browser.close()` of a browser connected over CDP
 closes only the connection, so a session ends with it and the app keeps
 running. The renderer's console carries the errors of the root frame and of
 every cluster frame; the main log is read from the file that
@@ -1396,6 +1463,17 @@ module belongs to the cluster frame, such as one of Freelens's own
 stylesheets, the frame does not render its sidebar, and `openKindCluster`,
 after its timeout, loads the frame again once, only if the main log has a
 failed request since the cluster was opened.
+
+Chromium refuses a request with `net::ERR_INSUFFICIENT_RESOURCES` when the
+renderer that sends it holds as many requests at once as Chromium lets one
+process hold, and a load of the cluster frame, which asks the dev server for
+each module of the renderer, thousands of them, can meet that limit: Chromium
+logs `Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES` for each module
+that it refused, under `/@fs/`, `/@id/`, `/@vite/` or `/node_modules/`, and
+the frame does not start. `openKindCluster` and `reloadClusterFrame` then load
+the frame again once, at once, and leave those refusals out of the errors once
+it rendered (`isRefusedModuleLoad` of `expected-refusals.ts`); a refusal of any
+other request, and one of a frame that rendered without a second load, counts.
 
 The list of the host for a custom resource keys its columns by the names of
 the printer columns of the CRD, and at `v1beta2` the CRDs of MachineDeployment
@@ -1461,8 +1539,16 @@ nothing about the extension, and the session no longer collects them.
 The code the sessions share is in `integration/__tests__/extension-helpers.ts`:
 connecting to the app with the error collector, installing the extension,
 connecting and disconnecting the kind cluster, opening the lists of the host,
-kubectl, and the selectors. Its
-name does not match `*.tests.ts`, so Vitest does not collect it.
+kubectl, and the selectors; the name of the extension, the address of its
+pages and the entry of the sidebar that a navigation to one of them waits for
+are in `extension-pages.ts`, as pure functions. The sessions of the tree share
+`tree-page.ts`, which opens the page and reads and records what it draws,
+`tree-outline.ts`, which reads the rows from the DOM, with a function that the
+page test runs in jsdom too, and gives their outline, `tree-checks.ts`, what
+they decide as pure functions, and `tree-expectations.ts`, what they expect,
+written by hand; the session of the tree makes its large Cluster with
+`large-cluster.ts`. No name of these matches `*.tests.ts`, so Vitest does not
+collect them.
 `integration/tsconfig.json` compiles the directory with Node and the DOM,
 because the callbacks of `page.evaluate` run in the page, and with the types
 of `@freelensapp/extensions`, which declare `globalThis.FreelensExtensionApi`
@@ -1483,7 +1569,12 @@ checkout to install is found from the location of the helpers, and the
 fixtures from that of the session. Outside CI a session skips with a warning
 when Freelens dev does not answer or the cluster is not reachable; in CI (`CI`
 set) the run fails instead, so that a mistake in the workflow does not turn
-into a silent skip.
+into a silent skip. Beside them, `TEST_SCREENSHOTS_DIR` names a folder where
+the session of the tree and the restricted session take the screenshots of the
+check of the themes, `TEST_THEME` and `TEST_THEME_VARIANT` the theme and the
+variant that the profile of the run names, which the session of the tree
+checks, and the variables of its planted runs plant them; a variable counts
+only when it holds a value.
 
 Run locally, the tests act on the profile of Freelens dev, `FreelensDev`,
 which is apart from that of an installed Freelens: they navigate its window,
@@ -1494,14 +1585,16 @@ the catalog. The profile lists the kind cluster only once its kubeconfig is in
 "Kubeconfig Syncs" (see "Checking the Extension in Freelens Dev"); without
 it the cluster sessions fail on the timeout of finding the cluster. The
 session of the fixtures needs the cluster of the definitions with the fixtures
-of its state, and the session of the Clusters those of every state,
-`pnpm e2e:cluster:up:definitions` and `pnpm e2e:fixtures:up all`, and the
+of its state, and the sessions of the Clusters and of the tree those of every
+state, `pnpm e2e:cluster:up:definitions` and `pnpm e2e:fixtures:up all`, and the
 kubeconfig of the scripts in "Kubeconfig Syncs" and in `KUBECONFIG`; each skips
 with a warning when the namespace of the fixtures is not there. The times of
 the fixtures move to the moment of their apply, and the marks of step 1 of the
-session of the Clusters hold for 25 minutes after it: the session fails at its
-start, saying so, when the Clusters of the fixtures were created longer ago, and
-a local run applies them again first, `pnpm e2e:fixtures:up all`. The
+sessions of the Clusters and of the tree hold for 25 minutes after it: each fails
+at its start, saying so, when the Clusters of the fixtures were created longer
+ago, and a local run applies them again first, `pnpm e2e:fixtures:up all`. The
+session of the tree writes to `healthy` and undoes it, and makes and deletes the
+large Cluster in `freelens-capi-tree-large`, through the scripts. The
 restricted session needs a folder outside every repository, readable by you
 alone, added once in "Kubeconfig Syncs" and named in
 `TEST_RESTRICTED_KUBECONFIG_FOLDER`, and skips with a warning without it; the

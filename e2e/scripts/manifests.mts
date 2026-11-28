@@ -318,7 +318,8 @@ export function machineSetWithoutNode(cluster: string, namespace: string, versio
 // DevMachineTemplate and of KubeadmConfig, and none of the Docker kinds of the development provider, which no
 // template of the release uses, as a user writes it: no controller has reconciled one of them, so none has a
 // status yet. They make one Cluster without a topology, whose parts name each other, and its ClusterClass, with
-// a fictitious pool of addresses.
+// a fictitious pool of addresses, and a claim of an address of that Cluster, which names it in `spec.clusterName`, as
+// a user writes a claim of a Cluster (SPEC-0005, P21).
 export function objectsWithoutStatus(
   name: string,
   namespace: string,
@@ -446,7 +447,7 @@ export function objectsWithoutStatus(
       },
     }),
     object(ADDONS, "ClusterResourceSetBinding", name, namespace, { spec: { clusterName: name } }),
-    object(IPAM, "IPAddressClaim", name, namespace, { spec: { poolRef: addresses } }),
+    object(IPAM, "IPAddressClaim", name, namespace, { spec: { clusterName: name, poolRef: addresses } }),
     object(IPAM, "IPAddress", name, namespace, {
       spec: { address: "10.0.0.10", prefix: 24, gateway: "10.0.0.1", claimRef: { name }, poolRef: addresses },
     }),

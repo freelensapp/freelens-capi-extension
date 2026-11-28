@@ -83,6 +83,7 @@ import {
 } from "./states.mts";
 import { parseDocuments } from "./yaml.mts";
 
+import type { KubeObject } from "./fixtures.mts";
 import type { RepositoryProvider } from "./manifests.mts";
 import type { ClusterApiAsset, Pins, WorkflowPins } from "./pins.mts";
 import type { Captured, FixtureState, ReadmeVersions, RealProject } from "./states.mts";
@@ -1160,9 +1161,10 @@ export interface RealProjectSession extends TierSession {
   // The version of Kubernetes of the workload clusters, from the pins.
   kubernetesVersion: string;
   // What `clusterctl describe cluster` prints of a workload cluster of the namespace of the workload clusters of `up`,
-  // with the pinned clusterctl, which checks for no newer clusterctl (SPEC-0001, R4.9): the tool of the project, which
-  // the sessions of the real tier compare the view with (SPEC-0004, "With the real project").
-  describeCluster(name: string): Promise<string>;
+  // with the pinned clusterctl, which checks for no newer clusterctl (SPEC-0001, R4.9), and the flags given: the tool
+  // of the project, which the sessions of the real tier compare the view with (SPEC-0004, "With the real project";
+  // SPEC-0005, "With the real project").
+  describeCluster(name: string, flags?: readonly string[]): Promise<string>;
   // The pinned files of S6 (SPEC-0004, P29), each checked against its pin: the package of the Sveltos extension, with
   // its file name and its SHA-256, and the definitions of the chart of Sveltos, each as its text.
   sveltos(): Promise<{
@@ -1281,8 +1283,8 @@ export async function openRealProject(): Promise<RealProjectSession> {
       ...tierRequests(MANAGEMENT),
       kindnet: (namespace) => kindnetResources(kindnet, namespace),
       kubernetesVersion: pins.clusterApi.workloadKubernetesVersion,
-      describeCluster: async (name) =>
-        clusterctl(await binary(), MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE], {
+      describeCluster: async (name, flags = []) =>
+        clusterctl(await binary(), MANAGEMENT, ["describe", "cluster", name, "--namespace", NAMESPACE, ...flags], {
           quiet: true,
         }),
       sveltos: async () => {
@@ -1347,43 +1349,46 @@ function definitions(args: string[], options: RunOptions = {}): string {
   return kubectl(DEFINITIONS, args, { quiet: true, ...options });
 }
 
-// Removes the fixtures of a state from the cluster of the definitions: every finalizer of their objects first,
-// the one of the scripts and those of the project, which no controller removes there, then their namespace.
-function removeFixtures(state: FixtureState): void {
-  const { namespace } = state;
+// kubectl on a tier, as a command and a session of a test run it, with the target checked before every request.
+type TierKubectl = (args: string[], options?: { input?: string; timeout?: number }) => string;
 
-  if (!definitions(["get", "namespace", namespace, "--ignore-not-found", "--output", "name"]).trim()) return;
-  for (const object of readNamespace(definitions, namespace)) {
+// Removes the objects of a namespace from the cluster of the definitions: every finalizer of their objects first,
+// the one of the scripts and those of the project, which no controller removes there, then the namespace.
+function removeNamespaceObjects(run: TierKubectl, namespace: string): void {
+  if (!run(["get", "namespace", namespace, "--ignore-not-found", "--output", "name"]).trim()) return;
+  for (const object of readNamespace(run, namespace)) {
     if (!object.metadata.finalizers?.length) continue;
-    definitions([
+    run([
       ...["patch", resourceOf(object), object.metadata.name, "--namespace", namespace, "--type", "merge"],
       ...["--patch", JSON.stringify({ metadata: { finalizers: null } })],
     ]);
   }
-  definitions(["delete", "namespace", namespace, "--wait", "--timeout", "300s"], { timeout: 6 * 60_000 });
+  run(["delete", "namespace", namespace, "--wait", "--timeout", "300s"], { timeout: 6 * 60_000 });
 }
 
-// Applies the fixtures of a state to the cluster of the definitions, in place of those it has, and returns the
-// moment of the run, to which their times move: the objects first, owners before their dependents, each one
-// given the identifiers of its owners; then the changes that give an object its generation; then the status of
-// each one through the status subresource; then the deletion of each deleting object, which the finalizers
-// hold.
-function applyFixtures(state: FixtureState): string {
-  const objects = readFixtureSet(folderOf(state));
+// Removes the fixtures of a state from the cluster of the definitions.
+function removeFixtures(state: FixtureState): void {
+  removeNamespaceObjects(definitions, state.namespace);
+}
 
+// Applies a set of objects to a namespace of the cluster of the definitions, in place of those it has, and returns
+// the moment of the run, to which their times move: the objects first, owners before their dependents, each one given
+// the identifiers of its owners; then the changes that give an object its generation; then the status of each one
+// through the status subresource; then the deletion of each deleting object, which the finalizers hold.
+function applyObjectsTo(run: TierKubectl, namespace: string, objects: readonly KubeObject[], what: string): string {
   for (const object of objects) {
     ensure(
-      object.metadata.namespace === state.namespace,
-      `${objectKey(object)} is not in the namespace of ${state.name}`,
+      object.metadata.namespace === namespace,
+      `${objectKey(object)} is not in ${namespace}, the namespace of ${what}`,
     );
   }
-  removeFixtures(state);
+  removeNamespaceObjects(run, namespace);
 
   const runAt = now();
   const plans = objects.map((object) => applyPlan(object, secondsBetween(CAPTURE_TIME, runAt)));
   const identifiers = new Map<string, string>();
 
-  definitions(["create", "namespace", state.namespace]);
+  run(["create", "namespace", namespace]);
   for (const level of creationLevels(plans.map((plan) => plan.create))) {
     const bodies = level.map((object) => ({
       ...object,
@@ -1403,40 +1408,81 @@ function applyFixtures(state: FixtureState): string {
     }));
 
     for (const created of printedObjects(
-      definitions(["create", "--output", "json", "--filename", "-"], { input: list(bodies) }),
+      run(["create", "--output", "json", "--filename", "-"], { input: list(bodies) }),
     )) {
       identifiers.set(objectKey(created), String(created.metadata.uid));
     }
   }
   for (const plan of plans) {
     for (const change of plan.changes) {
-      definitions([
-        ...["patch", resourceOf(plan.create), plan.create.metadata.name, "--namespace", state.namespace],
+      run([
+        ...["patch", resourceOf(plan.create), plan.create.metadata.name, "--namespace", namespace],
         ...["--type", "merge", "--patch", JSON.stringify(change)],
       ]);
     }
   }
 
-  const current = new Map(readNamespace(definitions, state.namespace).map((object) => [objectKey(object), object]));
+  const current = new Map(readNamespace(run, namespace).map((object) => [objectKey(object), object]));
   const statuses = plans
     .filter((plan) => plan.status)
     .map((plan) => ({ ...current.get(plan.key), status: plan.status }));
 
   if (statuses.length) {
-    definitions(["replace", "--subresource", "status", "--output", "name", "--filename", "-"], {
+    run(["replace", "--subresource", "status", "--output", "name", "--filename", "-"], {
       input: list(statuses),
+      timeout: 5 * 60_000,
     });
   }
   for (const plan of plans.filter((item) => item.deleting)) {
-    definitions([
-      ...["delete", resourceOf(plan.create), plan.create.metadata.name, "--namespace", state.namespace],
-      "--wait=false",
-    ]);
+    run([...["delete", resourceOf(plan.create), plan.create.metadata.name, "--namespace", namespace], "--wait=false"]);
   }
-  console.log(
-    `Applied the ${objects.length} objects of ${state.name} to ${DEFINITIONS.context}, in ${state.namespace}`,
-  );
+  console.log(`Applied the ${objects.length} objects of ${what} to ${DEFINITIONS.context}, in ${namespace}`);
   return runAt;
+}
+
+// Applies the fixtures of a state to the cluster of the definitions, in place of those it has, and returns the
+// moment of the run, to which their times move.
+function applyFixtures(state: FixtureState): string {
+  return applyObjectsTo(definitions, state.namespace, readFixtureSet(folderOf(state)), state.name);
+}
+
+// The namespace of the second identity of the restricted session in Freelens, which holds its ServiceAccount
+// (`integration/__tests__/restricted-access.ts`; SPEC-0004, P23).
+export const IDENTITY_NAMESPACE = "freelens-capi-restricted";
+
+// A namespace that a session of a test may fill with objects of its own on the cluster of the definitions: one of the
+// scripts, `freelens-capi-` and a name; none of the states of the fixtures, whose objects it would replace; and not that
+// of the second identity of the restricted session, whose ServiceAccount it would delete.
+export function ownNamespaceProblem(namespace: string): string | undefined {
+  if (!/^freelens-capi-[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(namespace) || namespace.length > 63) {
+    return `${namespace} is not a namespace of the scripts, freelens-capi- and a name`;
+  }
+  if (namespace === IDENTITY_NAMESPACE) {
+    return `${namespace} is the namespace of the second identity of the restricted session`;
+  }
+  const state = FIXTURE_STATES.find((each) => each.namespace === namespace);
+
+  return state === undefined ? undefined : `${namespace} is the namespace of the fixtures of ${state.name}`;
+}
+
+// Applies the objects that a session of a test makes, such as the large Cluster of the session of the tree
+// (SPEC-0005, P22), to a namespace of their own on the cluster of the definitions, as `pnpm e2e:fixtures:up` applies a
+// state, with the target checked before every request, and returns the moment of the run, to which their times move.
+// It refuses, before any request, a namespace that `ownNamespaceProblem` refuses, and an object in another namespace.
+export function applyObjects(session: DefinitionsSession, namespace: string, objects: readonly KubeObject[]): string {
+  const problem = ownNamespaceProblem(namespace);
+
+  ensure(problem === undefined, `${problem}: the objects of a session go to a namespace of their own`);
+  return applyObjectsTo(session.kubectl, namespace, objects, "a session");
+}
+
+// Removes what `applyObjects` applied: every finalizer of the objects of the namespace, then the namespace, waiting until
+// it is gone. It refuses, before any request, a namespace that `ownNamespaceProblem` refuses.
+export function removeObjects(session: DefinitionsSession, namespace: string): void {
+  const problem = ownNamespaceProblem(namespace);
+
+  ensure(problem === undefined, `${problem}: the objects of a session go to a namespace of their own`);
+  removeNamespaceObjects(session.kubectl, namespace);
 }
 
 function fixturesUp(states: readonly FixtureState[]): void {

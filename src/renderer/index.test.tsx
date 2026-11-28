@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { runInAction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { entryBeforeOpening, extensionName, extensionPageAddress } from "../../integration/__tests__/extension-pages";
 import { Common, host } from "../../test/freelens-extensions";
 import { Cluster } from "./api/cluster/cluster-v1beta2";
 import CapiRenderer, { CLUSTERS_PAGE, ROOT_MENU, TREE_PAGE } from "./index";
@@ -46,7 +49,8 @@ vi.mock("./pages/cluster-tree-page", async (importOriginal) => {
 // with the model of Cluster alone (SPEC-0001, A7); and no API registered by the extension, at any version (SPEC-0001,
 // R7.31). And those of SPEC-0005, "Tests", "Unit", `index.test.tsx` (P1): two pages, that of the tree with the
 // parameters `cluster` and `details`; no new entry of the sidebar, no new panel, `customResources` with the model of
-// Cluster alone.
+// Cluster alone; and the root entry that the sessions wait for in the sidebar of a frame before they open a page of the
+// extension, by the id that the host gives it ("Notes and deviations").
 
 function extension(): Renderer.LensExtension {
   return new (CapiRenderer as unknown as new (manifest: { name: string }) => Renderer.LensExtension)({
@@ -146,6 +150,26 @@ describe("the registrations of the renderer", () => {
     expect(children[0].components.Icon).toBeUndefined();
   });
 
+  it("give the sessions the root entry to wait for in the sidebar of a frame before they open a page, by the id that the host gives it, and no entry before another address", () => {
+    const renderer = extension();
+    const [root] = renderer.clusterPageMenus;
+    const { name } = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { name: string };
+    // The id of the root entry of an extension in the sidebar of a frame, as the host makes it from the name of its
+    // package and the id of the entry (freelens:packages/core/src/extensions/lens-extension.ts:125-139;
+    // freelens:packages/core/src/renderer/components/layout/extension-sidebar-item-registrator.injectable.tsx:46-48).
+    const shown = `sidebar-item-${name.replace("@", "").replace("/", "--")}-${root.id}`;
+
+    expect(extensionName).toBe(name);
+    expect(renderer.clusterPages.map(({ id }) => id)).toEqual([CLUSTERS_PAGE, TREE_PAGE]);
+    for (const id of [CLUSTERS_PAGE, TREE_PAGE]) {
+      expect(entryBeforeOpening(extensionPageAddress(id))).toBe(shown);
+      expect(entryBeforeOpening(`${extensionPageAddress(id)}?cluster=a%2Fb&details=c`)).toBe(shown);
+    }
+    expect(entryBeforeOpening("/crd/cluster.x-k8s.io/clusters")).toBeUndefined();
+    expect(entryBeforeOpening("/overview")).toBeUndefined();
+    expect(entryBeforeOpening(extensionPageAddress("clusters", "@freelensapp/other-extension"))).toBeUndefined();
+  });
+
   it("render the page inside the error boundary of the template, which keeps an error of the page in its place", () => {
     const { Page } = extension().clusterPages[0].components;
 
@@ -229,8 +253,8 @@ describe("the registrations of the renderer", () => {
       "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
     );
 
-    expect(host.navigateExtension.mock.calls).toEqual([
-      [TREE_PAGE, { cluster: "freelens-capi-healthy/freelens-capi-healthy", details: "" }],
+    expect(host.navigateExtension.mock.calls).toStrictEqual([
+      [TREE_PAGE, { cluster: "freelens-capi-healthy/freelens-capi-healthy" }],
       [
         TREE_PAGE,
         {
@@ -238,6 +262,27 @@ describe("the registrations of the renderer", () => {
           details: "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
         },
       ],
+    ]);
+  });
+
+  // The history of the host adds an address that holds an empty parameter once more without it, so a way to the tree
+  // that gave an empty `details` took two Backs to come back, where one is the way back of a page (SPEC-0005, "Notes and
+  // deviations").
+  it("open the tree of a Cluster at its root with one entry of the history of the frame, so that one Back comes back (SPEC-0005, P3)", () => {
+    const renderer = extension() as Renderer.LensExtension & {
+      openTree(namespace: string, name: string, node?: string): void;
+    };
+
+    renderer.openTree("freelens-capi-healthy", "freelens-capi-healthy");
+    renderer.openTree(
+      "freelens-capi-healthy",
+      "freelens-capi-healthy",
+      "controlplane.cluster.x-k8s.io/KubeadmControlPlane/freelens-capi-healthy-d2lgq",
+    );
+
+    expect(host.history).toEqual([
+      `/${TREE_PAGE}?cluster=freelens-capi-healthy%2Ffreelens-capi-healthy`,
+      `/${TREE_PAGE}?cluster=freelens-capi-healthy%2Ffreelens-capi-healthy&details=controlplane.cluster.x-k8s.io%2FKubeadmControlPlane%2Ffreelens-capi-healthy-d2lgq`,
     ]);
   });
 
