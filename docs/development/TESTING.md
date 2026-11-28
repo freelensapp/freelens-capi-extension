@@ -166,10 +166,15 @@ Before any worker joins a tenant, it gives the host the value of
 processor and 131072 at least, with `sudo -n sysctl`, when the host has
 another: the kube-proxy of a tenant writes it whenever it differs, which the
 container of a worker may not do, and no worker then becomes ready (SPEC-0028,
-P3, L4). The value that the host had is recorded once in the state folder, and
-`pnpm e2e:cluster:down` gives it back; a value that the scripts cannot set stops
-the command, with the command that sets it. Like `up`, it raises the limits of
-inotify. Run again, it resumes: it uses the kind cluster that it created, and
+P3, L4). Once it is set, the value that the host had is recorded in the state
+folder, the first time alone, and `pnpm e2e:cluster:down` gives it back, with
+no sudo when the host holds it already, as after a reboot, also when it stops
+before it deletes anything because Docker is not the local one or does not
+answer, or kind cannot list its clusters. A value that the scripts cannot set
+stops the command with the command that sets it, and leaves no record; a value
+that `down` cannot give back makes it fail and keep the record, with the command
+that gives it back, after which `down` forgets it. Like `up`, it raises the
+limits of inotify. Run again, it resumes: it uses the kind cluster that it created, and
 installs only the providers missing from the inventory, which must be those of
 the pins at their releases, and nothing else.
 
@@ -834,7 +839,9 @@ of SPEC-0002:
 - **The local Docker.** Every command that uses Docker, `down` and `demo`
   included, first refuses a Docker reached other than through a Unix socket,
   by `DOCKER_HOST` or by the current context, and one that does not run Linux
-  containers.
+  containers. `down` checks it under the lock of the run, and gives back the
+  setting of the host that the cluster of the captures changed before it stops
+  there (SPEC-0028, P2).
 - **Official files, pinned.** Cluster API comes from the assets of its release
   and the source at the commit of its tag, checked by digest. Nothing of it is
   copied into the repository, patched or rebuilt.
@@ -873,8 +880,10 @@ of SPEC-0002:
   of the captures and to the containers of its workload clusters, as the real
   project, and to one setting of the kernel of the host besides the limits of
   inotify, `net.netfilter.nf_conntrack_max`, whose value before they changed it
-  they record in the state folder, and which `pnpm e2e:cluster:down` gives back,
-  failing and keeping the state when it cannot (SPEC-0028, P2, P3). `down`
+  they record in the state folder once they have set it, and which
+  `pnpm e2e:cluster:down` gives back, also when Docker or kind keep it from
+  deleting anything, and with no sudo when the host holds it already, failing
+  and keeping the state when it cannot (SPEC-0028, P2, P3). `down`
   deletes that cluster, before the cluster of the definitions, and the
   containers of its workload clusters, those of the helper of
   `kamaji-provisioning` among them, when the state folder records that cluster.

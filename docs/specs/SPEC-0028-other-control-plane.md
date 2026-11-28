@@ -3099,10 +3099,17 @@ item above, and these were decided while implementing it:
   `net.netfilter.nf_conntrack_max` that kube-proxy computes whenever the host
   has another one, a higher one too, since kube-proxy writes it whenever it
   differs (L4); they count the processors that Node lists; they record the
-  value before their first change once, in the folder of the cluster of the
-  captures; and a value that they cannot set stops the command, where the
-  limits of inotify only warn, since no worker becomes ready without it (L4).
-  `down` gives it back, and fails, keeping the state, when it cannot.
+  value from before their first change in the folder of the cluster of the
+  captures, once the new one is set, so that a value that `sudo -n sysctl`
+  could not set leaves no record; and a value that they cannot set stops the
+  command, where the limits of inotify only warn, since no worker becomes ready
+  without it (L4), with the command that sets it by hand. `down` gives it back,
+  with no sudo and forgetting the record when the host holds that value
+  already, and fails, keeping the state, when it cannot, with the command that
+  gives it back by hand; it gives it back also when it stops before it deletes
+  anything, because Docker is not the local one or does not answer, or kind
+  cannot list its clusters, since that deletes nothing and reaches no cluster,
+  and for that it checks Docker itself, under the lock of the run.
   `pnpm e2e:fixtures:capture:kamaji` sets it too, and refuses any system but
   Linux on amd64, as `pnpm e2e:cluster:up:kamaji`.
 - Decided while implementing: a Cluster of a Kamaji state is named as its

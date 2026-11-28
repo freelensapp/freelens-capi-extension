@@ -93,6 +93,8 @@ import {
   conntrackSetting,
   INOTIFY_LIMITS,
   inotifySettings,
+  raiseConntrackMax,
+  restoreConntrackMax,
 } from "../e2e/scripts/host.mts";
 import {
   ADDRESS_HELPER,
@@ -155,6 +157,7 @@ import type {
 } from "../e2e/scripts/commands.mts";
 import type { Fetch, PinnedFile } from "../e2e/scripts/downloads.mts";
 import type { KubeObject } from "../e2e/scripts/fixtures.mts";
+import type { ConntrackHost } from "../e2e/scripts/host.mts";
 import type { KamajiProject, KamajiState } from "../e2e/scripts/kamaji.mts";
 
 const root = join(import.meta.dirname, "..");
@@ -1198,13 +1201,16 @@ describe("down", () => {
     nodes: Record<string, string>;
     records: Record<string, string>;
     containers: Record<string, string[]>;
-    failing?: "list" | "delete" | "remove";
+    failing?: "docker" | "list" | "delete" | "remove";
   }
 
   // The system that `down` acts on, which records what it is asked to do.
   function system(setup: System): { operations: DownOperations; done: string[] } {
     const done: string[] = [];
     const operations: DownOperations = {
+      localDocker: () => {
+        if (setup.failing === "docker") throw new Error("docker info failed with 1: Cannot connect to the daemon");
+      },
       kindClusters: () => {
         if (setup.failing === "list") throw new Error("kind cannot reach Docker");
         return [...setup.clusters];
@@ -1259,6 +1265,15 @@ describe("down", () => {
 
     expect(() => takeDown(operations, management, definitions, workloads)).toThrow(
       /could not be listed, and nothing was deleted/,
+    );
+    expect(done).toEqual([]);
+  });
+
+  it("deletes nothing, and keeps the state, when Docker is not the local one or does not answer", () => {
+    const { operations, done } = system({ ...ours(), failing: "docker" });
+
+    expect(() => takeDown(operations, management, definitions, workloads)).toThrow(
+      "Docker is not the local one, or does not answer, and nothing was deleted: docker info failed with 1",
     );
     expect(done).toEqual([]);
   });
@@ -2854,6 +2869,108 @@ describe("the cluster of the captures of Kamaji", () => {
   });
 });
 
+describe("nf_conntrack_max of the host of the cluster of the captures", () => {
+  const RECORD = "/state/freelens-capi-kamaji/conntrack";
+
+  // The host as the scripts reach it: its value, `sudo -n sysctl -w`, which sets it unless `sudo` is false, and the
+  // record of the value that it had, each step that changes something recorded in `done`.
+  function host(value: number | undefined, options: { sudo?: boolean; record?: string } = {}) {
+    const done: string[] = [];
+    let record = options.record;
+    const operations: ConntrackHost = {
+      read: () => value,
+      write: (setting) => {
+        done.push(`sudo -n sysctl -w ${setting}`);
+        if (options.sudo === false) return false;
+        value = Number(setting.split("=")[1]);
+        return true;
+      },
+      recorded: () => record,
+      record: (recorded) => {
+        done.push(`record ${recorded}`);
+        record = `${recorded}\n`;
+      },
+      forget: () => {
+        done.push("forget");
+        record = undefined;
+      },
+      recordFile: RECORD,
+      log: () => undefined,
+    };
+
+    return { operations, done, record: () => record };
+  }
+
+  it("records the value that the host had once it has set the new one, the first time alone (SPEC-0028, P3)", () => {
+    const first = host(262_144);
+
+    raiseConntrackMax(first.operations, 16);
+    expect(first.done).toEqual(["sudo -n sysctl -w net.netfilter.nf_conntrack_max=524288", "record 262144"]);
+
+    // Set again over a record of a change before it: the record keeps the value from before the first change.
+    const again = host(262_144, { record: "131072\n" });
+
+    raiseConntrackMax(again.operations, 16);
+    expect(again.done).toEqual(["sudo -n sysctl -w net.netfilter.nf_conntrack_max=524288"]);
+    expect(again.record()).toBe("131072\n");
+
+    const already = host(524_288);
+
+    raiseConntrackMax(already.operations, 16);
+    expect(already.done).toEqual([]);
+
+    // A value that cannot be read is set, and nothing records it.
+    const unread = host(undefined);
+
+    raiseConntrackMax(unread.operations, 2);
+    expect(unread.done).toEqual(["sudo -n sysctl -w net.netfilter.nf_conntrack_max=131072"]);
+  });
+
+  it("leaves no record when it cannot set the value, and names the command that sets it", () => {
+    const refused = host(262_144, { sudo: false });
+
+    expect(() => raiseConntrackMax(refused.operations, 16)).toThrow(
+      "set it with sudo sysctl -w net.netfilter.nf_conntrack_max=524288, then run this command again. The host has 262144 now",
+    );
+    expect(refused.done).toEqual(["sudo -n sysctl -w net.netfilter.nf_conntrack_max=524288"]);
+    expect(refused.record()).toBeUndefined();
+  });
+
+  it("gives the value back and forgets the record, with no sudo when the host holds that value already (SPEC-0028, P2)", () => {
+    const changed = host(524_288, { record: "262144\n" });
+
+    restoreConntrackMax(changed.operations);
+    expect(changed.done).toEqual(["sudo -n sysctl -w net.netfilter.nf_conntrack_max=262144", "forget"]);
+
+    // After a reboot, or once it was given back by hand: no sudo, which could not run here.
+    const back = host(262_144, { record: "262144\n", sudo: false });
+
+    restoreConntrackMax(back.operations);
+    expect(back.done).toEqual(["forget"]);
+
+    const none = host(524_288);
+
+    restoreConntrackMax(none.operations);
+    expect(none.done).toEqual([]);
+  });
+
+  it("keeps the record when it cannot give the value back, and names the command that gives it back", () => {
+    const refused = host(524_288, { record: "262144\n", sudo: false });
+
+    expect(() => restoreConntrackMax(refused.operations)).toThrow(
+      "give it back with sudo sysctl -w net.netfilter.nf_conntrack_max=262144, then run pnpm e2e:cluster:down again",
+    );
+    expect(refused.record()).toBe("262144\n");
+
+    const broken = host(524_288, { record: "NaN\n" });
+
+    expect(() => restoreConntrackMax(broken.operations)).toThrow(
+      `${RECORD} does not hold a value of net.netfilter.nf_conntrack_max`,
+    );
+    expect(broken.done).toEqual([]);
+  });
+});
+
 describe("down with the cluster of the captures of Kamaji", () => {
   const tierOf = (name: string): Tier => ({
     name,
@@ -2870,8 +2987,10 @@ describe("down with the cluster of the captures of Kamaji", () => {
     workloads: [{ name: "freelens-capi-kamaji-healthy" }, { name: ADDRESS_HELPER }],
   };
 
-  // The system that `down` acts on, with the cluster of the captures and the containers of its workload clusters.
-  function system(records: Record<string, string>, restoring?: Error) {
+  // The system that `down` acts on, with the cluster of the captures and the containers of its workload clusters: Docker
+  // or kind failing when `failing` says so, and the settings of the host not given back when `restoring` is an error.
+  function system(records: Record<string, string>, options: { restoring?: Error; failing?: "docker" | "list" } = {}) {
+    const { restoring, failing } = options;
     const done: string[] = [];
     let clusters = [KAMAJI_CLUSTER, "freelens-capi-definitions"];
     const containers: Record<string, string[]> = {
@@ -2879,7 +2998,13 @@ describe("down with the cluster of the captures of Kamaji", () => {
       [ADDRESS_HELPER]: ["h1"],
     };
     const operations: DownOperations = {
-      kindClusters: () => [...clusters],
+      localDocker: () => {
+        if (failing === "docker") throw new Error("DOCKER_HOST names another Docker than the local one");
+      },
+      kindClusters: () => {
+        if (failing === "list") throw new Error("kind cannot reach Docker");
+        return [...clusters];
+      },
       nodeId: (target) => ({ [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" })[target.name],
       recordedNode: (target) => records[target.name],
       deleteCluster: (target) => {
@@ -2931,7 +3056,7 @@ describe("down with the cluster of the captures of Kamaji", () => {
   it("keeps the state when the setting of the host cannot be given back", () => {
     const { operations, done } = system(
       { [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" },
-      new Error("sudo -n sysctl failed"),
+      { restoring: new Error("sudo -n sysctl failed") },
     );
 
     expect(() => takeDown(operations, management, definitions, [], captures)).toThrow(
@@ -2939,6 +3064,36 @@ describe("down with the cluster of the captures of Kamaji", () => {
     );
     expect(done.filter((step) => step.startsWith("forget"))).toEqual([]);
   });
+
+  it.each([
+    [
+      "Docker is not the local one",
+      "docker",
+      "Docker is not the local one, or does not answer, and nothing was deleted: DOCKER_HOST names another Docker than the local one",
+    ],
+    [
+      "the kind clusters cannot be listed",
+      "list",
+      "The kind clusters could not be listed, and nothing was deleted: kind cannot reach Docker",
+    ],
+  ] as const)(
+    "gives the host its setting back, and deletes nothing, when %s (SPEC-0028, P2)",
+    (_case, failing, error) => {
+      const records = { [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" };
+      const stopped = system(records, { failing });
+
+      expect(() => takeDown(stopped.operations, management, definitions, [], captures)).toThrow(error);
+      expect(stopped.done).toEqual([`restore ${KAMAJI_CLUSTER}`]);
+
+      // Neither given back: both said, the state kept.
+      const refused = system(records, { failing, restoring: new Error("sudo -n sysctl failed") });
+
+      expect(() => takeDown(refused.operations, management, definitions, [], captures)).toThrow(
+        `${error}; giving back the settings of the host of ${KAMAJI_CLUSTER}: sudo -n sysctl failed`,
+      );
+      expect(refused.done).toEqual([]);
+    },
+  );
 
   it("knows the workload clusters of every Kamaji state and of the helper, apart from those of the real project", () => {
     expect(KAMAJI_WORKLOADS.map((workload) => workload.name)).toEqual([

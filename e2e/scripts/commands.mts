@@ -75,9 +75,10 @@ import {
   CONNTRACK_MAX,
   childEnvironment,
   clusterctlAsset,
-  conntrackSetting,
   INOTIFY_LIMITS,
   inotifySettings,
+  raiseConntrackMax,
+  restoreConntrackMax,
 } from "./host.mts";
 import {
   ADDRESS_HELPER,
@@ -128,6 +129,7 @@ import {
 import { parseDocuments } from "./yaml.mts";
 
 import type { KubeObject } from "./fixtures.mts";
+import type { ConntrackHost } from "./host.mts";
 import type { KamajiProject, KamajiState, KamajiVersions } from "./kamaji.mts";
 import type { RepositoryProvider } from "./manifests.mts";
 import type { ClusterApiAsset, Pins, WorkflowPins } from "./pins.mts";
@@ -452,57 +454,40 @@ function preflight(workflow: WorkflowPins, kubernetes: string, needs: { processo
   }
 }
 
+// `net.netfilter.nf_conntrack_max` of the host, as the scripts read it from /proc and set it with `sudo -n sysctl`, as
+// the limits of inotify, and the record of the value that the host had, in the folder of the cluster of the captures,
+// which `down` gives back (SPEC-0028, P2, P3).
+const CONNTRACK_HOST: ConntrackHost = {
+  read: () => {
+    try {
+      const value = readFileSync(`/proc/sys/${CONNTRACK_MAX.replaceAll(".", "/")}`, "utf8").trim();
+
+      return /^\d+$/.test(value) ? Number(value) : undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  write: (setting) =>
+    spawnSync("sudo", ["-n", "sysctl", "-w", setting], {
+      env: environment(),
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    }).status === 0,
+  recorded: () => (existsSync(CONNTRACK_RECORD) ? readFileSync(CONNTRACK_RECORD, "utf8") : undefined),
+  record: (value) => {
+    mkdirSync(KAMAJI.folder, { recursive: true });
+    writeFileSync(CONNTRACK_RECORD, `${value}\n`);
+  },
+  forget: () => rmSync(CONNTRACK_RECORD, { force: true }),
+  recordFile: CONNTRACK_RECORD,
+  log: (line) => console.log(line),
+};
+
 // On the host of the cluster of the captures, `net.netfilter.nf_conntrack_max` at the value that kube-proxy computes for
-// the processors of the host, before any worker joins a tenant (SPEC-0028, P3; L4), with `sudo -n sysctl`, as the limits
-// of inotify. The value that the host had is recorded first, once, so that `down` gives it back. A value that the
-// scripts cannot set stops the command, since no worker becomes ready without it.
+// the processors of the host, before any worker joins a tenant (SPEC-0028, P3; L4). A value that the scripts cannot set
+// stops the command, since no worker becomes ready without it.
 function setConntrackMax(): void {
-  const file = `/proc/sys/${CONNTRACK_MAX.replaceAll(".", "/")}`;
-  let current: number | undefined;
-
-  try {
-    current = Number(readFileSync(file, "utf8").trim());
-  } catch {
-    // A value that cannot be read is set as one that differs.
-  }
-
-  const setting = conntrackSetting(current, cpus().length);
-
-  if (!setting) return;
-  mkdirSync(KAMAJI.folder, { recursive: true });
-  if (!existsSync(CONNTRACK_RECORD) && current !== undefined) writeFileSync(CONNTRACK_RECORD, `${current}\n`);
-
-  const result = spawnSync("sudo", ["-n", "sysctl", "-w", setting], {
-    env: environment(),
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30_000,
-  });
-
-  ensure(
-    result.status === 0,
-    `Could not set ${setting} (sudo -n sysctl failed), which the workers of the tenants need: set it with sudo sysctl -w ${setting}, then run this command again`,
-  );
-  console.log(`Set ${setting}, from ${current ?? "a value that could not be read"}`);
-}
-
-// Gives `net.netfilter.nf_conntrack_max` back the value that the host had before the scripts changed it, when the state
-// folder records one, and forgets the record.
-function restoreConntrackMax(): void {
-  if (!existsSync(CONNTRACK_RECORD)) return;
-
-  const recorded = readFileSync(CONNTRACK_RECORD, "utf8").trim();
-
-  ensure(/^\d+$/.test(recorded), `${CONNTRACK_RECORD} does not hold a value of ${CONNTRACK_MAX}`);
-
-  const result = spawnSync("sudo", ["-n", "sysctl", "-w", `${CONNTRACK_MAX}=${recorded}`], {
-    env: environment(),
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30_000,
-  });
-
-  ensure(result.status === 0, `Could not give ${CONNTRACK_MAX} back its value ${recorded} (sudo -n sysctl failed)`);
-  rmSync(CONNTRACK_RECORD);
-  console.log(`Gave ${CONNTRACK_MAX} back its value ${recorded}`);
+  raiseConntrackMax(CONNTRACK_HOST, cpus().length);
 }
 
 // On Linux, the limits of inotify of the workload clusters, raised when they are lower, or a warning.
@@ -1192,6 +1177,8 @@ async function upKamaji(): Promise<void> {
 
 // What `down` does to the system, apart from what it decides, so that its decisions can be tested.
 export interface DownOperations {
+  // Docker, before anything else: the local one, which runs Linux containers.
+  localDocker(): void;
   kindClusters(): string[];
   // The ID of the control plane container of the kind cluster of that name, when Docker has one.
   nodeId(target: Tier): string | undefined;
@@ -1219,8 +1206,9 @@ export interface CapturesTier {
 // real project goes first, so that no controller creates a node of a workload cluster again; then the
 // containers of the workload clusters, only when this state folder records the cluster of the real project
 // that created them. Every step is tried, what is left is checked, and a step that failed makes the command
-// fail and keeps the state, so that the next run tries again. When the kind clusters cannot be listed,
-// nothing is deleted.
+// fail and keeps the state, so that the next run tries again. When Docker is not the local one or does not
+// answer, or the kind clusters cannot be listed, nothing is deleted; the settings of the host that the cluster of the
+// captures changed are given back all the same, since they delete nothing and reach no cluster (SPEC-0028, P2).
 export function takeDown(
   operations: DownOperations,
   management: Tier,
@@ -1236,12 +1224,26 @@ export function takeDown(
       failures.push(`${what}: ${message(error)}`);
     }
   };
+  // A stop before anything is deleted, with the settings of the host given back first.
+  const stop = (what: string, error: unknown): Error => {
+    if (captures) {
+      attempt(`giving back the settings of the host of ${captures.tier.name}`, () =>
+        operations.restoreSettings(captures.tier),
+      );
+    }
+    return new Error(`${what}, and nothing was deleted: ${[message(error), ...failures].join("; ")}`);
+  };
   let clusters: string[];
 
   try {
+    operations.localDocker();
+  } catch (error) {
+    throw stop("Docker is not the local one, or does not answer", error);
+  }
+  try {
     clusters = operations.kindClusters();
   } catch (error) {
-    throw new Error(`The kind clusters could not be listed, and nothing was deleted: ${message(error)}`);
+    throw stop("The kind clusters could not be listed", error);
   }
 
   const managed = operations.recordedNode(management) !== undefined;
@@ -1317,6 +1319,7 @@ export function takeDown(
 function down(): void {
   takeDown(
     {
+      localDocker,
       kindClusters,
       nodeId,
       recordedNode,
@@ -1329,7 +1332,7 @@ function down(): void {
         run("docker", ["rm", "--force", "--volumes", ...ids], { quiet: true, timeout: 5 * 60_000 }),
       forget: (target) => rmSync(target.folder, { recursive: true, force: true }),
       restoreSettings: (target) => {
-        if (target.name === KAMAJI.name) restoreConntrackMax();
+        if (target.name === KAMAJI.name) restoreConntrackMax(CONNTRACK_HOST);
       },
       log: (line) => console.log(line),
     },
@@ -2243,7 +2246,9 @@ export interface ParsedCommand {
 
 // Each command, whether it uses Docker, which is then checked first, and the states it takes: none, at least one,
 // or, when none is given, every one. `capture` takes only the states of the fixtures that it captures, and
-// `capture-kamaji` the states of the captures of Kamaji alone.
+// `capture-kamaji` the states of the captures of Kamaji alone. `down` checks Docker itself, under the lock of the run,
+// so that it gives the settings of the host back also when Docker is not the local one or does not answer (SPEC-0028,
+// P2).
 const COMMANDS: Record<
   CommandName,
   {
@@ -2255,7 +2260,7 @@ const COMMANDS: Record<
   up: { run: up, docker: true, states: "none" },
   "up-definitions": { run: upDefinitions, docker: true, states: "none" },
   "up-kamaji": { run: upKamaji, docker: true, states: "none" },
-  down: { run: down, docker: true, states: "none" },
+  down: { run: down, docker: false, states: "none" },
   demo: { run: demo, docker: true, states: "none" },
   "check-pins": { run: checkPins, docker: false, states: "none" },
   capture: { run: (parsed) => capture(parsed.states), docker: true, states: "required" },
