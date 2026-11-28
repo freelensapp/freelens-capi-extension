@@ -1,0 +1,128 @@
+name: Kamaji captures
+
+# The captures of a Cluster with a KamajiControlPlane (SPEC-0028, P7): the cluster of the captures brought up, the nine
+# Kamaji states captured from the provider one at a time, the SHA-256 of each file of their sets printed, the folders of
+# the sets uploaded as an artifact of the run, and the environment taken down. It runs only when it is dispatched, on a
+# branch made for it, and never on a pull request, on main or at night: the sets go into the repository in a pull request
+# that a review of their diff accepts, with the digests of each README compared with those of this log
+# (docs/development/TESTING.md, "The captures of Kamaji"). The artifact holds the folders of the sets alone, which are
+# files of a cluster, cleaned: never the state folder of the scripts, a kubeconfig or a Secret.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: kamaji captures
+
+    # An amd64 runner, the one system and processor of the cluster of the captures (SPEC-0028, P2). The 60 minutes of P7,
+    # about twice what the job takes from the times of the probes, revised from the durations of its runs.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - name: Get pnpm cache directory
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> ${GITHUB_ENV}
+
+      # Restored alone, under the key that the job of the real project of test-environment.yaml saves.
+      - name: Use pnpm cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.pnpm_cache_dir }}
+          key: ubuntu-24.04-node-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ubuntu-24.04-node-
+
+      - name: Install pnpm dependencies
+        id: install-pnpm
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        continue-on-error: true
+
+      - name: Install pnpm dependencies (retry)
+        if: steps.install-pnpm.outcome == 'failure'
+        run: timeout 300 pnpm install --color=always --prefer-offline --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      # The private state of the scripts, outside the checkout, as they ask.
+      - name: Set the state folder of the scripts
+        run: echo "XDG_STATE_HOME=${RUNNER_TEMP}/test-environment" >> "${GITHUB_ENV}"
+
+      # kind is pinned once, in the env of the integration workflow, where the scripts read it too.
+      - name: Get the version of kind
+        id: kind
+        run: |
+          version=$(sed -n 's/^  kind_version: *\([0-9.]*\).*/\1/p' .github/workflows/integration-tests.yaml)
+          if ! printf '%s\n' "${version}" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::integration-tests.yaml has no kind_version in its env that this step can read"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          version: v${{ steps.kind.outputs.version }}
+          install_only: true
+
+      # Cluster API, MetalLB, Kamaji and the Kamaji control plane provider, each file checked against its pin, and the
+      # setting of the kernel that the workers of the tenants need.
+      - name: Bring the cluster of the captures up
+        run: pnpm e2e:cluster:up:kamaji
+
+      # One state at a time, each read once every controller has reported it and two readings agree. The scripts print
+      # the SHA-256 of each file that they write.
+      - name: Capture the Kamaji states
+        run: pnpm e2e:fixtures:capture:kamaji all
+
+      # The record of the files, which the review of the pull request that commits the sets compares with the digests of
+      # each README, from outside the scripts.
+      - name: Print the SHA-256 of each file of the sets
+        run: find integration/fixtures -path 'integration/fixtures/kamaji-*' -type f -name '*.yaml' | sort | xargs sha256sum
+
+      - name: Upload the sets
+        uses: actions/upload-artifact@v7
+        with:
+          name: kamaji-fixture-sets
+          if-no-files-found: error
+          path: |
+            integration/fixtures/kamaji-provisioning/
+            integration/fixtures/kamaji-healthy/
+            integration/fixtures/kamaji-scaling/
+            integration/fixtures/kamaji-upgrading/
+            integration/fixtures/kamaji-version-refused/
+            integration/fixtures/kamaji-sleeping/
+            integration/fixtures/kamaji-not-ready/
+            integration/fixtures/kamaji-paused/
+            integration/fixtures/kamaji-deleting/
+
+      - name: Take the test environment down
+        if: always()
+        run: pnpm e2e:cluster:down
+
+      # down checks what it leaves already; this says it from outside the scripts.
+      - name: Check that nothing of the test environment is left
+        if: always()
+        run: |
+          kind get clusters
+          docker ps --all --format '{{.Names}}'
+          test -z "$(kind get clusters 2>/dev/null | grep '^freelens-capi-' || true)"
+          test -z "$(docker ps --all --format '{{.Names}}' | grep '^freelens-capi-' || true)"

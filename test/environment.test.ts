@@ -4051,3 +4051,95 @@ describe("the states of the captures of Kamaji", () => {
     expect(requests[2]).toContain(JSON.stringify({ metadata: { finalizers: ["other"] } }));
   });
 });
+
+// The problems of the workflow of the captures, read as a file: what starts it but a dispatch, and what its artifact
+// holds but the folders of the Kamaji sets (SPEC-0028, P7).
+function captureWorkflowProblems(text: string): string[] {
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => /^on:\s*$/.test(line));
+  const triggers: string[] = [];
+
+  for (const line of start >= 0 ? lines.slice(start + 1) : []) {
+    if (/^\S/.test(line)) break;
+
+    const trigger = /^ {2}([A-Za-z_]+):/.exec(line);
+
+    if (trigger) triggers.push(trigger[1]);
+  }
+
+  const problems = [
+    ...(start < 0 ? ["it has no top-level on"] : []),
+    ...triggers.filter((trigger) => trigger !== "workflow_dispatch").map((trigger) => `it starts on ${trigger}`),
+    ...(triggers.includes("workflow_dispatch") ? [] : ["it does not start on workflow_dispatch"]),
+  ];
+  const expected = KAMAJI_STATES.map((state) => `integration/fixtures/${state.name}/`);
+  const uploads = lines.flatMap((line, index) => (/^\s+uses: actions\/upload-artifact@/.test(line) ? [index] : []));
+
+  if (uploads.length !== 1) problems.push(`it has ${uploads.length} steps that upload an artifact`);
+  for (const index of uploads) {
+    const step = lines.slice(index + 1, lines.findIndex((line, at) => at > index && /^\s+- name:/.test(line)) >>> 0);
+    const path = step.findIndex((line) => /^\s+path:/.test(line));
+    const paths = step
+      .slice(path + 1)
+      .filter((line) => /^\s{12}\S/.test(line))
+      .map((line) => line.trim());
+
+    if (path < 0 || !/^\s+path: \|$/.test(step[path] ?? "")) problems.push("its artifact names no list of paths");
+    else if (paths.join(" ") !== expected.join(" ")) problems.push(`its artifact holds ${paths.join(" ")}`);
+  }
+  return problems;
+}
+
+describe("the workflow of the captures of Kamaji", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/kamaji-capture.yaml"), "utf8");
+
+  it("runs when it is dispatched alone, and uploads the folders of the Kamaji sets alone (SPEC-0028, P7)", () => {
+    expect(captureWorkflowProblems(workflow)).toEqual([]);
+    expect(workflow).toContain("pnpm e2e:cluster:up:kamaji");
+    expect(workflow).toContain("pnpm e2e:fixtures:capture:kamaji all");
+    expect(workflow).toMatch(/run: pnpm e2e:cluster:down\n/);
+    expect(workflow).toMatch(/timeout-minutes: 60\n/);
+  });
+
+  it.each([
+    [
+      "a pull request",
+      (text: string) =>
+        text.replace(
+          "  workflow_dispatch: {}",
+          "  workflow_dispatch: {}\n  pull_request:\n    branches:\n      - main",
+        ),
+      /it starts on pull_request/,
+    ],
+    [
+      "a schedule",
+      (text: string) => text.replace("  workflow_dispatch: {}", "  schedule:\n    - cron: 17 3 * * *"),
+      /it starts on schedule[^]*it does not start on workflow_dispatch/,
+    ],
+    [
+      "the state folder of the scripts in its artifact",
+      (text: string) =>
+        text.replace(
+          "            integration/fixtures/kamaji-deleting/",
+          "            integration/fixtures/kamaji-deleting/\n            ${{ runner.temp }}/test-environment/",
+        ),
+      /its artifact holds .*\/test-environment\//,
+    ],
+    [
+      "a set missing from its artifact",
+      (text: string) => text.replace("            integration/fixtures/kamaji-paused/\n", ""),
+      /its artifact holds/,
+    ],
+    [
+      "a second artifact",
+      (text: string) =>
+        `${text}\n      - name: Upload the logs\n        uses: actions/upload-artifact@v7\n        with:\n          path: logs/\n`,
+      /it has 2 steps that upload an artifact/,
+    ],
+  ])("is refused with %s", (_case, change, error) => {
+    const changed = change(workflow);
+
+    expect(changed).not.toBe(workflow);
+    expect(captureWorkflowProblems(changed).join("; ")).toMatch(error);
+  });
+});
