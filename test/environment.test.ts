@@ -4207,6 +4207,553 @@ describe("the states of the captures of Kamaji", () => {
   });
 });
 
+// The time of the last probe that succeeded, in the messages of the conditions of the Node of a worker Machine past its
+// grace (K23).
+const NODE_DOWN = `${PROBE_TIME_WORDS[1]}2026-11-22T13:03:50Z`;
+
+// A tenant that no longer answers, `Sleeping` or `NotReady`, as its capture reads it once every controller has reported
+// it: no Pod of it ending, the probe of core failed after a success, and the worker Machine past its grace, with the
+// objects that sum it up (SPEC-0028, P5).
+function unreachableReading(namespace: string, version: string, state: "Sleeping" | "NotReady"): KubeObject[] {
+  return kamajiReading(namespace, {
+    version,
+    kcp: {
+      spec: state === "Sleeping" ? { replicas: 0 } : {},
+      status: { replicas: 0, readyReplicas: 0, availableReplicas: 0, upToDateReplicas: 0, ready: false },
+      conditions: [
+        kamajiCondition(
+          "KamajiControlPlaneIsReady",
+          "False",
+          "Failed",
+          `TenantControlPlane in ${state} status, enqueue back`,
+        ),
+        kamajiCondition("Available", "False", "NotAvailable"),
+      ],
+    },
+    tenant: {
+      state,
+      deployment: { terminatingReplicas: 0, conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")] },
+    },
+    cluster: {
+      controlPlane: state === "Sleeping" ? { desiredReplicas: 0 } : {},
+      conditions: [
+        kamajiCondition("RemoteConnectionProbe", "False", "ProbeFailed", `${PROBE_TIME_WORDS[0]}2026-11-22T13:03:50Z`),
+        kamajiCondition("WorkerMachinesReady", "Unknown"),
+      ],
+    },
+    machine: {
+      conditions: [
+        kamajiCondition("Ready", "Unknown"),
+        kamajiCondition("NodeReady", "Unknown", "ConnectionDown", NODE_DOWN),
+        kamajiCondition("NodeHealthy", "Unknown", "ConnectionDown", NODE_DOWN),
+      ],
+    },
+    summary: "Unknown",
+  });
+}
+
+// Each Kamaji state as its capture reads it once the state holds (SPEC-0028, P1, P5).
+const READ_STATES: Record<string, (namespace: string, version: string) => KubeObject[]> = {
+  "kamaji-provisioning": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      kcp: {
+        status: {
+          ready: false,
+          version: "",
+          replicas: undefined,
+          readyReplicas: undefined,
+          availableReplicas: undefined,
+          upToDateReplicas: undefined,
+        },
+        conditions: [
+          kamajiCondition("TenantControlPlaneCreated", "True", "Succeeded"),
+          kamajiCondition(
+            "TenantControlPlaneAddressReady",
+            "False",
+            "Pending",
+            "Control Plane Endpoint is not yet available",
+          ),
+        ],
+      },
+      machine: false,
+    }),
+  "kamaji-healthy": (namespace, version) => kamajiReading(namespace, { version }),
+  "kamaji-scaling": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      kcp: {
+        spec: { replicas: 3 },
+        status: { ready: false },
+        conditions: [
+          kamajiCondition(
+            "KamajiControlPlaneIsReady",
+            "False",
+            "Failed",
+            "TenantControlPlane in Unknown status, enqueue back",
+          ),
+          kamajiCondition("Available", "False", "NotAvailable"),
+        ],
+      },
+      tenant: {
+        state: "Unknown",
+        deployment: { conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")] },
+      },
+      cluster: {
+        controlPlane: { desiredReplicas: 3 },
+        conditions: [kamajiCondition("Available", "False", "NotAvailable")],
+      },
+    }),
+  "kamaji-upgrading": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      kcp: { spec: { version: "v1.37.0" }, status: { upToDateReplicas: 0 } },
+      tenant: {
+        state: "Upgrading",
+        deployment: { conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")] },
+      },
+    }),
+  "kamaji-version-refused": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      kcp: {
+        spec: { version: "v1.38.0" },
+        conditions: [
+          kamajiCondition("TenantControlPlaneCreated", "False", "Pending"),
+          kamajiCondition("TenantControlPlaneAddressReady", "True", "Succeeded"),
+          kamajiCondition("KamajiControlPlaneIsReady", "True", "Succeeded"),
+          kamajiCondition("Available", "True", "Available"),
+        ],
+      },
+    }),
+  "kamaji-sleeping": (namespace, version) => unreachableReading(namespace, version, "Sleeping"),
+  "kamaji-not-ready": (namespace, version) => unreachableReading(namespace, version, "NotReady"),
+  "kamaji-paused": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      cluster: {
+        conditions: [kamajiCondition("Available", "True", "Available"), kamajiCondition("Paused", "True", "Paused")],
+      },
+    }).map((object) =>
+      ["MachineDeployment", "MachineSet", "Machine", "DevCluster"].includes(object.kind)
+        ? { ...object, status: { ...object.status, conditions: [kamajiCondition("Paused", "True", "Paused")] } }
+        : object,
+    ),
+  "kamaji-deleting": (namespace, version) =>
+    kamajiReading(namespace, {
+      version,
+      kcp: { deleting: true },
+      cluster: {
+        deleting: true,
+        conditions: [kamajiCondition("Deleting", "True", "WaitingForControlPlaneDeletion")],
+      },
+      machine: false,
+    }),
+};
+
+// A change of the objects of a reading, made in place.
+type ReadingEdit = (objects: KubeObject[], namespace: string) => void;
+
+// Sets a field of every object of a kind, by its path in the object, or removes it with `undefined`.
+function setField(kind: string, path: string, value: unknown): ReadingEdit {
+  return (objects) => {
+    const keys = path.split(".");
+
+    for (const object of objects.filter((item) => item.kind === kind)) {
+      let at: Record<string, unknown> = object;
+
+      for (const key of keys.slice(0, -1)) {
+        at[key] ??= {};
+        at = at[key] as Record<string, unknown>;
+      }
+      if (value === undefined) delete at[keys[keys.length - 1]];
+      else at[keys[keys.length - 1]] = value;
+    }
+  };
+}
+
+// Gives every object of a kind a condition in place of the one of its type, or takes that one away with no status.
+function setCondition(kind: string, type: string, status?: string, reason?: string, message?: string): ReadingEdit {
+  return (objects) => {
+    for (const object of objects.filter((item) => item.kind === kind)) {
+      const conditions = ((object.status?.conditions ?? []) as { type: string }[]).filter((item) => item.type !== type);
+
+      object.status = {
+        ...object.status,
+        conditions: status ? [...conditions, kamajiCondition(type, status, reason, message)] : conditions,
+      };
+    }
+  };
+}
+
+function removeKind(kind: string): ReadingEdit {
+  return (objects) => {
+    objects.splice(0, objects.length, ...objects.filter((object) => object.kind !== kind));
+  };
+}
+
+function edits(...all: ReadingEdit[]): ReadingEdit {
+  return (objects, namespace) => {
+    for (const edit of all) edit(objects, namespace);
+  };
+}
+
+const TENANT_STATE = "status.kubernetesResources.version.status";
+const TENANT_DEPLOYMENT = "status.kubernetesResources.deployment";
+
+// The waits of the two states whose tenant no longer answers (SPEC-0028, P5; "Notes and deviations"), each as an edit of
+// the readings of the state that makes them miss that wait alone.
+const UNREACHABLE_WAITS: [string, ReadingEdit][] = [
+  ["no Pod of the tenant ending", setField("TenantControlPlane", `${TENANT_DEPLOYMENT}.terminatingReplicas`, 1)],
+  ["the probe of core failed", setCondition("Cluster", "RemoteConnectionProbe", "True", "ProbeSucceeded")],
+  [
+    "the probe of core failed after a success, in its words",
+    setCondition("Cluster", "RemoteConnectionProbe", "False", "ProbeFailed", "Remote connection not established yet"),
+  ],
+  ["NodeReady of the worker Machine past its grace", setCondition("Machine", "NodeReady", "True", "NodeReady")],
+  ["NodeHealthy of the worker Machine past its grace", setCondition("Machine", "NodeHealthy", "True", "NodeHealthy")],
+  [
+    "the conditions of the Node Unknown",
+    edits(
+      setCondition("Machine", "NodeReady", "False", "ConnectionDown", NODE_DOWN),
+      setCondition("Machine", "NodeHealthy", "False", "ConnectionDown", NODE_DOWN),
+    ),
+  ],
+  [
+    "the conditions of the Node at ConnectionDown",
+    edits(
+      setCondition("Machine", "NodeReady", "Unknown", "NodeConditionsFailed", NODE_DOWN),
+      setCondition("Machine", "NodeHealthy", "Unknown", "NodeConditionsFailed", NODE_DOWN),
+    ),
+  ],
+  [
+    "the conditions of the Node with the time of the last probe",
+    edits(
+      setCondition("Machine", "NodeReady", "Unknown", "ConnectionDown", "Waiting for the Node to report"),
+      setCondition("Machine", "NodeHealthy", "Unknown", "ConnectionDown", "Waiting for the Node to report"),
+    ),
+  ],
+  ["Ready of the worker Machine no longer True", setCondition("Machine", "Ready", "True", "Ready")],
+  ["MachinesReady of its MachineSet no longer True", setCondition("MachineSet", "MachinesReady", "True")],
+  ["MachinesReady of its MachineDeployment no longer True", setCondition("MachineDeployment", "MachinesReady", "True")],
+  ["WorkerMachinesReady of the Cluster no longer True", setCondition("Cluster", "WorkerMachinesReady", "True")],
+  ["a worker Machine", removeKind("Machine")],
+];
+
+// Each wait of each Kamaji state (SPEC-0028, P5; "Notes and deviations"), as an edit of the readings of the state that
+// makes them miss that wait alone.
+const KAMAJI_WAITS: [string, string, ReadingEdit][] = [
+  [
+    "kamaji-provisioning",
+    "TenantControlPlaneAddressReady False Pending on its KamajiControlPlane",
+    setCondition("KamajiControlPlane", "TenantControlPlaneAddressReady"),
+  ],
+  [
+    "kamaji-provisioning",
+    "no Available on its KamajiControlPlane",
+    setCondition("KamajiControlPlane", "Available", "False", "NotAvailable"),
+  ],
+  ["kamaji-provisioning", "its TenantControlPlane made", removeKind("TenantControlPlane")],
+  [
+    "kamaji-provisioning",
+    "its DevCluster provisioned",
+    setCondition("Cluster", "InfrastructureReady", "False", "NotProvisioned"),
+  ],
+  // The surge of a rollout still copied, as L11 saw it.
+  [
+    "kamaji-healthy",
+    "the counters of the control plane copied into the Cluster",
+    setField("Cluster", "status.controlPlane.replicas", 2),
+  ],
+  ["kamaji-healthy", "the Cluster Available True", setCondition("Cluster", "Available")],
+  ["kamaji-healthy", "the Node of its worker", setField("Machine", "status.nodeRef", undefined)],
+  ["kamaji-healthy", "every condition at its normal value", setCondition("DevCluster", "Ready", "False", "NotReady")],
+  ["kamaji-scaling", "the scale to three replicas", setField("KamajiControlPlane", "spec.replicas", 1)],
+  [
+    "kamaji-scaling",
+    "KamajiControlPlaneIsReady False Failed with the state Unknown",
+    setCondition("KamajiControlPlane", "KamajiControlPlaneIsReady", "True", "Succeeded"),
+  ],
+  [
+    "kamaji-scaling",
+    "Available False NotAvailable on its KamajiControlPlane",
+    setCondition("KamajiControlPlane", "Available", "True", "Available"),
+  ],
+  ["kamaji-scaling", "the tenant Unknown", setField("TenantControlPlane", TENANT_STATE, "Ready")],
+  [
+    "kamaji-scaling",
+    "the Pod that the quota refused",
+    setField("TenantControlPlane", `${TENANT_DEPLOYMENT}.conditions`, []),
+  ],
+  [
+    "kamaji-scaling",
+    "three replicas wanted by the Cluster",
+    setField("Cluster", "status.controlPlane.desiredReplicas", 1),
+  ],
+  [
+    "kamaji-scaling",
+    "the counters copied into the Cluster",
+    setField("Cluster", "status.controlPlane.readyReplicas", 0),
+  ],
+  ["kamaji-scaling", "the Cluster Available False", setCondition("Cluster", "Available", "True", "Available")],
+  ["kamaji-upgrading", "the new version asked", setField("KamajiControlPlane", "spec.version", "v1.36.4")],
+  ["kamaji-upgrading", "the old version reported", setField("KamajiControlPlane", "status.version", "")],
+  [
+    "kamaji-upgrading",
+    "no replica up to date",
+    edits(
+      setField("KamajiControlPlane", "status.upToDateReplicas", 1),
+      setField("Cluster", "status.controlPlane.upToDateReplicas", 1),
+    ),
+  ],
+  [
+    "kamaji-upgrading",
+    "Available True on its KamajiControlPlane",
+    setCondition("KamajiControlPlane", "Available", "False", "NotAvailable"),
+  ],
+  ["kamaji-upgrading", "the tenant Upgrading", setField("TenantControlPlane", TENANT_STATE, "Ready")],
+  [
+    "kamaji-upgrading",
+    "the Pod that the quota refused",
+    setField("TenantControlPlane", `${TENANT_DEPLOYMENT}.conditions`, []),
+  ],
+  [
+    "kamaji-upgrading",
+    "the counters copied into the Cluster",
+    setField("Cluster", "status.controlPlane.upToDateReplicas", 1),
+  ],
+  ["kamaji-upgrading", "the Cluster Available True", setCondition("Cluster", "Available", "False", "NotAvailable")],
+  [
+    "kamaji-version-refused",
+    "the version that Kamaji refuses asked",
+    setField("KamajiControlPlane", "spec.version", "v1.36.4"),
+  ],
+  [
+    "kamaji-version-refused",
+    "TenantControlPlaneCreated False",
+    setCondition("KamajiControlPlane", "TenantControlPlaneCreated", "True", "Succeeded"),
+  ],
+  [
+    "kamaji-version-refused",
+    "Available True on its KamajiControlPlane",
+    setCondition("KamajiControlPlane", "Available", "False", "NotAvailable"),
+  ],
+  [
+    "kamaji-version-refused",
+    "the counters copied into the Cluster",
+    setField("Cluster", "status.controlPlane.replicas", 2),
+  ],
+  ...(["Sleeping", "NotReady"] as const).flatMap((state): [string, string, ReadingEdit][] => {
+    const name = state === "Sleeping" ? "kamaji-sleeping" : "kamaji-not-ready";
+
+    return [
+      [name, `the tenant ${state}`, setField("TenantControlPlane", TENANT_STATE, "Ready")],
+      [
+        name,
+        "the counters of its KamajiControlPlane at 0",
+        edits(
+          setField("KamajiControlPlane", "status.readyReplicas", 1),
+          setField("Cluster", "status.controlPlane.readyReplicas", 1),
+        ),
+      ],
+      [
+        name,
+        `KamajiControlPlaneIsReady False with the state ${state}`,
+        setCondition("KamajiControlPlane", "KamajiControlPlaneIsReady", "True", "Succeeded"),
+      ],
+      [
+        name,
+        "Available False on its KamajiControlPlane",
+        setCondition("KamajiControlPlane", "Available", "True", "Available"),
+      ],
+      ...(state === "NotReady"
+        ? [
+            [
+              name,
+              "the Pod that the quota refused",
+              setField("TenantControlPlane", `${TENANT_DEPLOYMENT}.conditions`, []),
+            ] as [string, string, ReadingEdit],
+          ]
+        : []),
+      [name, "the counters copied into the Cluster", setField("Cluster", "status.controlPlane.readyReplicas", 1)],
+      ...UNREACHABLE_WAITS.map(([wait, edit]): [string, string, ReadingEdit] => [name, wait, edit]),
+    ];
+  }),
+  [
+    "kamaji-paused",
+    "every object but its KamajiControlPlane Paused True",
+    setCondition("MachineSet", "Paused", "False", "NotPaused"),
+  ],
+  ["kamaji-paused", "the Cluster Paused True", setCondition("Cluster", "Paused")],
+  [
+    "kamaji-deleting",
+    "the Cluster waiting for the deletion of its control plane",
+    setCondition("Cluster", "Deleting", "True", "WaitingForWorkersDeletion"),
+  ],
+  [
+    "kamaji-deleting",
+    "its KamajiControlPlane deleting",
+    setField("KamajiControlPlane", "metadata.deletionTimestamp", undefined),
+  ],
+  [
+    "kamaji-deleting",
+    "its worker gone",
+    (objects, namespace) => {
+      objects.push(
+        ...kamajiReading(namespace, { version: "2" }).filter((object) =>
+          ["MachineDeployment", "MachineSet", "Machine"].includes(object.kind),
+        ),
+      );
+    },
+  ],
+];
+
+// Each Kamaji state that can no longer be reached once its readings show it, and why, as an edit of its readings
+// (SPEC-0028, P5): those of kamaji-provisioning, kamaji-scaling and kamaji-paused have cases of their own above.
+const KAMAJI_MISSED: [string, string, ReadingEdit][] = [
+  [
+    "kamaji-upgrading",
+    "the upgrade is done: the quota did not hold it",
+    setField("KamajiControlPlane", "status.version", "v1.37.0"),
+  ],
+  [
+    "kamaji-version-refused",
+    "the TenantControlPlane took the version: Kamaji did not refuse it",
+    setField("TenantControlPlane", "spec.kubernetes.version", "v1.38.0"),
+  ],
+  ["kamaji-deleting", "the KamajiControlPlane is gone", removeKind("KamajiControlPlane")],
+];
+
+// The readings of the namespace of a Kamaji state: of the healthy Cluster first, for a state that starts from
+// kamaji-healthy, then those given.
+function readingsOf(state: KamajiState, ...readings: KubeObject[][]): KubeObject[][] {
+  const fromHealthy = state.name !== "kamaji-provisioning" && state.name !== "kamaji-healthy";
+
+  return [...(fromHealthy ? [READ_STATES["kamaji-healthy"](state.namespace, "1")] : []), ...readings];
+}
+
+describe("the waits of the captures of Kamaji", () => {
+  it("cover every Kamaji state", () => {
+    expect(Object.keys(READ_STATES)).toEqual(KAMAJI_STATES.map((state) => state.name));
+    expect([...new Set(KAMAJI_WAITS.map(([name]) => name))]).toEqual(KAMAJI_STATES.map((state) => state.name));
+  });
+
+  it.each(KAMAJI_WAITS)(
+    "read %s only after %s, a reading that misses it alone held for the readings of a capture (SPEC-0028, P5)",
+    async (name, _wait, edit) => {
+      const state = kamajiState(name);
+      const before = READ_STATES[name](state.namespace, "2");
+      const holds = READ_STATES[name](state.namespace, "3");
+
+      edit(before, state.namespace);
+      expect(before).not.toEqual(READ_STATES[name](state.namespace, "2"));
+
+      const { project } = capturesProject({
+        [ADDRESS_HELPER]: [kamajiReading(ADDRESS_HELPER, { version: "1", machine: false })],
+        [state.namespace]: readingsOf(state, ...held(before), ...held(holds)),
+      });
+      const captured = await state.capture(project, state.namespace);
+
+      expect(captured.objects).toEqual(holds);
+    },
+  );
+
+  it.each(KAMAJI_MISSED)("stop the capture of %s when %s (SPEC-0028, P5)", async (name, why, edit) => {
+    const state = kamajiState(name);
+    const missed = READ_STATES[name](state.namespace, "2");
+
+    edit(missed, state.namespace);
+
+    const { project } = capturesProject({ [state.namespace]: readingsOf(state, missed) });
+
+    await expect(state.capture(project, state.namespace)).rejects.toThrow(`can no longer be reached: ${why}`);
+  });
+
+  it("change a state that starts from kamaji-healthy only once kamaji-healthy holds, its counters copied (SPEC-0028, P5)", async () => {
+    const state = kamajiState("kamaji-scaling");
+    const notCopied = READ_STATES["kamaji-healthy"](state.namespace, "1");
+
+    setField("Cluster", "status.controlPlane.replicas", 2)(notCopied, state.namespace);
+
+    const { project, requests } = capturesProject({
+      [state.namespace]: [
+        notCopied,
+        READ_STATES["kamaji-healthy"](state.namespace, "2"),
+        ...held(READ_STATES["kamaji-scaling"](state.namespace, "3")),
+      ],
+    });
+
+    await state.capture(project, state.namespace);
+
+    const order = requests.map((request) => request.join(" "));
+
+    expect(
+      order
+        .slice(
+          0,
+          order.findIndex((request) => request.startsWith("scale ")),
+        )
+        .filter((request) => request.startsWith("read ")),
+    ).toEqual([`read ${state.namespace}`, `read ${state.namespace}`]);
+  });
+
+  it("make the Cluster of kamaji-provisioning only once the tenant of the helper holds the one address (SPEC-0028, P5)", async () => {
+    const state = kamajiState("kamaji-provisioning");
+    const waiting = kamajiReading(ADDRESS_HELPER, {
+      version: "1",
+      kcp: {
+        conditions: [
+          kamajiCondition("TenantControlPlaneCreated", "True", "Succeeded"),
+          kamajiCondition("TenantControlPlaneAddressReady", "False", "Pending"),
+        ],
+      },
+      machine: false,
+    });
+    const { project, requests } = capturesProject({
+      [ADDRESS_HELPER]: [waiting, kamajiReading(ADDRESS_HELPER, { version: "2", machine: false })],
+      [state.namespace]: held(READ_STATES["kamaji-provisioning"](state.namespace, "1")),
+    });
+
+    await state.capture(project, state.namespace);
+    expect(requests.slice(0, 5).map((request) => request.join(" "))).toEqual([
+      `create namespace ${ADDRESS_HELPER}`,
+      "apply",
+      `read ${ADDRESS_HELPER}`,
+      `read ${ADDRESS_HELPER}`,
+      `create namespace ${state.namespace}`,
+    ]);
+  });
+
+  it("reach kamaji-healthy with one worker and kindnet, and kamaji-version-refused by the minor after the version of the tenants (SPEC-0028, P1, P3, P5)", async () => {
+    const healthy = kamajiState("kamaji-healthy");
+    const read = READ_STATES["kamaji-healthy"](healthy.namespace, "1");
+    const first = capturesProject({ [healthy.namespace]: held(read) });
+    const captured = await healthy.capture(first.project, healthy.namespace);
+    const applied = first.applied as KubeObject[];
+
+    expect(captured.objects).toEqual(read);
+    expect(captured.described).toContain(`Cluster ${healthy.namespace}/${healthy.namespace}`);
+    expect(applied.find((object) => object.kind === "ClusterResourceSet")?.metadata.namespace).toBe(healthy.namespace);
+    expect(applied.find((object) => object.kind === "MachineDeployment")?.spec).toMatchObject({
+      replicas: 1,
+      template: { spec: { version: "v1.36.4" } },
+    });
+    expect(applied.find((object) => object.kind === "DevCluster")?.spec).toMatchObject({
+      controlPlaneEndpoint: { host: "172.18.255.200", port: 6443 },
+    });
+
+    const refused = kamajiState("kamaji-version-refused");
+    const second = capturesProject({
+      [refused.namespace]: readingsOf(refused, ...held(READ_STATES["kamaji-version-refused"](refused.namespace, "2"))),
+    });
+
+    await refused.capture(second.project, refused.namespace);
+    expect(second.requests.map((request) => request.join(" "))).toContain(
+      `patch kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io ${refused.namespace} --namespace ${refused.namespace} --type merge --patch {"spec":{"version":"v1.38.0"}}`,
+    );
+  });
+});
+
 // The problems of the workflow of the captures, read as a file: what starts it but a dispatch, and what its artifact
 // holds but the folders of the Kamaji sets (SPEC-0028, P7).
 function captureWorkflowProblems(text: string): string[] {

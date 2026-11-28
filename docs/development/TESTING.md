@@ -29,7 +29,8 @@ fixtures: the shift of their times, the cleaning of a captured object, their
 apply, their YAML, their states and the sets of the repository, the objects
 of the trial of S7 ("Tests of the real tier"), and the captures of Kamaji: the
 cluster of the captures, its pins and its providers, the commands, the nine
-states and how each is held and read, the cleaning and the README of their
+states and how each is held and read, each wait of each state on readings that
+miss it alone, the cleaning and the README of their
 sets, the definitions of Kamaji on the first tier and the workflow of the
 captures ("The captures of Kamaji"). SPEC-0002 lists its cases, SPEC-0003 those
 of the trial of S7 ("Tests", "With the real project: S7"), and SPEC-0028 those

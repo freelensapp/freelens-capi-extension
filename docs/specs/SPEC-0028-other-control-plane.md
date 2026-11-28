@@ -3134,6 +3134,15 @@ item above, and these were decided while implementing it:
   its grace are its `Ready`, the `MachinesReady` of its MachineSet and of its
   MachineDeployment and the `WorkerMachinesReady` of its Cluster, each no longer
   `True` (K23).
+- Decided while implementing: the cases of the nine states take each check
+  that a state waits for, in `e2e/scripts/kamaji.mts` and in the rules of
+  SPEC-0002 that P5 takes for `kamaji-healthy` and `kamaji-paused`, as a wait
+  of its own: for each, readings that miss that check alone, held for the three
+  readings of a capture, before the readings of the state, which the capture
+  reads, each case seen failing once against that check broken alone; with the
+  wait of the states that start from `kamaji-healthy` before their change, that
+  of the helper of `kamaji-provisioning`, and the `missed` of every state that
+  has one.
 - Decided while implementing: `clusterctl describe cluster` runs with its
   default flags once two readings agree, and the third reading follows it; the
   README writes the six cells as a list, a cell that the tool leaves empty as
