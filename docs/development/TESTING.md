@@ -736,7 +736,7 @@ The version of kind is the `kind_version` of the env of
 it is pinned once, for the integration tests and for the environment. The
 versions of Kubernetes are pinned in the pins alone, each one within what the
 release of Cluster API supports in the table of versions of its book
-(`docs/book/src/reference/versions.md` at the tag): the two kind clusters,
+(`docs/book/src/reference/versions.md` at the tag): the three kind clusters,
 which stand for management clusters, take the version of
 `managementKubernetes`, from `v1.33` to `v1.37` for `v1.14.4`, and the workload
 clusters the versions of the pins for them, which the release supports for
@@ -748,7 +748,8 @@ unit test checks that the rule of Renovate allows the same range.
 The scripts refuse a pins file with a missing, unknown or malformed entry, and
 check every file against its digest before they use it: when they download it,
 and every time they read it from their cache. clusterctl reports the release
-and the commit it was built from, and the scripts check both against the pins.
+and the commit it was built from, and the scripts check both against the pins;
+the pinned helm reports its version, which they check against its pin too.
 
 Renovate follows the versions of Cluster API and of the operator, and the tag
 of `kindest/node` of the kind clusters within its range (a custom manager in

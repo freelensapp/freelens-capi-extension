@@ -224,7 +224,7 @@ pnpm test:integration:real-project # vitest, the sessions of the real tier, agai
 pnpm e2e:cluster:up               # The real project: Cluster API and two workload clusters on kind; resumes
 pnpm e2e:cluster:up:definitions   # The definitions of Cluster API and of Kamaji alone, on another kind cluster
 pnpm e2e:cluster:up:kamaji        # The cluster of the captures of Kamaji, on Linux on amd64 alone; resumes
-pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters
+pnpm e2e:cluster:down             # Deletes the kind clusters of the scripts and their workload clusters; gives the host its setting back
 pnpm e2e:pins:check               # Downloads every pinned file and checks it, with no cluster
 pnpm e2e:fixtures:capture <state> # Captures the fixtures of a state, or of all, from the real project
 pnpm e2e:fixtures:capture:kamaji <state> # Captures a Kamaji state, or all, from the cluster of the captures
