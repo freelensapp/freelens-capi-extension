@@ -4896,21 +4896,96 @@ function captureWorkflowProblems(text: string): string[] {
     ...(triggers.includes("workflow_dispatch") ? [] : ["it does not start on workflow_dispatch"]),
   ];
   const expected = KAMAJI_STATES.map((state) => `integration/fixtures/${state.name}/`);
-  const uploads = lines.flatMap((line, index) => (/^\s+uses: actions\/upload-artifact@/.test(line) ? [index] : []));
+  const steps = workflowSteps(lines);
+  const uploads = steps.filter((step) => /^actions\/upload-artifact[/@]/i.test(step.get("uses")?.value ?? ""));
 
+  for (const step of steps) {
+    const uses = step.get("uses")?.value ?? "";
+
+    if ([...step.keys()].some((key) => key.startsWith(UNREADABLE))) {
+      problems.push(`it has a step that this check cannot read: ${[...step.values()][0]?.value}`);
+    }
+    // A cache is uploaded as an artifact is: the one that saves at the end of the job, and the one that saves alone.
+    if (/^actions\/cache(\/save)?@/i.test(uses)) problems.push(`it saves a cache with ${uses}`);
+  }
   if (uploads.length !== 1) problems.push(`it has ${uploads.length} steps that upload an artifact`);
-  for (const index of uploads) {
-    const step = lines.slice(index + 1, lines.findIndex((line, at) => at > index && /^\s+- name:/.test(line)) >>> 0);
-    const path = step.findIndex((line) => /^\s+path:/.test(line));
-    const paths = step
-      .slice(path + 1)
-      .filter((line) => /^\s{12}\S/.test(line))
-      .map((line) => line.trim());
+  for (const step of uploads) {
+    const path = workflowKeys(step.get("with")?.block ?? []).get("path");
+    const paths = !path
+      ? []
+      : /^[|>][-+]?$/.test(path.value)
+        ? path.block.map((line) => line.trim()).filter(Boolean)
+        : [path.value];
 
-    if (path < 0 || !/^\s+path: \|$/.test(step[path] ?? "")) problems.push("its artifact names no list of paths");
+    if (!paths.length) problems.push("its artifact names no paths");
     else if (paths.join(" ") !== expected.join(" ")) problems.push(`its artifact holds ${paths.join(" ")}`);
   }
   return problems;
+}
+
+// A key of a mapping of a workflow: its value on its line, unquoted and without a comment, and the lines under it.
+interface WorkflowKey {
+  value: string;
+  block: string[];
+}
+
+// The key under which `workflowKeys` keeps a line of a mapping that it cannot read as a key.
+const UNREADABLE = "\u0000unreadable ";
+
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+function meaningful(line: string): boolean {
+  return line.trim() !== "" && !line.trim().startsWith("#");
+}
+
+// The keys of a mapping of a workflow, from its lines, the first of which may be an item of a sequence, `- name:` or
+// `- uses:`: each key at the indentation of the first, with its value on its line and the lines under it.
+function workflowKeys(lines: readonly string[]): Map<string, WorkflowKey> {
+  const items = lines.map((line, index) => (index === 0 ? line.replace(/^(\s*)- /, "$1  ") : line));
+  const first = items.find(meaningful);
+  const keys = new Map<string, WorkflowKey>();
+  let current: WorkflowKey | undefined;
+
+  for (const line of first === undefined ? [] : items) {
+    if (meaningful(line) && indentOf(line) <= indentOf(first as string)) {
+      const key = /^\s*([A-Za-z0-9_-]+):(?:\s+(.*?))?\s*$/.exec(line);
+      const value = (key?.[2] ?? line.trim()).replace(/\s+#.*$/, "");
+
+      current = { value: /^(["']).*\1$/.test(value) ? value.slice(1, -1) : value, block: [] };
+      keys.set(key ? key[1] : `${UNREADABLE}${keys.size}`, current);
+    } else {
+      current?.block.push(line);
+    }
+  }
+  return keys;
+}
+
+// The steps of the jobs of a workflow, each read as its keys: one that starts with `- uses:` as one that names its
+// action on a later line, an action in quotes as one without them.
+function workflowSteps(lines: readonly string[]): Map<string, WorkflowKey>[] {
+  const steps: Map<string, WorkflowKey>[] = [];
+
+  lines.forEach((line, index) => {
+    if (!/^\s*steps:\s*$/.test(line)) return;
+
+    const items: string[][] = [];
+    let at: number | undefined;
+
+    for (const next of lines.slice(index + 1)) {
+      if (!meaningful(next)) {
+        items.at(-1)?.push(next);
+        continue;
+      }
+      at ??= indentOf(next);
+      if (indentOf(next) < at || (indentOf(next) === at && !next.trimStart().startsWith("- "))) break;
+      if (indentOf(next) === at) items.push([next]);
+      else items.at(-1)?.push(next);
+    }
+    steps.push(...items.map(workflowKeys));
+  });
+  return steps;
 }
 
 describe("the workflow of the captures of Kamaji", () => {
@@ -4958,6 +5033,51 @@ describe("the workflow of the captures of Kamaji", () => {
       (text: string) =>
         `${text}\n      - name: Upload the logs\n        uses: actions/upload-artifact@v7\n        with:\n          path: logs/\n`,
       /it has 2 steps that upload an artifact/,
+    ],
+    [
+      "a second artifact in a step that starts with - uses:, the state folder of the scripts in it",
+      (text: string) =>
+        text.replace(
+          "      - name: Take the test environment down",
+          "      - uses: actions/upload-artifact@v7\n        with:\n          path: ${{ runner.temp }}/test-environment/\n\n      - name: Take the test environment down",
+        ),
+      /it has 2 steps that upload an artifact; its artifact holds \$\{\{ runner\.temp \}\}\/test-environment\/$/,
+    ],
+    [
+      "a second artifact whose action is in quotes",
+      (text: string) =>
+        text.replace(
+          "      - name: Take the test environment down",
+          '      - name: Upload the state\n        uses: "actions/upload-artifact@v7"\n        with:\n          path: ${{ runner.temp }}/test-environment/\n\n      - name: Take the test environment down',
+        ),
+      /it has 2 steps that upload an artifact/,
+    ],
+    [
+      "a cache that it saves",
+      (text: string) =>
+        text.replace(
+          "      - name: Take the test environment down",
+          "      - name: Save the state\n        uses: actions/cache/save@v6\n        with:\n          path: ${{ runner.temp }}/test-environment/\n          key: state\n\n      - name: Take the test environment down",
+        ),
+      /it saves a cache with actions\/cache\/save@v6/,
+    ],
+    [
+      "a cache that saves at the end of the job, in a step that starts with - uses:, its action in quotes",
+      (text: string) =>
+        text.replace(
+          "      - name: Take the test environment down",
+          "      - uses: 'actions/cache@v6'\n        with:\n          path: ${{ runner.temp }}/test-environment/\n          key: state\n\n      - name: Take the test environment down",
+        ),
+      /it saves a cache with actions\/cache@v6/,
+    ],
+    [
+      "a step that it cannot read",
+      (text: string) =>
+        text.replace(
+          "      - name: Take the test environment down",
+          "      - { uses: actions/upload-artifact@v7, with: { path: logs/ } }\n\n      - name: Take the test environment down",
+        ),
+      /it has a step that this check cannot read: \{ uses: actions\/upload-artifact@v7/,
     ],
   ])("is refused with %s", (_case, change, error) => {
     const changed = change(workflow);

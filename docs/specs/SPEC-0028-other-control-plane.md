@@ -3162,6 +3162,12 @@ item above, and these were decided while implementing it:
   artifact of the workflow names the nine folders one by one, with
   `if-no-files-found: error`, and a step prints the SHA-256 of each file of the
   sets from outside the scripts, besides the scripts.
+- Decided while implementing: the static case of the workflow reads each step
+  by its keys, so that it finds an upload in every form that a workflow writes
+  one in, a step that starts with `- uses:` or names its action on a later line,
+  the action in quotes or not; it refuses a cache that the job saves, with
+  `actions/cache` or `actions/cache/save`, as an upload, and a step that it
+  cannot read.
 - Decided while implementing: each kind cluster of the scripts carries the kinds
   that the scripts read in its namespaces (P6), and a capture builds its reads
   from the cluster that it reads, so that no command reads a cluster with the
