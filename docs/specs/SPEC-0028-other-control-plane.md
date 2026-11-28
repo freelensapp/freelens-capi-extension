@@ -3110,8 +3110,10 @@ item above, and these were decided while implementing it:
   anything, because Docker is not the local one or does not answer, or kind
   cannot list its clusters, since that deletes nothing and reaches no cluster,
   and for that it checks Docker itself, under the lock of the run.
-  `pnpm e2e:fixtures:capture:kamaji` sets it too, and refuses any system but
-  Linux on amd64, as `pnpm e2e:cluster:up:kamaji`.
+  `pnpm e2e:fixtures:capture:kamaji` sets it too, once it has checked the
+  cluster of the captures and its providers, before which it changes nothing of
+  the host, and refuses any system but Linux on amd64, as
+  `pnpm e2e:cluster:up:kamaji`.
 - Decided while implementing: a Cluster of a Kamaji state is named as its
   namespace, as the clusters of the captures of SPEC-0002 are, and so are its
   KamajiControlPlane and its tenant; the KamajiControlPlane names the DataStore

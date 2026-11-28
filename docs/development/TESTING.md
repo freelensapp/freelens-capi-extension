@@ -876,7 +876,9 @@ of SPEC-0002:
   `freelens-capi-s7-cp-only`, which it deletes at its end with their namespace.
 - **The cluster of the captures of Kamaji.** `pnpm e2e:cluster:up:kamaji` and
   `pnpm e2e:fixtures:capture:kamaji` run on Linux on amd64 alone, and refuse
-  any other system or processor before any request. They write to the cluster
+  any other system or processor before any request; the capture changes the
+  host only once it has checked the cluster of the captures and its providers.
+  They write to the cluster
   of the captures and to the containers of its workload clusters, as the real
   project, and to one setting of the kernel of the host besides the limits of
   inotify, `net.netfilter.nf_conntrack_max`, whose value before they changed it

@@ -1735,8 +1735,8 @@ async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
   const { version, workloadKubernetesVersion, workloadKubernetesUpgradeFrom } = pins.clusterApi;
 
   preflight(workflow, pins.managementKubernetes.version, REAL_PROJECT_NEEDS);
-  raiseInotifyLimits();
-  setConntrackMax();
+  // The cluster of the captures and its providers first: the host is changed only for a cluster that the captures can
+  // run on.
   verifyTarget(KAMAJI);
 
   const { missing, other } = kamajiProvidersAgainstPins(installedProviders(KAMAJI), {
@@ -1749,6 +1749,8 @@ async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
     `The cluster of the captures lacks ${missing.map((provider) => `${provider.type} ${provider.name}`).join(", ")}: run pnpm e2e:cluster:up:kamaji first`,
   );
   ensure(!other.length, `${other.join("; ")}: take the environment down, and bring it up again`);
+  raiseInotifyLimits();
+  setConntrackMax();
   await controllersAnswer(pins);
   await writeRepository(pins, { kamaji: true });
 
