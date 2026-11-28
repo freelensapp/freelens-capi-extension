@@ -397,13 +397,20 @@ describe("the pins", () => {
       },
       /kamaji\.chart\.charts\/kamaji\/templates\/controller\.yaml is not a SHA-256 digest/,
     ],
-    [
-      "the chart of Kamaji without a file that the scripts read themselves",
-      (pins: Record<string, any>) => {
-        delete pins.kamaji.chart["charts/kamaji/crds/kamaji.clastix.io_tenantcontrolplanes.yaml"];
+    // Each of the files of the chart that the scripts read themselves, as helm and the first tier take them.
+    ...[
+      "Chart.yaml",
+      "Chart.lock",
+      "values.yaml",
+      "crds/kamaji.clastix.io_tenantcontrolplanes.yaml",
+      "crds/kamaji.clastix.io_datastores.yaml",
+    ].map((file): [string, (pins: Record<string, any>) => void, string] => [
+      `the chart of Kamaji without ${file}, a file that the scripts read themselves`,
+      (pins) => {
+        delete pins.kamaji.chart[`charts/kamaji/${file}`];
       },
-      /kamaji\.chart misses charts\/kamaji\/crds\/kamaji\.clastix\.io_tenantcontrolplanes\.yaml/,
-    ],
+      `kamaji.chart misses charts/kamaji/${file}`,
+    ]),
     [
       "a file outside the folder of the chart of Kamaji",
       (pins: Record<string, any>) => {
