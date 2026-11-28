@@ -4,7 +4,8 @@
     "Renovate updates the version of each object that names a datasource, a depName and a version, in this order. The digests of the new release, and for Cluster API the commit of its tag and the digests of the sources at that commit, are recorded in the same pull request, from the release on GitHub: until then the scripts refuse the downloads, and so does pnpm e2e:pins:check, which the workflow e2e-pins-check.yaml runs on every change to this file.",
     "managementKubernetes is the version of Kubernetes of the kind clusters, the tag of kindest/node, inside supported, the minor versions that the release of Cluster API supports for a management cluster in the table of versions of its book; the scripts refuse it outside them, and a rule of Renovate keeps it inside them. The integration workflow runs its sessions on the cluster of the definitions, at this version.",
     "certManager is the version that the pinned clusterctl installs by default, and workloadKubernetesVersion one that the release of Cluster API supports for workload clusters, as is workloadKubernetesUpgradeFrom, an earlier one, which the capture of a fixture upgrades from: they change with Cluster API, and Renovate does not follow them. The range of managementKubernetes changes with Cluster API too.",
-    "sveltos is what the session of S6 of SPEC-0001 installs next to this extension, on the cluster of the real project (SPEC-0004, P29): the Sveltos extension for Freelens, the package @freelensapp/sveltos-extension from the npm registry, at the release that SPEC-0001 read, and the chart projectsveltos from its release on GitHub, whose definitions the CI of that extension applies at that release. Renovate does not follow them: they change with the spec that reads them again."
+    "sveltos is what the session of S6 of SPEC-0001 installs next to this extension, on the cluster of the real project (SPEC-0004, P29): the Sveltos extension for Freelens, the package @freelensapp/sveltos-extension from the npm registry, at the release that SPEC-0001 read, and the chart projectsveltos from its release on GitHub, whose definitions the CI of that extension applies at that release. Renovate does not follow them: they change with the spec that reads them again.",
+    "kamajiProvider, kamaji, kamajiEtcd, metallb and helm are what the cluster of the captures of SPEC-0028 installs (P2, P3), on Linux on amd64 alone: the Kamaji control plane provider, the two files of its release; Kamaji at the edge release that the provider requires, each file of its chart at the commit of that tag, which names no release of its own; kamaji-etcd, the subchart that helm dependency build downloads at the version of the Chart.lock of that chart, from the repository that the lock names; MetalLB, its manifest at the tag; and helm for Linux on amd64. Renovate does not follow them: they change with the spec that reads them again."
   ],
   "clusterApi": {
     "datasource": "github-releases",
@@ -64,5 +65,57 @@
       "version": "1.16.1",
       "sha256": "94e879d2e09e1896bccb73cd473ed8be72c4ae3ad88fb915ae2137d7992c2718"
     }
+  },
+  "kamajiProvider": {
+    "version": "v0.22.0",
+    "assets": {
+      "control-plane-components.yaml": "b038237c4dfe0890e4fc90cc905ab33247b0680bc96e103f6d42b9553d63aa8d",
+      "metadata.yaml": "281b1b1922dff2bea51db25373e28a9f9d5bb35d8393b22c0031a412057b7061"
+    }
+  },
+  "kamaji": {
+    "version": "26.9.3-edge",
+    "commit": "0ac808bf990a29ff22e397d90d680c45b84d53e2",
+    "chart": {
+      "charts/kamaji/.helmignore": "3a9bb45f339f6d5df27e195c723683b11d358449828929218bc85e241b5da580",
+      "charts/kamaji/Chart.lock": "1e3d77efe4862227d08a35f35574c2be96635a9df5825f59c2ed01de96c5563e",
+      "charts/kamaji/Chart.yaml": "8719eb4e58b21213530c04525aefc079b6758b26370807a8778415da5253e529",
+      "charts/kamaji/Makefile": "8d6af98de4cc82ef93e083b7f8d7c69aff0bac2c95abcadc444c91a9f3c955c9",
+      "charts/kamaji/README.md": "6aab7eea53ca3e862e0f114d304b7d0d5a9dda320ae03c5f8447678cbd21254e",
+      "charts/kamaji/README.md.gotmpl": "ce01798238ead5d4ff27e34f0ac8d6f04e3739b42ec240b8d8364efc364fa1e4",
+      "charts/kamaji/controller-gen/clusterrole.yaml": "0d4c184096f4f3aba8c934d167027aaebaa41c824b8f9d10dd890703ecec0a7f",
+      "charts/kamaji/controller-gen/crd-conversion.yaml": "7c1253e68579dfb317dd850ef7a73b47cadb1b8cf41ddcdb017a54056be5ddd7",
+      "charts/kamaji/controller-gen/mutating-webhook.yaml": "c1da45ade903aae58643680910e896ec24883f107ec55d2ca436646a3b0b4913",
+      "charts/kamaji/controller-gen/validating-webhook.yaml": "3fef2f96681218f90fc20640f030cc7118b41ddb9aabf59359b788f39756c5d6",
+      "charts/kamaji/crds/kamaji.clastix.io_datastores.yaml": "8af612bde8c92d44d9baf39759eb2d54c86d1f6267d07fc5f5ec3397252ec60c",
+      "charts/kamaji/crds/kamaji.clastix.io_kubeconfiggenerators.yaml": "b654d5394002aede1a3e46346846b639a88566922b740e48906bbe6af6f68978",
+      "charts/kamaji/crds/kamaji.clastix.io_tenantcontrolplanes.yaml": "c9fbd93b048f5d7718d679d77cdc4d123eb572dbff803786db9442a9016f8a7e",
+      "charts/kamaji/templates/NOTES.txt": "5d1ec4e6606c1590008c76ae46b0256eb573274149ee073989bc874271824ffc",
+      "charts/kamaji/templates/_helpers.tpl": "00358283a834faae6830c6578103127fa4706c20473b80252d5553f9b07f052b",
+      "charts/kamaji/templates/certmanager_certificate.yaml": "62cea75dff7047cc284199f754dc6013443ee49381ab66f00a248c694b1842a1",
+      "charts/kamaji/templates/certmanager_issuer.yaml": "588d6bc41c6022fba093739c875ba590ba0b40489c78edf6e97c3d3e77fdd2ed",
+      "charts/kamaji/templates/controller.yaml": "3983e8d2e4ec79b5ab79f14e5ba86fd749c6980f3c6977e5754d6941645706e5",
+      "charts/kamaji/templates/kubeconfiggenerator-deployment.yaml": "803102a96a92750b5b0e2d152013f57b9af338e2f4eb8accf6cb87c8328c9708",
+      "charts/kamaji/templates/mutatingwebhookconfiguration.yaml": "96745a8521796f5b987e9bfa24d99f62fa7832717e480202590b77c1114542d7",
+      "charts/kamaji/templates/rbac.yaml": "6dbfb54e27c092877674c64e571e9aca99a287d8d99be65cf65ad858cb487ef0",
+      "charts/kamaji/templates/service_metrics.yaml": "73a279ac1c46abee29744416df5c6053c295ad3952a7dcb67fe24d91c0e7301e",
+      "charts/kamaji/templates/service_webhook.yaml": "5307c11fac5b4032c51d22443ae3a5e53a833caea53751bd3cf4547538be5e14",
+      "charts/kamaji/templates/servicemonitor.yaml": "b2b50ab88f115f948f9c9fd16e4254084ba5d99223e47f4276e0e08c17d61d7b",
+      "charts/kamaji/templates/validatingwebhookconfiguration.yaml": "b30a254b72ebbb2c62326cdfb8eb90cc32e25570e6536955ed965bd0657eb877",
+      "charts/kamaji/values.sample.yaml": "06d42ca0f851f400b86366a254ed2e8e2a8abefb07566602e26a779d3b64ddc3",
+      "charts/kamaji/values.yaml": "fc45ddc1f27122e4296aa77007db20d8b3fa1930b54416ac4e51b778c87e5e3b"
+    }
+  },
+  "kamajiEtcd": {
+    "version": "0.15.0",
+    "sha256": "b8e88d5f535c0d328b46a3ffb5b543d0056e9370cb503e5a11e998d1f555f209"
+  },
+  "metallb": {
+    "version": "v0.15.2",
+    "sha256": "a1b04c376fb39c93265f551fe23716a3ae6e09b790edb3bf257d3fc784c35a18"
+  },
+  "helm": {
+    "version": "v3.19.0",
+    "sha256": "a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496"
   }
 }

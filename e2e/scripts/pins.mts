@@ -45,6 +45,25 @@ export const CLUSTER_API_SOURCES = [
 export const OPERATOR_ASSETS = ["operator-components.yaml"] as const;
 export const CERT_MANAGER_ASSETS = ["cert-manager.yaml"] as const;
 
+// The assets of the release of the Kamaji control plane provider that the cluster of the captures installs
+// (SPEC-0028, P3): its components and its metadata, which clusterctl reads in its local repository.
+export const KAMAJI_PROVIDER_ASSETS = ["control-plane-components.yaml", "metadata.yaml"] as const;
+
+// The folder of the chart of Kamaji in its source, and the files of it that the scripts read themselves: helm reads
+// every file of the folder, and the first tier applies the definitions of the TenantControlPlane and of the DataStore
+// as the chart has them (SPEC-0028, P3, P8).
+export const KAMAJI_CHART_FOLDER = "charts/kamaji";
+export const KAMAJI_CHART_DEFINITIONS = [
+  "charts/kamaji/crds/kamaji.clastix.io_tenantcontrolplanes.yaml",
+  "charts/kamaji/crds/kamaji.clastix.io_datastores.yaml",
+] as const;
+const KAMAJI_CHART_REQUIRED = [
+  "charts/kamaji/Chart.yaml",
+  "charts/kamaji/Chart.lock",
+  "charts/kamaji/values.yaml",
+  ...KAMAJI_CHART_DEFINITIONS,
+];
+
 export type ClusterApiAsset = (typeof CLUSTER_API_ASSETS)[number];
 export type ClusterApiSource = (typeof CLUSTER_API_SOURCES)[number];
 
@@ -83,6 +102,16 @@ export interface Pins {
     extension: PinnedPackage;
     chart: PinnedPackage;
   };
+  // What the cluster of the captures of SPEC-0028 installs, on Linux on amd64 alone (P2, P3): the Kamaji control plane
+  // provider, the files of its release; Kamaji at the edge release that the provider requires, each file of its chart
+  // at the commit of that tag, by its path in the source; kamaji-etcd, the subchart that `helm dependency build`
+  // downloads at the version that the Chart.lock of that chart names, with no leading v; MetalLB, its manifest at the
+  // tag; and helm for Linux on amd64.
+  kamajiProvider: Release<(typeof KAMAJI_PROVIDER_ASSETS)[number]>;
+  kamaji: { version: string; commit: string; chart: Record<string, string> };
+  kamajiEtcd: PinnedPackage;
+  metallb: PinnedPackage;
+  helm: PinnedPackage;
 }
 
 export interface PinnedPackage {
@@ -102,6 +131,11 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const COMMIT = /^[0-9a-f]{40}$/;
 const KUBERNETES = /^v1\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const KUBERNETES_MINOR = /^v1\.(0|[1-9]\d*)$/;
+// An edge release of Kamaji, which publishes edge releases alone, such as 26.9.3-edge.
+const EDGE_RELEASE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-edge$/;
+// A file of the chart of Kamaji, by its path in the source: inside the folder of the chart, with no empty, current or
+// parent segment.
+const CHART_FILE = /^charts\/kamaji(\/(?!\.\.?(\/|$))[A-Za-z0-9._-]+)+$/;
 
 // The minor version of a version of Kubernetes, `v1.37.0` or `v1.37`.
 export function kubernetesMinor(version: string): number {
@@ -207,13 +241,43 @@ function managementKubernetes(value: unknown): Pins["managementKubernetes"] {
 }
 
 // A package of one file, with its version, as a registry numbers it, and its SHA-256.
-function pinnedPackage(value: unknown, where: string): PinnedPackage {
+function pinnedPackage(
+  value: unknown,
+  where: string,
+  version: { pattern: RegExp; what: string } = { pattern: WORKFLOW_VERSION, what: "a version, such as 1.2.3" },
+): PinnedPackage {
   const object = fields(value, where);
 
   exactKeys(object, ["version", "sha256"], where);
   return {
-    version: matching(object.version, WORKFLOW_VERSION, `${where}.version`, "a version, such as 1.2.3"),
+    version: matching(object.version, version.pattern, `${where}.version`, version.what),
     sha256: matching(object.sha256, SHA256, `${where}.sha256`, "a SHA-256 digest, 64 lowercase hexadecimal characters"),
+  };
+}
+
+const RELEASE_VERSION = { pattern: RELEASE, what: "a release version, such as v1.2.3" };
+
+// The pin of Kamaji: its edge release, the commit of that tag, and the SHA-256 of each file of its chart there, by
+// its path in the source, among them the files that the scripts read themselves.
+function kamaji(value: unknown): Pins["kamaji"] {
+  const object = fields(value, "kamaji");
+
+  exactKeys(object, ["version", "commit", "chart"], "kamaji");
+
+  const chart = fields(object.chart, "kamaji.chart");
+
+  for (const path of Object.keys(chart)) {
+    ensure(CHART_FILE.test(path), `kamaji.chart has ${path}, which is not a file of the folder ${KAMAJI_CHART_FOLDER}`);
+    matching(chart[path], SHA256, `kamaji.chart.${path}`, "a SHA-256 digest, 64 lowercase hexadecimal characters");
+  }
+
+  const missing = KAMAJI_CHART_REQUIRED.filter((path) => !(path in chart));
+
+  ensure(!missing.length, `kamaji.chart misses ${missing.join(", ")}`);
+  return {
+    version: matching(object.version, EDGE_RELEASE, "kamaji.version", "an edge release, such as 26.9.3-edge"),
+    commit: matching(object.commit, COMMIT, "kamaji.commit", "a commit, 40 lowercase hexadecimal characters"),
+    chart: chart as Record<string, string>,
   };
 }
 
@@ -242,7 +306,19 @@ export function parsePins(text: string): Pins {
 
   exactKeys(
     root,
-    ["description", "clusterApi", "managementKubernetes", "clusterApiOperator", "certManager", "sveltos"],
+    [
+      "description",
+      "clusterApi",
+      "managementKubernetes",
+      "clusterApiOperator",
+      "certManager",
+      "sveltos",
+      "kamajiProvider",
+      "kamaji",
+      "kamajiEtcd",
+      "metallb",
+      "helm",
+    ],
     PINS_FILE,
   );
   ensure(
@@ -294,6 +370,11 @@ export function parsePins(text: string): Pins {
     }).release,
     certManager: release(root.certManager, "certManager", CERT_MANAGER_ASSETS).release,
     sveltos: sveltos(root.sveltos),
+    kamajiProvider: release(root.kamajiProvider, "kamajiProvider", KAMAJI_PROVIDER_ASSETS).release,
+    kamaji: kamaji(root.kamaji),
+    kamajiEtcd: pinnedPackage(root.kamajiEtcd, "kamajiEtcd"),
+    metallb: pinnedPackage(root.metallb, "metallb", RELEASE_VERSION),
+    helm: pinnedPackage(root.helm, "helm", RELEASE_VERSION),
   };
 }
 

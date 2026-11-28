@@ -2,8 +2,10 @@
 // kubeconfig of the scripts and its node, the local Docker, the digest of a download, the files of an archive,
 // the private state and its lock, the environment of a command, the containers that `down` deletes and what it
 // decides, the providers of the real project against the pins, the command line, what the scripts make of the
-// files of a release and of a chart, and the fixtures: the shift of their times, the cleaning of a captured
-// object, their apply, their YAML, their states and the sets of the repository.
+// files of a release and of a chart, the fixtures: the shift of their times, the cleaning of a captured
+// object, their apply, their YAML, their states and the sets of the repository, and the captures of Kamaji of
+// SPEC-0028: the cluster of the captures, its pins and its providers, the commands, the nine states, the cleaning and
+// the README of their sets, the definitions of Kamaji on the first tier and the workflow of the captures.
 
 import {
   existsSync,
@@ -33,30 +35,49 @@ import {
 } from "../e2e/scripts/checks.mts";
 import {
   applyObjects,
+  CAPTURE_LEAVES_OUT,
   COMMAND_NAMES,
+  captureNamespaces,
   DOWN_WORKLOADS,
   IDENTITY_NAMESPACE,
+  KAMAJI_WORKLOADS,
+  kamajiProvidersAgainstPins,
   onceItSucceeds,
   ownNamespaceProblem,
   parseCommand,
   providersAgainstPins,
+  removeCapture,
   removeObjects,
   takeDown,
 } from "../e2e/scripts/commands.mts";
-import { everyPinnedFile, pinnedContent, sveltosChart, sveltosExtensionPackage } from "../e2e/scripts/downloads.mts";
+import {
+  everyPinnedFile,
+  helmArchive,
+  kamajiChartFile,
+  kamajiEtcdChart,
+  kamajiProviderAsset,
+  metallbManifest,
+  pinnedContent,
+  sveltosChart,
+  sveltosExtensionPackage,
+} from "../e2e/scripts/downloads.mts";
 import {
   applyPlan,
   CAPTURE_TIME,
   cleanObject,
   creationLevels,
+  FIXTURE_CHECKSUM,
   FIXTURE_FINALIZER,
   FIXTURE_RESOURCES,
   FIXTURES_FOLDER,
   fixtureFiles,
+  fixtureResourcesOn,
   HOST_BOOT_ID,
   HOST_CAPACITY,
   HOST_KERNEL,
   isTime,
+  KAMAJI_RESOURCES,
+  PROBE_TIME_WORDS,
   readFixtureSet,
   roundTripDifferences,
   secondsBetween,
@@ -64,16 +85,41 @@ import {
   shiftTimes,
   timesInsideText,
 } from "../e2e/scripts/fixtures.mts";
-import { childEnvironment, clusterctlAsset, INOTIFY_LIMITS, inotifySettings } from "../e2e/scripts/host.mts";
+import {
+  assertCapturesHost,
+  childEnvironment,
+  clusterctlAsset,
+  conntrackMax,
+  conntrackSetting,
+  INOTIFY_LIMITS,
+  inotifySettings,
+} from "../e2e/scripts/host.mts";
+import {
+  ADDRESS_HELPER,
+  assertChartDependencies,
+  ciRun,
+  describedClusterRow,
+  KAMAJI_CLUSTER,
+  KAMAJI_STATES,
+  kamajiReadme,
+  nextMinor,
+  readmeRecords,
+} from "../e2e/scripts/kamaji.mts";
 import {
   chartDefinitions,
+  clusterctlConfiguration,
   customResourceDefinitions,
   definitionName,
+  KAMAJI_PROVIDER,
   KINDNET_LABEL,
+  kamajiCluster,
   kindnetLabelArgument,
   kindnetManifest,
   kindnetResources,
+  metallbPool,
   objectsWithoutStatus,
+  poolAddress,
+  relabeledDefinitions,
   S7,
   s7Clusters,
   s7ClusterWithNoReference,
@@ -95,10 +141,12 @@ import {
   healthChecksPending,
   notHealthy,
   selects,
+  statesOf,
 } from "../e2e/scripts/states.mts";
 import { parseDocuments, plainAllowed, stringifyDocuments } from "../e2e/scripts/yaml.mts";
 
 import type {
+  CapturesTier,
   DefinitionsSession,
   DownOperations,
   InventoryProvider,
@@ -107,6 +155,7 @@ import type {
 } from "../e2e/scripts/commands.mts";
 import type { Fetch, PinnedFile } from "../e2e/scripts/downloads.mts";
 import type { KubeObject } from "../e2e/scripts/fixtures.mts";
+import type { KamajiProject, KamajiState } from "../e2e/scripts/kamaji.mts";
 
 const root = join(import.meta.dirname, "..");
 const pinsText = readFileSync(join(root, PINS_FILE), "utf8");
@@ -317,6 +366,93 @@ describe("the pins", () => {
         pins.sveltos.extension.url = "https://example.com/sveltos-extension.tgz";
       },
       /sveltos\.extension has url, which the scripts do not know/,
+    ],
+    // The pins of the cluster of the captures of SPEC-0028 (P3), each refused without its digest, as the others.
+    [
+      "the Kamaji control plane provider without the digest of its metadata",
+      (pins: Record<string, any>) => {
+        delete pins.kamajiProvider.assets["metadata.yaml"];
+      },
+      /kamajiProvider\.assets misses metadata\.yaml/,
+    ],
+    [
+      "a digest of the components of the Kamaji control plane provider in capitals",
+      (pins: Record<string, any>) => {
+        const assets = pins.kamajiProvider.assets;
+
+        assets["control-plane-components.yaml"] = assets["control-plane-components.yaml"].toUpperCase();
+      },
+      /kamajiProvider\.assets\.control-plane-components\.yaml is not a SHA-256 digest/,
+    ],
+    [
+      "a file of the chart of Kamaji without its digest",
+      (pins: Record<string, any>) => {
+        pins.kamaji.chart["charts/kamaji/templates/controller.yaml"] = "";
+      },
+      /kamaji\.chart\.charts\/kamaji\/templates\/controller\.yaml is not a SHA-256 digest/,
+    ],
+    [
+      "the chart of Kamaji without a file that the scripts read themselves",
+      (pins: Record<string, any>) => {
+        delete pins.kamaji.chart["charts/kamaji/crds/kamaji.clastix.io_tenantcontrolplanes.yaml"];
+      },
+      /kamaji\.chart misses charts\/kamaji\/crds\/kamaji\.clastix\.io_tenantcontrolplanes\.yaml/,
+    ],
+    [
+      "a file outside the folder of the chart of Kamaji",
+      (pins: Record<string, any>) => {
+        pins.kamaji.chart["charts/kamaji/../../go.mod"] = "0".repeat(64);
+      },
+      /kamaji\.chart has charts\/kamaji\/\.\.\/\.\.\/go\.mod, which is not a file of the folder charts\/kamaji/,
+    ],
+    [
+      "a version of Kamaji that is not an edge release, the one kind of release that it publishes",
+      (pins: Record<string, any>) => {
+        pins.kamaji.version = pins.kamaji.version.replace(/-edge$/, "");
+      },
+      /kamaji\.version is not an edge release/,
+    ],
+    [
+      "a commit of Kamaji cut short",
+      (pins: Record<string, any>) => {
+        pins.kamaji.commit = pins.kamaji.commit.slice(0, 12);
+      },
+      /kamaji\.commit is not a commit/,
+    ],
+    [
+      "kamaji-etcd without its digest",
+      (pins: Record<string, any>) => {
+        delete pins.kamajiEtcd.sha256;
+      },
+      /kamajiEtcd misses sha256/,
+    ],
+    [
+      "a digest of MetalLB cut short",
+      (pins: Record<string, any>) => {
+        pins.metallb.sha256 = pins.metallb.sha256.slice(0, 63);
+      },
+      /metallb\.sha256 is not a SHA-256 digest/,
+    ],
+    [
+      "a version of MetalLB without its v",
+      (pins: Record<string, any>) => {
+        pins.metallb.version = pins.metallb.version.slice(1);
+      },
+      /metallb\.version is not a release version/,
+    ],
+    [
+      "helm without its digest",
+      (pins: Record<string, any>) => {
+        delete pins.helm.sha256;
+      },
+      /helm misses sha256/,
+    ],
+    [
+      "the pins without MetalLB",
+      (pins: Record<string, any>) => {
+        delete pins.metallb;
+      },
+      /misses metallb/,
     ],
   ])("refuses %s", (_case, change, error) => {
     expect(() => parsePins(changedPins(change))).toThrow(error);
@@ -724,11 +860,16 @@ describe("the downloads", () => {
         ...Object.values(pins.certManager.assets),
         pins.sveltos.extension.sha256,
         pins.sveltos.chart.sha256,
+        ...Object.values(pins.kamajiProvider.assets),
+        ...Object.values(pins.kamaji.chart),
+        pins.kamajiEtcd.sha256,
+        pins.metallb.sha256,
+        pins.helm.sha256,
       ].sort(),
     );
     for (const file of files) {
       expect(file.url).toMatch(
-        /^https:\/\/(github\.com\/(kubernetes-sigs\/cluster-api|kubernetes-sigs\/cluster-api-operator|cert-manager\/cert-manager|projectsveltos\/helm-charts)\/releases\/download\/|raw\.githubusercontent\.com\/kubernetes-sigs\/cluster-api\/[0-9a-f]{40}\/|registry\.npmjs\.org\/@freelensapp\/sveltos-extension\/-\/)/,
+        /^https:\/\/(github\.com\/(kubernetes-sigs\/cluster-api|kubernetes-sigs\/cluster-api-operator|cert-manager\/cert-manager|projectsveltos\/helm-charts|clastix\/cluster-api-control-plane-provider-kamaji)\/releases\/download\/|raw\.githubusercontent\.com\/(kubernetes-sigs\/cluster-api|clastix\/kamaji)\/[0-9a-f]{40}\/|raw\.githubusercontent\.com\/metallb\/metallb\/v\d+\.\d+\.\d+\/|registry\.npmjs\.org\/@freelensapp\/sveltos-extension\/-\/|clastix\.github\.io\/charts\/kamaji-etcd-|get\.helm\.sh\/helm-v\d+\.\d+\.\d+-linux-amd64\.tar\.gz$)/,
       );
     }
   });
@@ -1084,6 +1225,8 @@ describe("down", () => {
         }
       },
       forget: (target) => done.push(`forget ${target.name}`),
+      // Called for the cluster of the captures of Kamaji alone, which these cases do not give.
+      restoreSettings: (target) => done.push(`restore ${target.name}`),
       log: () => undefined,
     };
 
@@ -1157,7 +1300,12 @@ describe("down", () => {
 
 describe("the command line", () => {
   it.each(COMMAND_NAMES.map((name) => [name]))("accepts %s, with the states it takes", (name) => {
-    const argv = name === "capture" || name === "fixtures-up" ? [name, "paused"] : [name];
+    const argv =
+      name === "capture" || name === "fixtures-up"
+        ? [name, "paused"]
+        : name === "capture-kamaji"
+          ? [name, "kamaji-healthy"]
+          : [name];
 
     expect(parseCommand(argv).name).toBe(name);
   });
@@ -2334,7 +2482,8 @@ describe("the objects that a session applies to a namespace of its own", () => {
 
   it("are applied once what the namespace held is removed, the finalizers of its objects first, then the namespace, which the apply creates again", () => {
     const namespace = "freelens-capi-tree-large";
-    const resources = FIXTURE_RESOURCES.join(",");
+    // The cluster of the definitions serves the kinds of Kamaji, which its reads name (SPEC-0028, P6).
+    const resources = fixtureResourcesOn("definitions").join(",");
     const held = {
       apiVersion: "cluster.x-k8s.io/v1beta2",
       kind: "Machine",
@@ -2550,5 +2699,1355 @@ describe("the trial of S7", () => {
       expect(object.metadata.namespace, `${object.kind} ${object.metadata.name}`).toBe(S7.namespace);
       expect(object.apiVersion).toMatch(/\/v1beta2$/);
     }
+  });
+});
+
+// The captures of a Cluster with a KamajiControlPlane (SPEC-0028, P1 to P8): what the first of their pull requests
+// brings, with no set in the repository yet.
+describe("the files of the captures of Kamaji", () => {
+  it("are each taken from the official source of its project, at the versions of the pins (SPEC-0028, P3)", () => {
+    const { pins } = readPins(root);
+    const chart = "charts/kamaji/Chart.lock";
+
+    expect(kamajiProviderAsset(pins, "/cache", "control-plane-components.yaml")).toEqual({
+      name: `control-plane-components.yaml of the Kamaji control plane provider ${pins.kamajiProvider.version}`,
+      url: `https://github.com/clastix/cluster-api-control-plane-provider-kamaji/releases/download/${pins.kamajiProvider.version}/control-plane-components.yaml`,
+      file: join(
+        "/cache",
+        "cluster-api-control-plane-provider-kamaji",
+        pins.kamajiProvider.version,
+        "control-plane-components.yaml",
+      ),
+      digest: pins.kamajiProvider.assets["control-plane-components.yaml"],
+      executable: false,
+    });
+    expect(kamajiChartFile(pins, "/cache", chart)).toMatchObject({
+      url: `https://raw.githubusercontent.com/clastix/kamaji/${pins.kamaji.commit}/${chart}`,
+      file: join("/cache", "kamaji", pins.kamaji.commit, chart),
+      digest: pins.kamaji.chart[chart],
+    });
+    expect(() => kamajiChartFile(pins, "/cache", "charts/kamaji/values.sample.yml")).toThrow(
+      /is not a file of the chart of Kamaji that the pins hold/,
+    );
+    expect(kamajiEtcdChart(pins, "/cache").url).toBe(
+      `https://clastix.github.io/charts/kamaji-etcd-${pins.kamajiEtcd.version}.tgz`,
+    );
+    expect(metallbManifest(pins, "/cache").url).toBe(
+      `https://raw.githubusercontent.com/metallb/metallb/${pins.metallb.version}/config/manifests/metallb-native.yaml`,
+    );
+    expect(helmArchive(pins, "/cache").url).toBe(`https://get.helm.sh/helm-${pins.helm.version}-linux-amd64.tar.gz`);
+    // The releases that SPEC-0028 read, and the version of kamaji-etcd that the Chart.lock of Kamaji names.
+    expect([pins.kamajiProvider.version, pins.kamaji.version, pins.kamajiEtcd.version]).toEqual([
+      "v0.22.0",
+      "26.9.3-edge",
+      "0.15.0",
+    ]);
+  });
+
+  it("refuses the archive of kamaji-etcd that helm dependency build downloads, before the install, when it is not the one of its pin (SPEC-0028, P3)", () => {
+    const archive = Buffer.from("the archive of kamaji-etcd\n");
+    const pinned = { ...kamajiEtcdChart(readPins(root).pins, "/cache"), digest: sha256(archive) };
+    const name = pinned.file.split("/").pop() as string;
+
+    expect(() => assertChartDependencies(new Map([[name, archive]]), pinned)).not.toThrow();
+    expect(() =>
+      assertChartDependencies(new Map([[name, Buffer.from("the archive of kamaji-etcd, changed\n")]]), pinned),
+    ).toThrow(/the chart kamaji-etcd 0\.15\.0 has the SHA-256 [0-9a-f]{64}, and the pin is/);
+    expect(() =>
+      assertChartDependencies(
+        new Map([
+          [name, archive],
+          ["kamaji-etcd-0.18.1.tgz", archive],
+        ]),
+        pinned,
+      ),
+    ).toThrow(/left kamaji-etcd-0\.15\.0\.tgz, kamaji-etcd-0\.18\.1\.tgz in the folder charts/);
+    expect(() => assertChartDependencies(new Map(), pinned)).toThrow(/left nothing in the folder charts/);
+  });
+});
+
+describe("the cluster of the captures of Kamaji", () => {
+  it("runs on Linux on amd64 alone, and refuses any other system or processor by its name (SPEC-0028, P2)", () => {
+    expect(() => assertCapturesHost("linux", "x64")).not.toThrow();
+    for (const [platform, arch] of [
+      ["linux", "arm64"],
+      ["darwin", "arm64"],
+      ["darwin", "x64"],
+      ["win32", "x64"],
+    ]) {
+      expect(() => assertCapturesHost(platform, arch)).toThrow(`not on ${platform} ${arch}`);
+    }
+  });
+
+  it("gives the host the value of nf_conntrack_max that kube-proxy computes, when it has another one (SPEC-0028, P3)", () => {
+    // 32768 for each processor, and 131072 at least.
+    expect([1, 4, 16].map(conntrackMax)).toEqual([131_072, 131_072, 524_288]);
+    expect(conntrackSetting(524_288, 16)).toBeUndefined();
+    expect(conntrackSetting(262_144, 16)).toBe("net.netfilter.nf_conntrack_max=524288");
+    // kube-proxy writes it whenever it differs, a higher value too.
+    expect(conntrackSetting(1_048_576, 16)).toBe("net.netfilter.nf_conntrack_max=524288");
+    expect(conntrackSetting(undefined, 2)).toBe("net.netfilter.nf_conntrack_max=131072");
+  });
+
+  it("takes the one address of its pool of MetalLB near the end of the network of kind (SPEC-0028, P3, P4)", () => {
+    expect(poolAddress("172.19.0.0/16")).toBe("172.19.255.200");
+    expect(poolAddress("172.18.5.0/16")).toBe("172.18.255.200");
+    expect(poolAddress("10.89.0.0/24")).toBe("10.89.0.200");
+    for (const subnet of ["fc00:f853:ccd:e793::/64", "172.19.0.0/25", "300.19.0.0/16", "172.19.0.0"]) {
+      expect(() => poolAddress(subnet), subnet).toThrow(/is not an IPv4 subnet of a \/24 or larger/);
+    }
+
+    const [pool, advertisement] = JSON.parse(metallbPool("172.19.255.200")).items;
+
+    expect(pool.spec).toEqual({ addresses: ["172.19.255.200/32"] });
+    expect(advertisement.spec).toEqual({ ipAddressPools: [pool.metadata.name] });
+  });
+
+  it("installs the Kamaji control plane provider from the local repository, under the label that clusterctl gives it (SPEC-0028, P3)", () => {
+    const configuration = (kamaji?: string) =>
+      JSON.parse(
+        clusterctlConfiguration("/repository", "/overrides", {
+          clusterApi: "v1.14.4",
+          certManager: "v1.21.3",
+          ...(kamaji ? { kamaji } : {}),
+        }),
+      ).providers as { name: string; type: string; url: string }[];
+
+    expect(configuration().map((provider) => provider.name)).toEqual(["cluster-api", "kubeadm", "kubeadm", "docker"]);
+    expect(configuration("v0.22.0").at(-1)).toEqual({
+      name: "kamaji",
+      type: "ControlPlaneProvider",
+      url: "/repository/control-plane-kamaji/v0.22.0/control-plane-components.yaml",
+    });
+    expect(KAMAJI_PROVIDER.label).toBe("control-plane-kamaji");
+  });
+
+  const provider = (type: string, providerName: string, version: string): InventoryProvider => ({
+    metadata: { namespace: "kamaji-system" },
+    type,
+    providerName,
+    version,
+  });
+  const atThePins = [
+    provider("CoreProvider", "cluster-api", "v1.14.4"),
+    provider("BootstrapProvider", "kubeadm", "v1.14.4"),
+    provider("ControlPlaneProvider", "kubeadm", "v1.14.4"),
+    provider("InfrastructureProvider", "docker", "v1.14.4"),
+    provider("ControlPlaneProvider", "kamaji", "v0.22.0"),
+  ];
+  const versions = { clusterApi: "v1.14.4", kamaji: "v0.22.0" };
+
+  it("runs the providers of the pins and the Kamaji control plane provider at its own, and refuses one missing, one at another release and one more (SPEC-0028, P3)", () => {
+    expect(kamajiProvidersAgainstPins(atThePins, versions)).toEqual({ missing: [], other: [] });
+    expect(kamajiProvidersAgainstPins(atThePins.slice(0, 4), versions).missing).toEqual([
+      { type: "ControlPlaneProvider", name: "kamaji", version: "v0.22.0" },
+    ]);
+    expect(
+      kamajiProvidersAgainstPins(
+        [...atThePins.slice(0, 4), provider("ControlPlaneProvider", "kamaji", "v0.21.0")],
+        versions,
+      ).other,
+    ).toEqual(["ControlPlaneProvider kamaji is installed at v0.21.0, and the pins say v0.22.0"]);
+    expect(
+      kamajiProvidersAgainstPins([...atThePins, provider("InfrastructureProvider", "aws", "v1.14.4")], versions).other,
+    ).toEqual(["InfrastructureProvider aws is installed, and the cluster of the captures runs no such provider"]);
+  });
+});
+
+describe("down with the cluster of the captures of Kamaji", () => {
+  const tierOf = (name: string): Tier => ({
+    name,
+    context: `kind-${name}`,
+    folder: `/state/${name}`,
+    kubeconfig: `/state/${name}/kubeconfig`,
+    record: `/state/${name}/node`,
+    dockerSocket: false,
+  });
+  const management = tierOf("freelens-capi-management");
+  const definitions = tierOf("freelens-capi-definitions");
+  const captures: CapturesTier = {
+    tier: tierOf(KAMAJI_CLUSTER),
+    workloads: [{ name: "freelens-capi-kamaji-healthy" }, { name: ADDRESS_HELPER }],
+  };
+
+  // The system that `down` acts on, with the cluster of the captures and the containers of its workload clusters.
+  function system(records: Record<string, string>, restoring?: Error) {
+    const done: string[] = [];
+    let clusters = [KAMAJI_CLUSTER, "freelens-capi-definitions"];
+    const containers: Record<string, string[]> = {
+      "freelens-capi-kamaji-healthy": ["k1", "k2"],
+      [ADDRESS_HELPER]: ["h1"],
+    };
+    const operations: DownOperations = {
+      kindClusters: () => [...clusters],
+      nodeId: (target) => ({ [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" })[target.name],
+      recordedNode: (target) => records[target.name],
+      deleteCluster: (target) => {
+        done.push(`delete ${target.name}`);
+        clusters = clusters.filter((name) => name !== target.name);
+      },
+      workloadContainers: (workload) => containers[workload.name] ?? [],
+      removeContainers: (ids) => {
+        done.push(`remove ${ids.join(" ")}`);
+        for (const name of Object.keys(containers))
+          containers[name] = containers[name].filter((id) => !ids.includes(id));
+      },
+      forget: (target) => done.push(`forget ${target.name}`),
+      restoreSettings: (target) => {
+        if (restoring) throw restoring;
+        done.push(`restore ${target.name}`);
+      },
+      log: () => undefined,
+    };
+
+    return { operations, done };
+  }
+
+  it("deletes the cluster of the captures and the containers of its workload clusters, the helper among them, and gives the host its setting back (SPEC-0028, P2)", () => {
+    const { operations, done } = system({ [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" });
+
+    takeDown(operations, management, definitions, [], captures);
+    expect(done).toEqual([
+      `delete ${KAMAJI_CLUSTER}`,
+      "delete freelens-capi-definitions",
+      "remove k1 k2",
+      "remove h1",
+      `restore ${KAMAJI_CLUSTER}`,
+      "forget freelens-capi-management",
+      `forget ${KAMAJI_CLUSTER}`,
+      "forget freelens-capi-definitions",
+    ]);
+  });
+
+  it("leaves in place the cluster of the captures and its containers when this state folder did not record it, and keeps the state", () => {
+    const { operations, done } = system({ "freelens-capi-definitions": "d1" });
+
+    expect(() => takeDown(operations, management, definitions, [], captures)).toThrow(
+      /deleting the kind cluster freelens-capi-kamaji: it is not the kind cluster that the scripts created[^]*deleting the containers of freelens-capi-kamaji-healthy: this state folder has no record of the cluster of the captures/,
+    );
+    expect(done).toEqual(["delete freelens-capi-definitions", `restore ${KAMAJI_CLUSTER}`]);
+  });
+
+  it("keeps the state when the setting of the host cannot be given back", () => {
+    const { operations, done } = system(
+      { [KAMAJI_CLUSTER]: "k0", "freelens-capi-definitions": "d1" },
+      new Error("sudo -n sysctl failed"),
+    );
+
+    expect(() => takeDown(operations, management, definitions, [], captures)).toThrow(
+      /giving back the settings of the host of freelens-capi-kamaji: sudo -n sysctl failed/,
+    );
+    expect(done.filter((step) => step.startsWith("forget"))).toEqual([]);
+  });
+
+  it("knows the workload clusters of every Kamaji state and of the helper, apart from those of the real project", () => {
+    expect(KAMAJI_WORKLOADS.map((workload) => workload.name)).toEqual([
+      ...KAMAJI_STATES.map((state) => state.namespace),
+      ADDRESS_HELPER,
+    ]);
+    expect(DOWN_WORKLOADS.map((workload) => workload.name).filter((name) => name.includes("kamaji"))).toEqual([]);
+  });
+});
+
+describe("the command line of the captures of Kamaji", () => {
+  it("takes the Kamaji states with capture-kamaji alone, named or all (SPEC-0028, P7)", () => {
+    expect(parseCommand(["capture-kamaji", "all"])).toEqual({
+      name: "capture-kamaji",
+      states: [],
+      kamajiStates: KAMAJI_STATES,
+    });
+    expect(
+      parseCommand(["capture-kamaji", "kamaji-paused", "kamaji-healthy"]).kamajiStates.map((state) => state.name),
+    ).toEqual(["kamaji-paused", "kamaji-healthy"]);
+    expect(() => parseCommand(["capture-kamaji"])).toThrow(/capture-kamaji takes the states of the fixtures/);
+    expect(() => parseCommand(["capture-kamaji", "healthy"])).toThrow(
+      /healthy is not a state of the captures of Kamaji/,
+    );
+  });
+
+  it("leaves the Kamaji states out of capture all, and of every state of the fixtures, and says so (SPEC-0028, P7)", () => {
+    const kamaji = KAMAJI_STATES.map((state) => state.name);
+
+    expect(parseCommand(["capture", "all"]).states.map((state) => state.name)).not.toEqual(
+      expect.arrayContaining([kamaji[0]]),
+    );
+    for (const argv of [["capture", "all"], ["fixtures-check"], ["fixtures-down", "all"]]) {
+      expect(parseCommand(argv).states.filter((state) => kamaji.includes(state.name))).toEqual([]);
+    }
+    expect(statesOf(["all"]).filter((state) => kamaji.includes(state.name))).toEqual([]);
+    for (const name of kamaji) expect(CAPTURE_LEAVES_OUT).toContain(name);
+    expect(CAPTURE_LEAVES_OUT).toContain("pnpm e2e:fixtures:capture:kamaji");
+    expect(() => parseCommand(["capture", "kamaji-healthy"])).toThrow(
+      /kamaji-healthy is a state of the captures of Kamaji, which pnpm e2e:fixtures:capture:kamaji alone takes/,
+    );
+    expect(() => parseCommand(["fixtures-up", "kamaji-healthy"])).toThrow(/is a state of the captures of Kamaji/);
+  });
+});
+
+describe("the kinds that the scripts read in a namespace", () => {
+  it("name the two kinds of Kamaji on the cluster of the captures and on the cluster of the definitions alone (SPEC-0028, P6)", () => {
+    expect(fixtureResourcesOn("real project")).toEqual(FIXTURE_RESOURCES);
+    for (const cluster of ["captures", "definitions"] as const) {
+      expect(fixtureResourcesOn(cluster)).toEqual([...FIXTURE_RESOURCES, ...KAMAJI_RESOURCES]);
+    }
+    expect(KAMAJI_RESOURCES).toEqual([
+      "kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io",
+      "tenantcontrolplanes.v1alpha1.kamaji.clastix.io",
+    ]);
+    // Never a Secret, a ConfigMap, a Deployment, a Service, a Pod or the DataStore.
+    for (const resource of fixtureResourcesOn("captures")) {
+      expect(resource).not.toMatch(/^(secrets|configmaps|deployments|services|pods|datastores)\./);
+    }
+  });
+});
+
+describe("the definitions of Kamaji on the first tier", () => {
+  it("are those of the release of the provider, with the label of the provider that clusterctl gives them, as they are otherwise (SPEC-0028, P8)", () => {
+    const definition = (name: string, provider = "kamaji") =>
+      [
+        "apiVersion: apiextensions.k8s.io/v1",
+        "kind: CustomResourceDefinition",
+        "metadata:",
+        "  annotations:",
+        "    controller-gen.kubebuilder.io/version: v0.19.0",
+        "  labels:",
+        `    cluster.x-k8s.io/provider: ${provider}`,
+        "    cluster.x-k8s.io/v1beta2: v1alpha2",
+        `  name: ${name}`,
+        "spec:",
+        "  group: controlplane.cluster.x-k8s.io",
+        "  names:",
+        "    description: the label cluster.x-k8s.io/provider: kamaji, in a text",
+        "",
+      ].join("\n");
+    const release = [
+      "apiVersion: v1\nkind: Namespace\nmetadata:\n  labels:\n    cluster.x-k8s.io/provider: kamaji\n  name: kamaji-system\n",
+      definition("kamajicontrolplanes.controlplane.cluster.x-k8s.io"),
+      definition("kamajicontrolplanetemplates.controlplane.cluster.x-k8s.io"),
+    ].join("---\n");
+
+    expect(relabeledDefinitions(release, "control-plane-kamaji")).toEqual([
+      definition("kamajicontrolplanes.controlplane.cluster.x-k8s.io", "control-plane-kamaji"),
+      definition("kamajicontrolplanetemplates.controlplane.cluster.x-k8s.io", "control-plane-kamaji"),
+    ]);
+    expect(() =>
+      relabeledDefinitions(definition("x.example.com").replace("    cluster.x-k8s.io/provider: kamaji\n", ""), "y"),
+    ).toThrow(/The definition x\.example\.com does not have one label cluster\.x-k8s\.io\/provider in its metadata/);
+  });
+});
+
+describe("the toggles of the Kamaji kinds on the first tier", () => {
+  it("give a KamajiControlPlane the generation of a set whose Available observed the one before, as kamaji-version-refused will hold one, by spec.dataStoreSchema (SPEC-0028, P8)", () => {
+    // Written as the set of kamaji-version-refused will hold it, which comes with the sets: the step that failed
+    // observed the generation of the object, and Available the one before (K6).
+    const captured: KubeObject = {
+      apiVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+      kind: "KamajiControlPlane",
+      metadata: { name: "workload", namespace: "workload", generation: 3 },
+      spec: { replicas: 1, version: "v1.38.0" },
+      status: {
+        conditions: [
+          { type: "TenantControlPlaneCreated", status: "False", reason: "Pending", observedGeneration: 3 },
+          { type: "Available", status: "True", reason: "Available", observedGeneration: 2 },
+        ],
+      },
+    };
+    const fixture = cleanObject(captured, 0).object;
+
+    expect(fixture.metadata.generation).toBe(2);
+
+    const plan = applyPlan(fixture, 0);
+
+    expect(plan.create.spec).toEqual({ replicas: 1, version: "v1.38.0", dataStoreSchema: "test-environment" });
+    expect(plan.changes).toEqual([{ spec: { dataStoreSchema: null } }]);
+    expect(applyPlan({ ...fixture, metadata: { ...fixture.metadata, generation: 3 } }, 0).changes).toEqual([
+      { spec: { dataStoreSchema: "test-environment" } },
+      { spec: { dataStoreSchema: null } },
+    ]);
+  });
+
+  it("give a TenantControlPlane whose own status observed the generation before its own its generation, by spec.dataStoreOverrides (SPEC-0028, P8)", () => {
+    const fixture: KubeObject = {
+      apiVersion: "kamaji.clastix.io/v1alpha1",
+      kind: "TenantControlPlane",
+      metadata: { name: "workload", namespace: "workload", generation: 2 },
+      spec: { dataStore: "default", kubernetes: { version: "v1.37.0" } },
+      status: { observedGeneration: 1 },
+    };
+    const plan = applyPlan(fixture, 0);
+
+    expect(plan.create.spec).toEqual({
+      dataStore: "default",
+      kubernetes: { version: "v1.37.0" },
+      dataStoreOverrides: [],
+    });
+    expect(plan.changes).toEqual([{ spec: { dataStoreOverrides: null } }]);
+    expect(fixture.spec).toEqual({ dataStore: "default", kubernetes: { version: "v1.37.0" } });
+  });
+});
+
+// A TenantControlPlane as the API server returns it, in a settled state, with the status that Kamaji writes; every
+// name and checksum is made up.
+function capturedTenant(generation = 2): KubeObject {
+  return {
+    apiVersion: "kamaji.clastix.io/v1alpha1",
+    kind: "TenantControlPlane",
+    metadata: {
+      name: "workload",
+      namespace: "workload",
+      generation,
+      finalizers: ["finalizer.kamaji.clastix.io", "finalizer.kamaji.clastix.io/soot"],
+      ownerReferences: [
+        {
+          apiVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+          kind: "KamajiControlPlane",
+          name: "workload",
+          uid: "7d0c1b0a-1111-4222-8333-944455556666",
+          controller: true,
+          blockOwnerDeletion: true,
+        },
+      ],
+    },
+    spec: { dataStore: "default", kubernetes: { version: "v1.36.4" } },
+    status: {
+      observedGeneration: generation,
+      certificates: {
+        ca: {
+          secretName: "workload-ca",
+          checksum: "8e9c3a1f0b2d4c6e8a0b1c2d3e4f5a6b",
+          lastUpdate: "2026-11-22T13:00:10Z",
+        },
+        apiServer: { secretName: "workload-api-server-certificate", checksum: "" },
+      },
+      kubeconfig: { admin: { secretName: "workload-admin-kubeconfig", checksum: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d" } },
+      kubeadmconfig: { configmapName: "workload-kubeadmconfig", checksum: "aabbccddeeff00112233445566778899" },
+      kubernetesResources: {
+        version: { status: "Ready", version: "v1.36.4" },
+        // The status of the Deployment of the tenant, one generation above the TenantControlPlane (L27).
+        deployment: {
+          name: "workload",
+          namespace: "workload",
+          selector: "kamaji.clastix.io/name=workload",
+          observedGeneration: generation + 1,
+          replicas: 1,
+          readyReplicas: 1,
+          conditions: [{ type: "Available", status: "True", reason: "MinimumReplicasAvailable" }],
+        },
+        service: {
+          name: "workload",
+          namespace: "workload",
+          port: 6443,
+          conditions: [{ type: "LoadBalancerReady", status: "True", observedGeneration: 7 }],
+        },
+      },
+    },
+  };
+}
+
+describe("the cleaning of a TenantControlPlane", () => {
+  it("gives every checksum of its status one fixed value, and keeps the names of its Secrets and ConfigMaps (SPEC-0028, P6)", () => {
+    const { object } = cleanObject(capturedTenant(), 0);
+    const status = object.status as Record<string, any>;
+
+    expect(FIXTURE_CHECKSUM).toMatch(/^0{32}$/);
+    expect(status.certificates.ca).toEqual({
+      secretName: "workload-ca",
+      checksum: FIXTURE_CHECKSUM,
+      lastUpdate: "2026-11-22T13:00:10Z",
+    });
+    // An empty checksum is no checksum: none is given one.
+    expect(status.certificates.apiServer).toEqual({ secretName: "workload-api-server-certificate", checksum: "" });
+    expect(status.kubeconfig.admin).toEqual({ secretName: "workload-admin-kubeconfig", checksum: FIXTURE_CHECKSUM });
+    expect(status.kubeadmconfig).toEqual({ configmapName: "workload-kubeadmconfig", checksum: FIXTURE_CHECKSUM });
+    expect(JSON.stringify(object)).not.toMatch(/8e9c3a1f|1a2b3c4d|aabbccdd/);
+    // Another kind keeps what it holds under that name.
+    const machine = fixtureObject("Machine", "m", undefined, { status: { checksum: "8e9c3a1f" } });
+
+    expect(cleanObject(machine, 0).object.status).toEqual({ checksum: "8e9c3a1f" });
+  });
+
+  it("reads its generation from its own status.observedGeneration alone, and keeps every other one of its status as captured, one above its generation too (SPEC-0028, P6)", () => {
+    const settled = cleanObject(capturedTenant(4), 0).object;
+    const status = settled.status as Record<string, any>;
+
+    expect(settled.metadata.generation).toBeUndefined();
+    expect(status.observedGeneration).toBe(1);
+    expect(status.kubernetesResources.deployment.observedGeneration).toBe(5);
+    expect(status.kubernetesResources.service.conditions[0].observedGeneration).toBe(7);
+
+    // Its own status one behind, as in the first second of an upgrade (L27): the generation is kept as that distance.
+    const behind = capturedTenant(4);
+
+    (behind.status as Record<string, any>).observedGeneration = 3;
+
+    const cleaned = cleanObject(behind, 0).object;
+
+    expect(cleaned.metadata.generation).toBe(2);
+    expect((cleaned.status as Record<string, any>).observedGeneration).toBe(1);
+    expect((cleaned.status as Record<string, any>).kubernetesResources.deployment.observedGeneration).toBe(5);
+    // Every other kind follows the rule of SPEC-0002: a status that observed a later generation is refused.
+    expect(() =>
+      cleanObject(
+        { ...capturedTenant(4), kind: "KamajiControlPlane", apiVersion: "controlplane.cluster.x-k8s.io/v1alpha2" },
+        0,
+      ),
+    ).toThrow(/observed a generation after its own, 4/);
+  });
+
+  it("keeps the finalizers of Kamaji, and the owner of the tenant without its identifier", () => {
+    const { object } = cleanObject(capturedTenant(), 0);
+
+    expect(object.metadata.finalizers).toEqual(["finalizer.kamaji.clastix.io", "finalizer.kamaji.clastix.io/soot"]);
+    expect(object.metadata.ownerReferences).toEqual([
+      {
+        apiVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+        kind: "KamajiControlPlane",
+        name: "workload",
+        controller: true,
+        blockOwnerDeletion: true,
+      },
+    ]);
+    expect(cleanObject(object, 0)).toEqual({ object, leftOut: [] });
+  });
+});
+
+describe("the times of the probe of core inside its messages", () => {
+  const capturedAt = "2026-11-22T13:05:00Z";
+  const seconds = secondsBetween(capturedAt, CAPTURE_TIME);
+  const failed = `${PROBE_TIME_WORDS[0]}2026-11-22T13:03:50Z`;
+  const machineFailed = `${PROBE_TIME_WORDS[1]}2026-11-22T13:03:50Z`;
+  const cluster = (): KubeObject =>
+    fixtureObject("Cluster", "workload", undefined, {
+      status: {
+        conditions: [
+          { type: "RemoteConnectionProbe", status: "False", reason: "ProbeFailed", message: failed },
+          {
+            type: "Available",
+            status: "False",
+            reason: "NotAvailable",
+            message: `* RemoteConnectionProbe: ${failed}\n* ControlPlaneAvailable: NotAvailable`,
+          },
+        ],
+      },
+    });
+  const machine = (): KubeObject =>
+    fixtureObject("Machine", "workload-md-0-a", undefined, {
+      status: {
+        conditions: [
+          { type: "NodeReady", status: "Unknown", reason: "ConnectionDown", message: machineFailed },
+          { type: "NodeHealthy", status: "Unknown", reason: "ConnectionDown", message: machineFailed },
+          { type: "Ready", status: "Unknown", reason: "ReadyUnknown", message: `* NodeHealthy: ${machineFailed}` },
+        ],
+      },
+    });
+  const messages = (object: KubeObject) =>
+    (object.status?.conditions as { message: string }[]).map((item) => item.message);
+
+  it("move as the time of a field, in a capture, each matched by its own words, those that repeat them included (SPEC-0028, P6)", () => {
+    expect(messages(cleanObject(cluster(), seconds).object)).toEqual([
+      `${PROBE_TIME_WORDS[0]}2025-12-31T23:58:50Z`,
+      `* RemoteConnectionProbe: ${PROBE_TIME_WORDS[0]}2025-12-31T23:58:50Z\n* ControlPlaneAvailable: NotAvailable`,
+    ]);
+    expect(messages(cleanObject(machine(), seconds).object)).toEqual([
+      `${PROBE_TIME_WORDS[1]}2025-12-31T23:58:50Z`,
+      `${PROBE_TIME_WORDS[1]}2025-12-31T23:58:50Z`,
+      `* NodeHealthy: ${PROBE_TIME_WORDS[1]}2025-12-31T23:58:50Z`,
+    ]);
+    expect(timesInsideText(cluster())).toEqual([]);
+    expect(timesInsideText(machine())).toEqual([]);
+  });
+
+  it("move to the run on an apply, and back home on the read back, as the times of the fields", () => {
+    const fixture = cleanObject(machine(), seconds).object;
+    const plan = applyPlan(fixture, 3600);
+
+    expect(messages({ ...fixture, status: plan.status })[0]).toBe(`${PROBE_TIME_WORDS[1]}2026-01-01T00:58:50Z`);
+    expect(shiftTimes(shiftTimes(fixture, 12_345), -12_345)).toEqual(fixture);
+  });
+
+  it("leave every other time inside a text refused", () => {
+    for (const text of [
+      "since 2026-11-22T13:19:10Z",
+      "Last probe at 2026-11-22T13:19:10Z",
+      `${PROBE_TIME_WORDS[0]}2026-02-30T00:00:00Z`,
+      `${failed}, and again at 2026-11-22T13:04:10Z`,
+    ]) {
+      expect(timesInsideText({ status: { conditions: [{ message: text }] } }), text).toEqual([
+        ".status.conditions[0].message",
+      ]);
+    }
+  });
+});
+
+// What `clusterctl describe cluster` prints with its default flags, as the probes saw it (SPEC-0028, L22): each column
+// as wide as its widest cell, one space between two, and the lines after the first of a message under it.
+function describeOutput(rows: string[][]): string {
+  const header = ["NAME", "REPLICAS", "AVAILABLE", "READY", "UP TO DATE", "STATUS", "REASON", "SINCE", "MESSAGE"];
+  const table = [header, ...rows];
+  const widths = header.map((_, index) => Math.max(...table.map((row) => (row[index] ?? "").split("\n")[0].length)));
+  const message = widths.slice(0, -1).reduce((offset, width) => offset + width + 1, 0);
+
+  return table
+    .flatMap((row) => [
+      row
+        .map((cell, index) => (index < header.length - 1 ? cell.padEnd(widths[index]) : cell.split("\n")[0]))
+        .join(" ")
+        .trimEnd(),
+      ...(row[8] ?? "")
+        .split("\n")
+        .slice(1)
+        .map((line) => `${"\u2502".padEnd(message)}${line}`),
+    ])
+    .join("\n");
+}
+
+// Of a Cluster of Kamaji, with names and ages of no run in particular: a cell can be empty, a message can take several
+// lines, and a deleting object has `!! DELETED !!` before its name.
+const DESCRIBED = {
+  healthy: describeOutput([
+    ["Cluster workload/workload", "2/2", "2", "2", "2", "True", "Available", "1s", ""],
+    ["\u251c\u2500DevCluster workload/workload", "", "", "", "", "True", "Ready", "32s", ""],
+    ["\u251c\u2500KamajiControlPlane workload/workload, v1.36.4", "1/1", "1", "1", "1", "True", "Available", "12s", ""],
+    ["\u2514\u2500Workers", "", "", "", "", "", "", "", ""],
+  ]),
+  provisioning: describeOutput([
+    [
+      "Cluster workload/workload",
+      "0/1",
+      "",
+      "",
+      "",
+      "False",
+      "NotAvailable",
+      "2s",
+      "* RemoteConnectionProbe: Remote connection not established yet\n* ControlPlaneAvailable: KamajiControlPlane status.initialization.controlPlaneInitialized is false",
+    ],
+    ["\u251c\u2500DevCluster workload/workload", "", "", "", "", "", "", "", ""],
+    ["\u2514\u2500KamajiControlPlane workload/workload, v1.36.4", "", "", "", "", "", "", "", ""],
+  ]),
+  deleting: describeOutput([
+    [
+      "!! DELETED !! Cluster workload/workload",
+      "1/1",
+      "1",
+      "1",
+      "1",
+      "False",
+      "NotAvailable",
+      "1s",
+      "* Deleting: Waiting for KamajiControlPlane to be deleted",
+    ],
+    [
+      "\u251c\u2500!! DELETED !! KamajiControlPlane workload/workload, v1.37.0",
+      "1/1",
+      "1",
+      "1",
+      "1",
+      "True",
+      "Available",
+      "21s",
+      "",
+    ],
+    ["\u2514\u2500DevCluster workload/workload", "", "", "", "", "True", "Ready", "4m5s", ""],
+  ]),
+};
+
+describe("the row of clusterctl describe cluster that the README of a Kamaji set keeps", () => {
+  it("reads each cell by the column that the header names, a cell that clusterctl leaves empty kept empty (SPEC-0028, P6)", () => {
+    expect(describedClusterRow(DESCRIBED.healthy, "workload", "workload")).toEqual({
+      REPLICAS: "2/2",
+      AVAILABLE: "2",
+      READY: "2",
+      "UP TO DATE": "2",
+      STATUS: "True",
+      REASON: "Available",
+    });
+    expect(describedClusterRow(DESCRIBED.provisioning, "workload", "workload")).toEqual({
+      REPLICAS: "0/1",
+      AVAILABLE: "",
+      READY: "",
+      "UP TO DATE": "",
+      STATUS: "False",
+      REASON: "NotAvailable",
+    });
+  });
+
+  it("finds the row of a deleting Cluster by its name after !! DELETED !!", () => {
+    expect(describedClusterRow(DESCRIBED.deleting, "workload", "workload")).toEqual({
+      REPLICAS: "1/1",
+      AVAILABLE: "1",
+      READY: "1",
+      "UP TO DATE": "1",
+      STATUS: "False",
+      REASON: "NotAvailable",
+    });
+  });
+
+  it("refuses an output with no row of the Cluster, or with no header that names every column", () => {
+    expect(() => describedClusterRow(DESCRIBED.healthy, "workload", "other")).toThrow(
+      /printed no row of the Cluster workload\/other/,
+    );
+    expect(() =>
+      describedClusterRow(DESCRIBED.healthy.replace("UP TO DATE", "UP-TO-DATE"), "workload", "workload"),
+    ).toThrow(/has no column UP TO DATE/);
+    expect(() =>
+      describedClusterRow(DESCRIBED.healthy.split("\n").slice(1).join("\n"), "workload", "workload"),
+    ).toThrow(/printed no header/);
+  });
+});
+
+describe("the README of a Kamaji set", () => {
+  const state = KAMAJI_STATES.find((item) => item.name === "kamaji-healthy") as KamajiState;
+  const versions = {
+    clusterApi: "v1.14.4",
+    provider: "v0.22.0",
+    kamaji: "26.9.3-edge",
+    tenant: "v1.36.4",
+    upgradeTo: "v1.37.0",
+    refused: "v1.38.0",
+  };
+  const objects = [
+    fixtureObject("Cluster", state.namespace, undefined, {
+      metadata: { name: state.namespace, namespace: state.namespace },
+    }),
+    {
+      apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+      kind: "DevCluster",
+      metadata: { name: state.namespace, namespace: state.namespace },
+      spec: { controlPlaneEndpoint: { host: "172.18.255.200", port: 6443 } },
+    },
+  ];
+  const files = new Map([
+    ["cluster.yaml", "kind: Cluster\n"],
+    ["devcluster.yaml", "kind: DevCluster\n"],
+  ]);
+  const row = describedClusterRow(DESCRIBED.provisioning, "workload", "workload");
+  const run = "https://github.com/freelensapp/freelens-capi-extension/actions/runs/1/attempts/1";
+
+  it("says the versions, the endpoint, the run, the six cells of the row of clusterctl and the SHA-256 of each file (SPEC-0028, P6)", () => {
+    const readme = kamajiReadme(state, objects, [], { versions, run, row, files });
+    // The paragraphs, which the README writes in lines of 80 columns, each on one line.
+    const text = readme.replace(/\n(?!\n|- )/g, " ");
+
+    for (const version of Object.values(versions).filter((value) => value !== "v1.37.0" && value !== "v1.38.0")) {
+      expect(text).toContain(`\`${version}\``);
+    }
+    expect(text).toContain("`172.18.255.200:6443`");
+    expect(text).toContain(`Captured by the run ${run}`);
+    expect(readme).toContain(
+      "- REPLICAS: `0/1`\n- AVAILABLE: empty\n- READY: empty\n- UP TO DATE: empty\n- STATUS: `False`\n- REASON: `NotAvailable`",
+    );
+    expect(readme).toContain(`- \`cluster.yaml\`: \`${sha256(Buffer.from("kind: Cluster\n"))}\``);
+    expect(readme).toContain(`- \`devcluster.yaml\`: \`${sha256(Buffer.from("kind: DevCluster\n"))}\``);
+    expect(readme).toMatch(/^# A Cluster of Kamaji, healthy\n\n/);
+    expect(readme).not.toMatch(/SINCE `|MESSAGE: /);
+    expect(readmeRecords(readme)).toEqual({
+      row,
+      digests: new Map([...files].map(([file, text]) => [file, sha256(Buffer.from(text))])),
+    });
+    expect(kamajiReadme(state, objects, [], { versions, run: undefined, row, files })).toContain("Captured outside CI");
+  });
+
+  it("takes the run of CI from the variables of GitHub Actions alone", () => {
+    expect(
+      ciRun({
+        GITHUB_ACTIONS: "true",
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_REPOSITORY: "freelensapp/freelens-capi-extension",
+        GITHUB_RUN_ID: "1",
+        GITHUB_RUN_ATTEMPT: "2",
+      }),
+    ).toBe("https://github.com/freelensapp/freelens-capi-extension/actions/runs/1/attempts/2");
+    expect(ciRun({ GITHUB_RUN_ID: "1" })).toBeUndefined();
+    expect(ciRun({})).toBeUndefined();
+  });
+});
+
+// A condition of an object of the states of Kamaji.
+function kamajiCondition(type: string, status: string, reason?: string, message?: string) {
+  return { type, status, ...(reason ? { reason } : {}), ...(message ? { message } : {}) };
+}
+
+interface KamajiReading {
+  version: string;
+  kcp?: { spec?: Record<string, unknown>; status?: Record<string, unknown>; conditions?: object[]; deleting?: boolean };
+  tenant?: { state?: string; deployment?: Record<string, unknown> } | false;
+  cluster?: { conditions?: object[]; controlPlane?: Record<string, unknown>; deleting?: boolean };
+  machine?: { conditions: object[] } | false;
+  // The conditions that sum up a worker Machine, on its MachineSet and its MachineDeployment.
+  summary?: string;
+}
+
+// The objects of a namespace of the cluster of the captures as one reading gives them, from a healthy Cluster of Kamaji
+// with one worker and what the reading changes, every object at the version of the reading.
+function kamajiReading(namespace: string, reading: KamajiReading): KubeObject[] {
+  const metadata = (kind: string, name = namespace) => ({
+    name,
+    namespace,
+    resourceVersion: `${kind}-${reading.version}`,
+  });
+  const counters = { replicas: 1, readyReplicas: 1, availableReplicas: 1, upToDateReplicas: 1 };
+  const kcpStatus = { ...counters, version: "v1.36.4", ready: true, ...reading.kcp?.status };
+  const controlPlane = {
+    desiredReplicas: 1,
+    ...Object.fromEntries(Object.keys(counters).map((key) => [key, kcpStatus[key as keyof typeof counters]])),
+    ...reading.cluster?.controlPlane,
+  };
+  const objects: KubeObject[] = [
+    {
+      apiVersion: "cluster.x-k8s.io/v1beta2",
+      kind: "Cluster",
+      metadata: {
+        ...metadata("Cluster"),
+        ...(reading.cluster?.deleting ? { deletionTimestamp: "2026-11-22T13:00:00Z" } : {}),
+      },
+      spec: {},
+      status: {
+        controlPlane,
+        conditions: reading.cluster?.conditions ?? [
+          kamajiCondition("Available", "True", "Available"),
+          kamajiCondition("RemoteConnectionProbe", "True", "ProbeSucceeded"),
+          kamajiCondition("InfrastructureReady", "True", "Ready"),
+          kamajiCondition("WorkerMachinesReady", reading.summary ?? "True"),
+          kamajiCondition("Paused", "False", "NotPaused"),
+        ],
+      },
+    },
+    {
+      apiVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+      kind: "DevCluster",
+      metadata: metadata("DevCluster"),
+      spec: { controlPlaneEndpoint: { host: "172.18.255.200", port: 6443 } },
+      status: { conditions: [kamajiCondition("Ready", "True", "Ready")] },
+    },
+    {
+      apiVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+      kind: "KamajiControlPlane",
+      metadata: {
+        ...metadata("KamajiControlPlane"),
+        ...(reading.kcp?.deleting
+          ? { deletionTimestamp: "2026-11-22T13:00:00Z", finalizers: [FIXTURE_FINALIZER] }
+          : {}),
+      },
+      spec: { replicas: 1, version: "v1.36.4", ...reading.kcp?.spec },
+      status: {
+        ...kcpStatus,
+        conditions: reading.kcp?.conditions ?? [
+          kamajiCondition("TenantControlPlaneCreated", "True", "Succeeded"),
+          kamajiCondition("TenantControlPlaneAddressReady", "True", "Succeeded"),
+          kamajiCondition("KamajiControlPlaneIsReady", "True", "Succeeded"),
+          kamajiCondition("Available", "True", "Available"),
+        ],
+      },
+    },
+  ];
+
+  if (reading.tenant !== false) {
+    objects.push({
+      apiVersion: "kamaji.clastix.io/v1alpha1",
+      kind: "TenantControlPlane",
+      metadata: metadata("TenantControlPlane"),
+      spec: { kubernetes: { version: "v1.36.4" } },
+      status: {
+        kubernetesResources: {
+          version: { status: reading.tenant?.state ?? "Ready", version: "v1.36.4" },
+          deployment: { selector: `kamaji.clastix.io/name=${namespace}`, ...reading.tenant?.deployment },
+        },
+      },
+    });
+  }
+  if (reading.machine !== false) {
+    const summary = [kamajiCondition("MachinesReady", reading.summary ?? "True"), kamajiCondition("Paused", "False")];
+
+    objects.push(
+      {
+        apiVersion: "cluster.x-k8s.io/v1beta2",
+        kind: "MachineDeployment",
+        metadata: metadata("MachineDeployment", `${namespace}-md-0`),
+        status: { conditions: summary },
+      },
+      {
+        apiVersion: "cluster.x-k8s.io/v1beta2",
+        kind: "MachineSet",
+        metadata: metadata("MachineSet", `${namespace}-md-0-a`),
+        status: { conditions: summary },
+      },
+      {
+        apiVersion: "cluster.x-k8s.io/v1beta2",
+        kind: "Machine",
+        metadata: metadata("Machine", `${namespace}-md-0-a-b`),
+        status: {
+          nodeRef: { name: `${namespace}-md-0-a-b` },
+          conditions: reading.machine?.conditions ?? [
+            kamajiCondition("Ready", "True", "Ready"),
+            kamajiCondition("NodeReady", "True", "NodeReady"),
+            kamajiCondition("NodeHealthy", "True", "NodeHealthy"),
+          ],
+        },
+      },
+    );
+  }
+  return objects;
+}
+
+// A cluster of the captures for a capture of a Kamaji state, which answers the readings of each namespace in the order
+// given, the last one again once they run out, records every other request, and describes a Cluster at once.
+function capturesProject(readings: Record<string, KubeObject[][]>): {
+  project: KamajiProject;
+  requests: string[][];
+  applied: unknown[];
+} {
+  const requests: string[][] = [];
+  const applied: unknown[] = [];
+  const project: KamajiProject = {
+    kubectl: (args) => {
+      if (args[0] === "get" && args[1] === fixtureResourcesOn("captures").join(",")) {
+        const queue = readings[args[3]] ?? [[]];
+        const items = queue.length > 1 ? queue.shift() : queue[0];
+
+        requests.push(["read", args[3]]);
+        return JSON.stringify({ items });
+      }
+      requests.push(args);
+      return "";
+    },
+    apply: (manifest) => {
+      const parsed = JSON.parse(manifest);
+
+      applied.push(...(parsed.kind === "List" ? parsed.items : [parsed]));
+      requests.push(["apply"]);
+    },
+    kindnet: (namespace) =>
+      JSON.stringify({ kind: "List", items: [{ kind: "ClusterResourceSet", metadata: { namespace } }] }),
+    resources: fixtureResourcesOn("captures"),
+    address: "172.18.255.200",
+    describe: (namespace) => {
+      requests.push(["describe", namespace]);
+      return DESCRIBED.healthy.replaceAll("workload", namespace);
+    },
+    versions: {
+      clusterApi: "v1.14.4",
+      provider: "v0.22.0",
+      kamaji: "26.9.3-edge",
+      tenant: "v1.36.4",
+      upgradeTo: "v1.37.0",
+      refused: "v1.38.0",
+    },
+    log: () => undefined,
+    // At once, but through the loop of events, so that a capture that waits for good meets the timeout of its case.
+    pause: () => new Promise((resolve) => setImmediate(resolve)),
+  };
+
+  return { project, requests, applied };
+}
+
+function kamajiState(name: string): KamajiState {
+  return KAMAJI_STATES.find((state) => state.name === name) as KamajiState;
+}
+
+// A reading of a state of Kamaji, twice, for the two readings that agree, and a third time, after clusterctl.
+const held = (objects: KubeObject[]) => [objects, objects, objects];
+
+describe("the states of the captures of Kamaji", () => {
+  it("are nine, each with a name and a namespace of its own, apart from the states of the fixtures (SPEC-0028, P1)", () => {
+    expect(KAMAJI_STATES.map((state) => [state.name, state.namespace])).toEqual(
+      [
+        "provisioning",
+        "healthy",
+        "scaling",
+        "upgrading",
+        "version-refused",
+        "sleeping",
+        "not-ready",
+        "paused",
+        "deleting",
+      ].map((name) => [`kamaji-${name}`, `freelens-capi-kamaji-${name}`]),
+    );
+    for (const state of KAMAJI_STATES) {
+      expect(FIXTURE_STATES.map((item) => item.namespace)).not.toContain(state.namespace);
+      expect(state.worker).toBe(state.name !== "kamaji-provisioning");
+    }
+    expect(nextMinor("v1.37.0")).toBe("v1.38.0");
+  });
+
+  it("make each KamajiControlPlane of one replica, its Service of type LoadBalancer, with the addons CoreDNS and kube-proxy, and the endpoint of the tenant written for a worker (SPEC-0028, P1, P4)", () => {
+    const withWorker = kamajiCluster("workload", "workload", {
+      version: "v1.36.4",
+      address: "172.18.255.200",
+      worker: true,
+    }) as KubeObject[];
+    const without = kamajiCluster("workload", "workload", { version: "v1.36.4", worker: false }) as KubeObject[];
+    const find = (objects: KubeObject[], kind: string) => objects.find((object) => object.kind === kind) as KubeObject;
+
+    for (const objects of [withWorker, without]) {
+      expect(find(objects, "KamajiControlPlane").spec).toMatchObject({
+        replicas: 1,
+        version: "v1.36.4",
+        network: { serviceType: "LoadBalancer" },
+        addons: { coreDNS: { dnsServiceIPs: ["10.128.0.10"] }, kubeProxy: {} },
+      });
+      expect(find(objects, "Cluster").spec).toMatchObject({
+        controlPlaneRef: { apiGroup: "controlplane.cluster.x-k8s.io", kind: "KamajiControlPlane", name: "workload" },
+        infrastructureRef: { apiGroup: "infrastructure.cluster.x-k8s.io", kind: "DevCluster", name: "workload" },
+      });
+    }
+    expect(find(withWorker, "DevCluster").spec).toEqual({
+      controlPlaneEndpoint: { host: "172.18.255.200", port: 6443 },
+      backend: { docker: {} },
+    });
+    expect(find(without, "DevCluster").spec).toEqual({ backend: { docker: {} } });
+    expect(find(withWorker, "MachineDeployment").spec).toMatchObject({
+      replicas: 1,
+      template: { spec: { version: "v1.36.4" } },
+    });
+    expect(find(withWorker, "Cluster").metadata.labels).toEqual({ [KINDNET_LABEL.key]: KINDNET_LABEL.value });
+    expect(without.map((object) => object.kind)).toEqual(["Cluster", "DevCluster", "KamajiControlPlane"]);
+  });
+
+  it("hold kamaji-provisioning by a helper Cluster in a namespace of its own, which takes the address first and which the capture does not read (SPEC-0028, P5)", async () => {
+    const state = kamajiState("kamaji-provisioning");
+    const waiting = kamajiReading(state.namespace, {
+      version: "2",
+      kcp: {
+        status: {
+          ready: false,
+          version: "",
+          replicas: undefined,
+          readyReplicas: undefined,
+          availableReplicas: undefined,
+          upToDateReplicas: undefined,
+        },
+        conditions: [
+          kamajiCondition("TenantControlPlaneCreated", "True", "Succeeded"),
+          kamajiCondition(
+            "TenantControlPlaneAddressReady",
+            "False",
+            "Pending",
+            "Control Plane Endpoint is not yet available",
+          ),
+        ],
+      },
+      machine: false,
+    });
+    const { project, requests, applied } = capturesProject({
+      [ADDRESS_HELPER]: [kamajiReading(ADDRESS_HELPER, { version: "1", machine: false })],
+      [state.namespace]: held(waiting),
+    });
+    const captured = await state.capture(project, state.namespace);
+
+    expect(state.helper).toBe(ADDRESS_HELPER);
+    expect(captureNamespaces(state)).toEqual([state.namespace, ADDRESS_HELPER]);
+    expect(requests.slice(0, 4)).toEqual([
+      ["create", "namespace", ADDRESS_HELPER],
+      ["apply"],
+      ["read", ADDRESS_HELPER],
+      ["create", "namespace", state.namespace],
+    ]);
+    expect(requests.filter((request) => request[0] === "read" && request[1] === ADDRESS_HELPER)).toHaveLength(1);
+    expect(captured.objects.every((object) => object.metadata.namespace === state.namespace)).toBe(true);
+    expect(captured.described).toContain(`Cluster ${state.namespace}/${state.namespace}`);
+    // No worker, and no endpoint written in the DevCluster of either Cluster.
+    expect(applied.filter((object) => (object as KubeObject).kind === "MachineDeployment")).toEqual([]);
+    expect(
+      applied
+        .filter((object) => (object as KubeObject).kind === "DevCluster")
+        .map((object) => (object as KubeObject).spec),
+    ).toEqual([{ backend: { docker: {} } }, { backend: { docker: {} } }]);
+  });
+
+  it("stop the capture of kamaji-provisioning when its tenant gets an address", async () => {
+    const state = kamajiState("kamaji-provisioning");
+    const { project } = capturesProject({
+      [ADDRESS_HELPER]: [kamajiReading(ADDRESS_HELPER, { version: "1", machine: false })],
+      [state.namespace]: [kamajiReading(state.namespace, { version: "2", machine: false })],
+    });
+
+    await expect(state.capture(project, state.namespace)).rejects.toThrow(
+      /can no longer be reached: the tenant has an address/,
+    );
+  });
+
+  it("hold kamaji-scaling and kamaji-upgrading by the quota of the scripts of one Pod, made before the change (SPEC-0028, P5)", async () => {
+    const scaling = kamajiState("kamaji-scaling");
+    const scaled = kamajiReading(scaling.namespace, {
+      version: "2",
+      kcp: {
+        spec: { replicas: 3 },
+        status: { ready: false },
+        conditions: [
+          kamajiCondition(
+            "KamajiControlPlaneIsReady",
+            "False",
+            "Failed",
+            "TenantControlPlane in Unknown status, enqueue back",
+          ),
+          kamajiCondition("Available", "False", "NotAvailable"),
+        ],
+      },
+      tenant: {
+        state: "Unknown",
+        deployment: { conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")] },
+      },
+      cluster: {
+        controlPlane: { desiredReplicas: 3 },
+        conditions: [kamajiCondition("Available", "False", "NotAvailable")],
+      },
+    });
+    const first = capturesProject({
+      [scaling.namespace]: [kamajiReading(scaling.namespace, { version: "1" }), ...held(scaled)],
+    });
+
+    await scaling.capture(first.project, scaling.namespace);
+
+    const quota = first.applied.find((object) => (object as KubeObject).kind === "ResourceQuota") as KubeObject;
+    const order = first.requests.map((request) => request.join(" "));
+
+    expect(quota).toEqual({
+      apiVersion: "v1",
+      kind: "ResourceQuota",
+      metadata: { name: "test-environment", namespace: scaling.namespace },
+      spec: { hard: { pods: "1" } },
+    });
+    expect(
+      order.indexOf(
+        `scale kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io ${scaling.namespace} --namespace ${scaling.namespace} --replicas 3`,
+      ),
+    ).toBeGreaterThan(order.lastIndexOf("apply"));
+
+    const upgrading = kamajiState("kamaji-upgrading");
+    const upgraded = kamajiReading(upgrading.namespace, {
+      version: "2",
+      kcp: { spec: { version: "v1.37.0" }, status: { upToDateReplicas: 0 } },
+      tenant: {
+        state: "Upgrading",
+        deployment: { conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")] },
+      },
+    });
+    const second = capturesProject({
+      [upgrading.namespace]: [kamajiReading(upgrading.namespace, { version: "1" }), ...held(upgraded)],
+    });
+
+    await upgrading.capture(second.project, upgrading.namespace);
+    expect(second.applied.filter((object) => (object as KubeObject).kind === "ResourceQuota")).toHaveLength(1);
+    expect(second.requests.map((request) => request.join(" "))).toContain(
+      `patch kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io ${upgrading.namespace} --namespace ${upgrading.namespace} --type merge --patch {"spec":{"version":"v1.37.0"}}`,
+    );
+
+    // A scale that the quota did not hold stops the capture.
+    const notHeld = capturesProject({
+      [scaling.namespace]: [
+        kamajiReading(scaling.namespace, { version: "1" }),
+        kamajiReading(scaling.namespace, {
+          version: "2",
+          kcp: { spec: { replicas: 3 }, status: { readyReplicas: 3 } },
+        }),
+      ],
+    });
+
+    await expect(scaling.capture(notHeld.project, scaling.namespace)).rejects.toThrow(
+      /the quota did not hold the scale/,
+    );
+  });
+
+  it("read kamaji-sleeping and kamaji-not-ready only past the grace of the conditions of the Nodes of their worker, once the probe of core failed and no Pod of the tenant ends (SPEC-0028, P5)", async () => {
+    const machineFailed = `${PROBE_TIME_WORDS[1]}2026-11-22T13:03:50Z`;
+    const zero = { replicas: 0, readyReplicas: 0, availableReplicas: 0, upToDateReplicas: 0, ready: false };
+    const reading = (namespace: string, version: string, state: string, past: boolean, ending = 0): KubeObject[] =>
+      kamajiReading(namespace, {
+        version,
+        kcp: {
+          spec: state === "Sleeping" ? { replicas: 0 } : {},
+          status: zero,
+          conditions: [
+            kamajiCondition(
+              "KamajiControlPlaneIsReady",
+              "False",
+              "Failed",
+              `TenantControlPlane in ${state} status, enqueue back`,
+            ),
+            kamajiCondition("Available", "False", "NotAvailable"),
+          ],
+        },
+        tenant: {
+          state,
+          deployment: {
+            terminatingReplicas: ending,
+            conditions: [kamajiCondition("ReplicaFailure", "True", "FailedCreate")],
+          },
+        },
+        cluster: {
+          controlPlane: state === "Sleeping" ? { desiredReplicas: 0 } : {},
+          conditions: [
+            kamajiCondition(
+              "RemoteConnectionProbe",
+              "False",
+              "ProbeFailed",
+              `${PROBE_TIME_WORDS[0]}2026-11-22T13:03:50Z`,
+            ),
+            kamajiCondition("WorkerMachinesReady", past ? "Unknown" : "True"),
+          ],
+        },
+        machine: {
+          conditions: past
+            ? [
+                kamajiCondition("Ready", "Unknown"),
+                kamajiCondition("NodeReady", "Unknown", "ConnectionDown", machineFailed),
+                kamajiCondition("NodeHealthy", "Unknown", "ConnectionDown", machineFailed),
+              ]
+            : [
+                kamajiCondition("Ready", "True"),
+                kamajiCondition("NodeReady", "True"),
+                kamajiCondition("NodeHealthy", "True"),
+              ],
+        },
+        summary: past ? "Unknown" : "True",
+      });
+
+    for (const [name, state] of [
+      ["kamaji-sleeping", "Sleeping"],
+      ["kamaji-not-ready", "NotReady"],
+    ]) {
+      const { namespace } = kamajiState(name);
+      const { project, requests, applied } = capturesProject({
+        [namespace]: [
+          kamajiReading(namespace, { version: "1" }),
+          // A Pod of the tenant still ending, then the probe failed, the worker before its grace, long enough to be read
+          // three times, as a capture would take it without the grace, then past it.
+          reading(namespace, "2", state, false, 1),
+          ...held(reading(namespace, "3", state, false)),
+          ...held(reading(namespace, "4", state, true)),
+        ],
+      });
+      const captured = await kamajiState(name).capture(project, namespace);
+
+      expect(captured.objects.find((object) => object.kind === "Machine")?.status?.conditions).toEqual(
+        reading(namespace, "4", state, true).find((object) => object.kind === "Machine")?.status?.conditions,
+      );
+      expect(requests.filter((request) => request[0] === "read")).toHaveLength(8);
+      if (name === "kamaji-not-ready") {
+        expect(applied.find((object) => (object as KubeObject).kind === "ResourceQuota")).toMatchObject({
+          spec: { hard: { pods: "0" } },
+        });
+        expect(requests.map((request) => request.join(" "))).toContain(
+          `delete pods --namespace ${namespace} --selector kamaji.clastix.io/name=${namespace} --wait=false`,
+        );
+      }
+    }
+  });
+
+  it("stop the capture of kamaji-paused once its KamajiControlPlane gets an event and reports Paused (SPEC-0028, P5)", async () => {
+    const state = kamajiState("kamaji-paused");
+    const paused = (kcpPaused: boolean) =>
+      kamajiReading(state.namespace, {
+        version: "2",
+        cluster: { conditions: [kamajiCondition("Available", "True"), kamajiCondition("Paused", "True", "Paused")] },
+        kcp: kcpPaused
+          ? { conditions: [kamajiCondition("Available", "True"), kamajiCondition("Paused", "True", "Paused")] }
+          : undefined,
+      }).map((object) =>
+        ["MachineDeployment", "MachineSet", "Machine", "DevCluster"].includes(object.kind)
+          ? { ...object, status: { ...object.status, conditions: [kamajiCondition("Paused", "True", "Paused")] } }
+          : object,
+      );
+    const { project, requests } = capturesProject({
+      [state.namespace]: [kamajiReading(state.namespace, { version: "1" }), ...held(paused(false))],
+    });
+    const captured = await state.capture(project, state.namespace);
+
+    expect(requests.map((request) => request.join(" "))).toContain(
+      `patch clusters.v1beta2.cluster.x-k8s.io ${state.namespace} --namespace ${state.namespace} --type merge --patch {"spec":{"paused":true}}`,
+    );
+    expect(captured.objects.find((object) => object.kind === "KamajiControlPlane")?.status?.conditions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "Paused" })]),
+    );
+
+    const stopped = capturesProject({
+      [state.namespace]: [kamajiReading(state.namespace, { version: "1" }), paused(true)],
+    });
+
+    await expect(state.capture(stopped.project, state.namespace)).rejects.toThrow(
+      /can no longer be reached: the KamajiControlPlane got an event, and reports Paused/,
+    );
+  });
+
+  it("hold kamaji-deleting by the finalizer of the scripts on its KamajiControlPlane, read once the worker is gone (SPEC-0028, P5)", async () => {
+    const state = kamajiState("kamaji-deleting");
+    const deletingReading = (machine: boolean) =>
+      kamajiReading(state.namespace, {
+        version: machine ? "2" : "3",
+        kcp: { deleting: true },
+        cluster: {
+          deleting: true,
+          conditions: [kamajiCondition("Deleting", "True", "WaitingForControlPlaneDeletion")],
+        },
+        ...(machine ? {} : { machine: false }),
+      });
+    const { project, requests } = capturesProject({
+      [state.namespace]: [
+        kamajiReading(state.namespace, { version: "1" }),
+        deletingReading(true),
+        ...held(deletingReading(false)),
+      ],
+    });
+    const captured = await state.capture(project, state.namespace);
+    const order = requests.map((request) => request.join(" "));
+    const finalizer = order.indexOf(
+      `patch kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io ${state.namespace} --namespace ${state.namespace} --type merge --patch {"metadata":{"finalizers":["${FIXTURE_FINALIZER}"]}}`,
+    );
+
+    expect(finalizer).toBeGreaterThan(-1);
+    expect(
+      order.indexOf(
+        `delete clusters.v1beta2.cluster.x-k8s.io ${state.namespace} --namespace ${state.namespace} --wait=false`,
+      ),
+    ).toBeGreaterThan(finalizer);
+    expect(captured.objects.filter((object) => object.kind === "Machine")).toEqual([]);
+  });
+
+  it("remove with the workload cluster of a capture the finalizer of the scripts, before its deletion, and wait until the namespace is gone (SPEC-0028, P5)", async () => {
+    const namespace = "freelens-capi-kamaji-deleting";
+    let deleted = false;
+    let namespaceDeleted = false;
+    const requests: string[][] = [];
+    const held = kamajiReading(namespace, { version: "1", kcp: { deleting: true }, machine: false });
+
+    (held.find((object) => object.kind === "KamajiControlPlane") as KubeObject).metadata.finalizers = [
+      "other",
+      FIXTURE_FINALIZER,
+    ];
+
+    const project = {
+      kubectl: (args: string[]) => {
+        requests.push(args);
+        if (args[0] === "get" && args[1] === "namespace") return namespaceDeleted ? "" : `namespace/${namespace}\n`;
+        if (args[0] === "get") return JSON.stringify({ items: deleted ? [] : held });
+        if (args[0] === "delete" && args[1] === "clusters.v1beta2.cluster.x-k8s.io") deleted = true;
+        if (args[0] === "delete" && args[1] === "namespace") namespaceDeleted = true;
+        return "";
+      },
+      resources: fixtureResourcesOn("captures"),
+      log: () => undefined,
+      pause: async () => undefined,
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      await removeCapture(project, namespace);
+    } finally {
+      log.mockRestore();
+    }
+
+    const order = requests.map((args) => args.slice(0, 3).join(" "));
+
+    expect(order).toEqual([
+      `get namespace ${namespace}`,
+      `get ${fixtureResourcesOn("captures").join(",")} --namespace`,
+      `patch kamajicontrolplane.v1alpha2.controlplane.cluster.x-k8s.io ${namespace}`,
+      "delete clusters.v1beta2.cluster.x-k8s.io --all",
+      `get ${fixtureResourcesOn("captures").join(",")} --namespace`,
+      `delete namespace ${namespace}`,
+      `get namespace ${namespace}`,
+    ]);
+    expect(requests[2]).toContain(JSON.stringify({ metadata: { finalizers: ["other"] } }));
   });
 });
