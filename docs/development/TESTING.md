@@ -799,7 +799,7 @@ gh release view <tag> --repo clastix/cluster-api-control-plane-provider-kamaji -
 # The commit of the tag of Kamaji, and the SHA-256 of each file of its chart there.
 gh api repos/clastix/kamaji/commits/<tag> --jq .sha
 git -C <a clone of clastix/kamaji at that commit> ls-tree -r --name-only HEAD charts/kamaji |
-  while read -r path; do echo "$path $(git -C <the clone> cat-file blob "HEAD:$path" | shasum -a 256 | cut -d' ' -f1)"; done
+  while read -r file; do echo "$file $(git -C <the clone> cat-file blob "HEAD:$file" | shasum -a 256 | cut -d' ' -f1)"; done
 curl -fsSL https://clastix.github.io/charts/index.yaml # the digest of kamaji-etcd at its version
 curl -fsSL https://raw.githubusercontent.com/metallb/metallb/<tag>/config/manifests/metallb-native.yaml | shasum -a 256
 curl -fsSL https://get.helm.sh/helm-<version>-linux-amd64.tar.gz.sha256sum
