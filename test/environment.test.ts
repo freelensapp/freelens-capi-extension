@@ -3455,19 +3455,22 @@ describe("the times of the probe of core inside its messages", () => {
   });
 });
 
-// What `clusterctl describe cluster` prints with its default flags, as the probes saw it (SPEC-0028, L22): each column
-// as wide as its widest cell, one space between two, and the lines after the first of a message under it.
+// What `clusterctl describe cluster` prints with its default flags, as clusterctl v1.14.4 pads its table
+// (internal/util/tree/tree.go:70-81) and the probes saw it (SPEC-0028, L22): each column as wide as its widest cell with
+// its padding, two spaces after a cell of a row and one after a title of the header, and the lines after the first of a
+// message under it.
 function describeOutput(rows: string[][]): string {
   const header = ["NAME", "REPLICAS", "AVAILABLE", "READY", "UP TO DATE", "STATUS", "REASON", "SINCE", "MESSAGE"];
-  const table = [header, ...rows];
-  const widths = header.map((_, index) => Math.max(...table.map((row) => (row[index] ?? "").split("\n")[0].length)));
-  const message = widths.slice(0, -1).reduce((offset, width) => offset + width + 1, 0);
+  const widths = header.map((title, index) =>
+    Math.max(title.length + 1, ...rows.map((row) => (row[index] ?? "").split("\n")[0].length + 2)),
+  );
+  const message = widths.slice(0, -1).reduce((offset, width) => offset + width, 0);
 
-  return table
+  return [header, ...rows]
     .flatMap((row) => [
       row
         .map((cell, index) => (index < header.length - 1 ? cell.padEnd(widths[index]) : cell.split("\n")[0]))
-        .join(" ")
+        .join("")
         .trimEnd(),
       ...(row[8] ?? "")
         .split("\n")
@@ -3476,6 +3479,17 @@ function describeOutput(rows: string[][]): string {
     ])
     .join("\n");
 }
+
+// What `clusterctl describe cluster` printed for kamaji-provisioning (SPEC-0028, L22), each line as it was, the names of
+// its Cluster swapped for others of the same length.
+const DESCRIBED_AS_PRINTED = [
+  "NAME                                       REPLICAS AVAILABLE READY UP TO DATE STATUS REASON        SINCE MESSAGE",
+  "Cluster kamaji/demo                        0/1                                 False  NotAvailable  2s    * RemoteConnectionProbe: Remote connection not established yet",
+  "\u2502                                                                                                         * InfrastructureReady: DevCluster status.initialization.provisioned is false",
+  "\u2502                                                                                                         * ControlPlaneAvailable: KamajiControlPlane status.initialization.controlPlaneInitialized is false",
+  "\u251c\u2500DevCluster kamaji/demo",
+  "\u2514\u2500KamajiControlPlane kamaji/demo, v1.36.4",
+].join("\n");
 
 // Of a Cluster of Kamaji, with names and ages of no run in particular: a cell can be empty, a message can take several
 // lines, and a deleting object has `!! DELETED !!` before its name.
@@ -3546,6 +3560,38 @@ describe("the row of clusterctl describe cluster that the README of a Kamaji set
       STATUS: "False",
       REASON: "NotAvailable",
     });
+  });
+
+  it("reads an output as clusterctl prints it, which the outputs that the cases write are printed as", () => {
+    expect(describedClusterRow(DESCRIBED_AS_PRINTED, "kamaji", "demo")).toEqual({
+      REPLICAS: "0/1",
+      AVAILABLE: "",
+      READY: "",
+      "UP TO DATE": "",
+      STATUS: "False",
+      REASON: "NotAvailable",
+    });
+    expect(
+      describeOutput([
+        [
+          "Cluster kamaji/demo",
+          "0/1",
+          "",
+          "",
+          "",
+          "False",
+          "NotAvailable",
+          "2s",
+          [
+            "* RemoteConnectionProbe: Remote connection not established yet",
+            "* InfrastructureReady: DevCluster status.initialization.provisioned is false",
+            "* ControlPlaneAvailable: KamajiControlPlane status.initialization.controlPlaneInitialized is false",
+          ].join("\n"),
+        ],
+        ["\u251c\u2500DevCluster kamaji/demo", "", "", "", "", "", "", "", ""],
+        ["\u2514\u2500KamajiControlPlane kamaji/demo, v1.36.4", "", "", "", "", "", "", "", ""],
+      ]),
+    ).toBe(DESCRIBED_AS_PRINTED);
   });
 
   it("finds the row of a deleting Cluster by its name after !! DELETED !!", () => {
