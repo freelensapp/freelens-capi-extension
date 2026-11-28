@@ -3162,6 +3162,11 @@ item above, and these were decided while implementing it:
   artifact of the workflow names the nine folders one by one, with
   `if-no-files-found: error`, and a step prints the SHA-256 of each file of the
   sets from outside the scripts, besides the scripts.
+- Decided while implementing: the job of the workflow of the captures runs only
+  when the dispatch names another branch than `main`, which the form of a
+  dispatch names first, so that it never runs on `main`, a dispatch included; a
+  run dispatched there skips it, and the static case refuses a job without that
+  condition.
 - Decided while implementing: the static case of the workflow reads each step
   by its keys, so that it finds an upload in every form that a workflow writes
   one in, a step that starts with `- uses:` or names its action on a later line,

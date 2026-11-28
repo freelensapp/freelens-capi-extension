@@ -678,11 +678,12 @@ extension that the profile of Freelens dev has, and leaves none.
   of each file of their sets, which the scripts print as they write them too,
   uploads the folders of the Kamaji sets as an artifact of the run, then runs
   `pnpm e2e:cluster:down` and checks that no kind cluster and no container of
-  the scripts is left. GitHub dispatches a workflow only from the default
-  branch, so it runs from `main` on a branch that names it; the pull request
-  that commits the sets compares the digests of each README with those of its
-  log, the one record that tells a file changed with its digest from the file
-  captured. The job has 60 minutes, about twice what it takes from the times of
+  the scripts is left. GitHub dispatches a workflow only once its file is on
+  the default branch, and the run takes the workflow and the scripts of the
+  branch that the dispatch names; the form of a dispatch names `main` first,
+  and a run dispatched there skips the job. The pull request that commits the
+  sets compares the digests of each README with those of its log, the one
+  record that tells a file changed with its digest from the file captured. The job has 60 minutes, about twice what it takes from the times of
   the probes of SPEC-0028 on a machine at hand, a limit revised from the
   durations of its runs. The images of the provider, of Kamaji, of
   `clastix/kubectl` and of kindnet come from Docker Hub, which limits the pulls

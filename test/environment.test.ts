@@ -4875,8 +4875,8 @@ describe("the waits of the captures of Kamaji", () => {
   });
 });
 
-// The problems of the workflow of the captures, read as a file: what starts it but a dispatch, and what its artifact
-// holds but the folders of the Kamaji sets (SPEC-0028, P7).
+// The problems of the workflow of the captures, read as a file: what starts it but a dispatch, a job that runs on main,
+// and what its artifact holds but the folders of the Kamaji sets (SPEC-0028, P7).
 function captureWorkflowProblems(text: string): string[] {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^on:\s*$/.test(line));
@@ -4895,6 +4895,18 @@ function captureWorkflowProblems(text: string): string[] {
     ...triggers.filter((trigger) => trigger !== "workflow_dispatch").map((trigger) => `it starts on ${trigger}`),
     ...(triggers.includes("workflow_dispatch") ? [] : ["it does not start on workflow_dispatch"]),
   ];
+  const jobsAt = lines.findIndex((line) => /^jobs:\s*$/.test(line));
+  const jobsEnd = lines.findIndex((line, index) => index > jobsAt && /^\S/.test(line) && meaningful(line));
+  const jobs = workflowKeys(jobsAt < 0 ? [] : lines.slice(jobsAt + 1, jobsEnd < 0 ? undefined : jobsEnd));
+
+  if (!jobs.size) problems.push("it has no jobs");
+  // Never on main, which the form of a dispatch preselects: every job skipped there.
+  for (const [name, job] of jobs) {
+    if (workflowKeys(job.block).get("if")?.value !== "github.ref != 'refs/heads/main'") {
+      problems.push(`the job ${name} runs on main`);
+    }
+  }
+
   const expected = KAMAJI_STATES.map((state) => `integration/fixtures/${state.name}/`);
   const steps = workflowSteps(lines);
   const uploads = steps.filter((step) => /^actions\/upload-artifact[/@]/i.test(step.get("uses")?.value ?? ""));
@@ -4991,7 +5003,7 @@ function workflowSteps(lines: readonly string[]): Map<string, WorkflowKey>[] {
 describe("the workflow of the captures of Kamaji", () => {
   const workflow = readFileSync(join(root, ".github/workflows/kamaji-capture.yaml"), "utf8");
 
-  it("runs when it is dispatched alone, and uploads the folders of the Kamaji sets alone (SPEC-0028, P7)", () => {
+  it("runs when it is dispatched alone, never on main, and uploads the folders of the Kamaji sets alone (SPEC-0028, P7)", () => {
     expect(captureWorkflowProblems(workflow)).toEqual([]);
     expect(workflow).toContain("pnpm e2e:cluster:up:kamaji");
     expect(workflow).toContain("pnpm e2e:fixtures:capture:kamaji all");
@@ -5069,6 +5081,16 @@ describe("the workflow of the captures of Kamaji", () => {
           "      - uses: 'actions/cache@v6'\n        with:\n          path: ${{ runner.temp }}/test-environment/\n          key: state\n\n      - name: Take the test environment down",
         ),
       /it saves a cache with actions\/cache@v6/,
+    ],
+    [
+      "a run on main",
+      (text: string) => text.replace("    if: github.ref != 'refs/heads/main'\n", ""),
+      /the job capture runs on main/,
+    ],
+    [
+      "a condition that lets main through",
+      (text: string) => text.replace("    if: github.ref != 'refs/heads/main'\n", "    if: always()\n"),
+      /the job capture runs on main/,
     ],
     [
       "a step that it cannot read",

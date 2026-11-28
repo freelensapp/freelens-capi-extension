@@ -22,6 +22,8 @@ jobs:
     # about twice what the job takes from the times of the probes, revised from the durations of its runs.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Never on main (SPEC-0028, P7), which the form of a dispatch preselects: a run dispatched there skips the job.
+    if: github.ref != 'refs/heads/main'
 
     steps:
       - name: Checkout
