@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { MarkView } from "./marks";
+import { MarkSpinner, MarkView } from "./marks";
 import styles from "./marks.module.scss";
 
 import type { Tone } from "../../common/views/cluster-cells";
@@ -53,6 +53,26 @@ describe("a mark of state (P21)", () => {
 
   it("of the tone of Unknown keeps the background that the host gives every badge", () => {
     expect(ruleOf('.mark.mark[data-tone="vague"]')).toBe("background: var(--colorVague);");
+  });
+
+  it("stands with the other parts of a cell a quarter of an em after the part before it, a mark or a note, in whichever order they follow each other", () => {
+    const rule = /((?:\.(?:mark|note) \+ \.(?:mark|note),\s*)*\.(?:mark|note) \+ \.(?:mark|note)) \{\s*([^}]*)\}/.exec(
+      STYLESHEET,
+    );
+
+    expect(
+      rule?.[1]
+        .split(",")
+        .map((selector) => selector.trim())
+        .sort(),
+    ).toEqual([".mark + .mark", ".mark + .note", ".note + .mark", ".note + .note"]);
+    expect(rule?.[2].trim()).toBe("margin-left: 0.25em;");
+  });
+
+  it("in a cell, the spinner of a part that waits for its inputs is a note of the cell", () => {
+    render(<MarkSpinner data-testid="spinner" />);
+
+    expect(screen.getByTestId("spinner").className.split(" ")).toEqual([styles.note]);
   });
 
   it.each(Object.keys(TOKENS) as Tone[])("of the tone %s has its word, the class of its tone and its tone", (tone) => {

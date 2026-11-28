@@ -50,8 +50,13 @@
   vertical-align: middle;
 }
 
+// The parts of a cell, its marks and its notes, among which the spinners of what it still waits for, each stand a
+// quarter of an em after the part before it, in whichever order they follow each other: words that touched read as one
+// word, as the words N/A of a node of the tree with no health and the counts of what it holds did, "N/A15 objects".
 .mark + .mark,
-.mark + .note {
+.mark + .note,
+.note + .note,
+.note + .mark {
   margin-left: 0.25em;
 }
 

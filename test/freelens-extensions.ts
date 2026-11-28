@@ -944,8 +944,11 @@ export const Renderer = {
     SearchInput,
     ReactiveDuration: (props: { timestamp?: string }) =>
       React.createElement("span", { "data-testid": "host-duration" }, props.timestamp),
-    Spinner: (props: { "data-testid"?: string }) =>
-      React.createElement("span", { "data-testid": props["data-testid"] ?? "host-cell-spinner" }),
+    Spinner: (props: { "data-testid"?: string; className?: string }) =>
+      React.createElement("span", {
+        "data-testid": props["data-testid"] ?? "host-cell-spinner",
+        className: props.className,
+      }),
     Table,
     TableCell,
     TableHead,

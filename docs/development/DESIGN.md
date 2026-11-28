@@ -99,10 +99,12 @@ as "SPEC-0003, P31", and the kit as `kit` with its file.
   their cells, whose stylesheet gives the columns of state a minimum width, as
   small as cells of one line allow, and no shrink (SPEC-0004, P7, "Notes and
   deviations"). Each cell is one line: the marks of a cell sit side by side,
-  with a note after them, all at the middle of the line, what does not fit is
-  cut with an ellipsis, and the tooltip of the cell carries its whole content;
-  no mark in a cell has a tooltip of its own, and no cell expands on a click
-  (kit, `docs/design.md`, "Lists"; SPEC-0004, P12, "Notes and deviations"). A
+  with its notes after them, each part a quarter of an em after the one before
+  it, a spinner of a part that waits for its inputs among the notes, all at the
+  middle of the line, what does not fit is cut with an ellipsis, and the
+  tooltip of the cell carries its whole content; no mark in a cell has a
+  tooltip of its own, and no cell expands on a click (kit, `docs/design.md`,
+  "Lists"; SPEC-0004, P12, "Notes and deviations"). A
   title of the head that its column does not hold is cut the same way, by a
   badge whose tooltip carries it whole. A list of a kind with no status shows
   no column of health or activity, and Deleting as the state of a row that is

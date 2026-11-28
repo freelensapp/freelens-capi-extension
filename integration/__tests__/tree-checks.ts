@@ -149,6 +149,45 @@ export function lineProblems(id: string, cells: readonly MeasuredCell[]): string
   });
 }
 
+// The parts of a cell of marks
+
+// A part of a cell of marks, a mark, a note or a spinner, as the session measures it in the frame (step 1): its words,
+// and where its box starts and ends along the line of the cell, in the window.
+export interface MeasuredPart {
+  readonly text: string;
+  readonly left: number;
+  readonly right: number;
+}
+
+// A cell of marks of a row, of Activity or of Condition, as the session measures it: the id of its row, the test id
+// of the cell, and its parts in their order in the document.
+export interface MeasuredMarksCell {
+  readonly row: string;
+  readonly testId: string;
+  readonly parts: readonly MeasuredPart[];
+}
+
+// The least room between a part of a cell of marks and the part before it, in pixels: the stylesheet of the marks
+// sets a quarter of an em between them, and the boxes of the window round to fractions of a pixel.
+export const PARTS_APART = 2;
+
+// Each part of a cell of marks that stands closer than `PARTS_APART` to the part before it on its line (P9; SPEC-0004,
+// P12; DESIGN.md, "The status model in lists and details"): words that touch read as one word, as the words N/A of a
+// node with no health and the counts of what it holds did, "N/A15 objects", while the stylesheet set a note after a
+// note at no distance.
+export function partsProblems(cells: readonly MeasuredMarksCell[]): string[] {
+  return cells.flatMap((cell) =>
+    cell.parts.slice(1).flatMap((part, index) => {
+      const before = cell.parts[index];
+      const room = part.left - before.right;
+
+      return room < PARTS_APART
+        ? [`${cell.row}: in the cell ${cell.testId}, "${part.text}" ${room.toFixed(1)} px after "${before.text}"`]
+        : [];
+    }),
+  );
+}
+
 // The first rows
 
 // The first frame that drew rows of the tree, as an observer of the DOM in the frame records it: when, in the clock of

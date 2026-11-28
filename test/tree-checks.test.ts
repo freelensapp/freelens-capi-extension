@@ -1,9 +1,9 @@
 // What the sessions of the tree decide from what they read in the frame of a cluster (SPEC-0005, "Tests", "In
 // Freelens"), with no app (`integration/__tests__/tree-checks.ts`): the marks and the expansion of the rows that the
-// page draws for the fixtures, made here from its cells, against the expectations written by hand; the first rows
-// against the answers to the lists; the effect of each key, written from the table of P18, against the handler of the
-// page, and the scroll that a move leaves; the first row in view; the rows lost by a refresh; the tree of accessibility;
-// and the requests that write.
+// page draws for the fixtures, made here from its cells, against the expectations written by hand; the parts of the
+// cells of marks; the first rows against the answers to the lists; the effect of each key, written from the table of
+// P18, against the handler of the page, and the scroll that a move leaves; the first row in view; the rows lost by a
+// refresh; the tree of accessibility; and the requests that write.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -16,6 +16,8 @@ import {
   linesOf,
   marksProblems,
   moveScrollProblem,
+  PARTS_APART,
+  partsProblems,
   readsAGroupOfTheTree,
   removalScroll,
   rowsLost,
@@ -169,6 +171,51 @@ describe("what the sessions of the tree decide", () => {
       lineProblems("capi-tree-row-a", [{ ...marks, beyond: 'span "mark", -3 to 30 px of a row of 33 px' }]),
     ).toEqual([
       'capi-tree-row-a: the cell capi-tree-condition draws span "mark", -3 to 30 px of a row of 33 px beyond its row: "Degraded12 objects: 1 Degraded, 11 Healthy"',
+    ]);
+  });
+
+  it("report a part of a cell of marks that stands closer than a quarter of an em to the part before it, whichever parts they are", () => {
+    // The health of a node and its counts, a quarter of an em apart, as the stylesheet of the marks sets them.
+    const apart = {
+      row: "capi-tree-row-a",
+      testId: "capi-tree-condition",
+      parts: [
+        { text: "Healthy", left: 857, right: 919.5 },
+        { text: "4 objects: 3 Healthy, 1 with no health", left: 922.75, right: 1080 },
+      ],
+    };
+    // The words N/A of a node with no health and its counts, touching, as the stylesheet of the merge of the page drew
+    // them; and a spinner, which holds no words, after a mark.
+    const touching = {
+      row: "capi-tree-row-b",
+      testId: "capi-tree-condition",
+      parts: [
+        { text: "N/A", left: 866, right: 893.4 },
+        { text: "15 objects: 2 not found, 9 Healthy", left: 893.4, right: 1080 },
+      ],
+    };
+    const spinner = {
+      row: "capi-tree-row-c",
+      testId: "capi-tree-condition",
+      parts: [
+        { text: "Healthy", left: 857, right: 919.5 },
+        { text: "", left: 920.5, right: 944.5 },
+      ],
+    };
+
+    expect(partsProblems([])).toEqual([]);
+    expect(partsProblems([{ ...apart, parts: apart.parts.slice(0, 1) }])).toEqual([]);
+    expect(partsProblems([apart])).toEqual([]);
+    expect(partsProblems([apart, touching, spinner])).toEqual([
+      'capi-tree-row-b: in the cell capi-tree-condition, "15 objects: 2 not found, 9 Healthy" 0.0 px after "N/A"',
+      'capi-tree-row-c: in the cell capi-tree-condition, "" 1.0 px after "Healthy"',
+    ]);
+    // The least room counts as apart, and a part that overlaps the one before it counts as touching.
+    expect(
+      partsProblems([{ ...apart, parts: [apart.parts[0], { ...apart.parts[1], left: 919.5 + PARTS_APART }] }]),
+    ).toEqual([]);
+    expect(partsProblems([{ ...apart, parts: [apart.parts[0], { ...apart.parts[1], left: 918 }] }])).toEqual([
+      'capi-tree-row-a: in the cell capi-tree-condition, "4 objects: 3 Healthy, 1 with no health" -1.5 px after "Healthy"',
     ]);
   });
 

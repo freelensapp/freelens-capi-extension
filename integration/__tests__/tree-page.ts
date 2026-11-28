@@ -5,7 +5,7 @@
 
 // What the sessions of the tree of a Cluster do on its page in the frame of a cluster (SPEC-0005, "Tests"): open the
 // page at an address, read the rows that the virtual list of the host draws, read every row of the tree by scrolling
-// the list, expand every node, scroll the list by code and by the wheel, read a tooltip, and record in the frame what
+// the list, and the parts of each of its cells of marks, expand every node, scroll the list by code and by the wheel, read a tooltip, and record in the frame what
 // a reading after the fact would miss: the first rows drawn and the answers to the requests of the frame, the row that
 // `aria-activedescendant` names at each frame, and the rows drawn at each change of the document; and read the tree of
 // accessibility of the frame through CDP. The virtual list draws only the rows of its window and ten on each side (P9;
@@ -17,7 +17,7 @@ import { ROW_ID_PREFIX, readDrawnRows } from "./tree-outline";
 
 import type { Frame, Locator, Page } from "playwright";
 
-import type { Answer, AxNode, FirstDraw } from "./tree-checks";
+import type { Answer, AxNode, FirstDraw, MeasuredMarksCell } from "./tree-checks";
 import type { DrawnRow } from "./tree-outline";
 
 export type { DrawnRow } from "./tree-outline";
@@ -138,15 +138,15 @@ export async function scrollListTo(tree: Locator, top: number): Promise<void> {
   await rendered(tree);
 }
 
-// Every row of the tree that the rows show, in their order, read by scrolling the list from its top to its end, the
-// list then back where it was.
-export async function allRows(tree: Locator): Promise<DrawnRow[]> {
+// What `read` finds in the rows that the virtual list draws, read by scrolling the list from its top to its end, each
+// key as it was first read, the list then back where it was.
+async function acrossTheList<T>(tree: Locator, read: () => Promise<T[]>, keyOf: (item: T) => string): Promise<T[]> {
   const start = (await listMetrics(tree)).scrollTop;
-  const rows = new Map<string, DrawnRow>();
+  const found = new Map<string, T>();
 
   await scrollListTo(tree, 0);
   for (let guard = 0; guard < 1000; guard++) {
-    for (const row of await drawnRows(tree)) if (!rows.has(row.id)) rows.set(row.id, row);
+    for (const item of await read()) if (!found.has(keyOf(item))) found.set(keyOf(item), item);
 
     const { scrollTop, clientHeight, scrollHeight } = await listMetrics(tree);
 
@@ -154,7 +154,57 @@ export async function allRows(tree: Locator): Promise<DrawnRow[]> {
     await scrollListTo(tree, scrollTop + Math.max(ROW_HEIGHT, clientHeight - 2 * ROW_HEIGHT));
   }
   await scrollListTo(tree, start);
-  return [...rows.values()].sort((one, other) => one.index - other.index);
+  return [...found.values()];
+}
+
+// Every row of the tree that the rows show, in their order, read by scrolling the list from its top to its end, the
+// list then back where it was.
+export async function allRows(tree: Locator): Promise<DrawnRow[]> {
+  return (
+    await acrossTheList(
+      tree,
+      () => drawnRows(tree),
+      (row) => row.id,
+    )
+  ).sort((one, other) => one.index - other.index);
+}
+
+// The test ids of the cells of marks of a row, the cells of Activity and Condition (P9; SPEC-0004, P12).
+const MARKS_CELLS = ["capi-tree-activity", "capi-tree-condition"];
+
+// The cells of marks of the rows that the virtual list draws now, each with its parts in their order in the document:
+// its marks, its notes and its spinners, with their words and where their boxes start and end along the line. After
+// its parts, the badge of the host holds an empty element of no height, and the tooltip of the cell while it shows,
+// which the reading leaves out by its role.
+export function drawnMarksCells(tree: Locator): Promise<MeasuredMarksCell[]> {
+  return tree.evaluate((element, testIds) => {
+    const cells: MeasuredMarksCell[] = [];
+
+    for (const row of element.querySelectorAll<HTMLElement>('[role="row"][aria-level]')) {
+      for (const cell of row.querySelectorAll<HTMLElement>(testIds.map((id) => `[data-testid="${id}"]`).join(", "))) {
+        const parts = [...cell.children].flatMap((part) => {
+          const box = part.getBoundingClientRect();
+
+          return part.getAttribute("role") === "tooltip" || box.width === 0 || box.height === 0
+            ? []
+            : [{ text: (part.textContent ?? "").trim(), left: box.left, right: box.right }];
+        });
+
+        cells.push({ row: row.id, testId: cell.getAttribute("data-testid") ?? "", parts });
+      }
+    }
+    return cells;
+  }, MARKS_CELLS);
+}
+
+// The cells of marks of every row of the tree, read by scrolling the list from its top to its end, the list then back
+// where it was.
+export function allMarksCells(tree: Locator): Promise<MeasuredMarksCell[]> {
+  return acrossTheList(
+    tree,
+    () => drawnMarksCells(tree),
+    (cell) => `${cell.row} ${cell.testId}`,
+  );
 }
 
 // Every row of the tree, once none of them shows the spinner of the host in a cell of state.
