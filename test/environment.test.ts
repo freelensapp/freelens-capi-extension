@@ -48,6 +48,7 @@ import {
   providersAgainstPins,
   removeCapture,
   removeObjects,
+  TIER_RESOURCES,
   takeDown,
 } from "../e2e/scripts/commands.mts";
 import {
@@ -1188,6 +1189,7 @@ describe("down", () => {
     kubeconfig: `/state/${name}/kubeconfig`,
     record: `/state/${name}/node`,
     dockerSocket: false,
+    resources: FIXTURE_RESOURCES,
   });
   const management = tierOf("freelens-capi-management");
   const definitions = tierOf("freelens-capi-definitions");
@@ -2979,6 +2981,7 @@ describe("down with the cluster of the captures of Kamaji", () => {
     kubeconfig: `/state/${name}/kubeconfig`,
     record: `/state/${name}/node`,
     dockerSocket: false,
+    resources: FIXTURE_RESOURCES,
   });
   const management = tierOf("freelens-capi-management");
   const definitions = tierOf("freelens-capi-definitions");
@@ -3140,6 +3143,14 @@ describe("the command line of the captures of Kamaji", () => {
 });
 
 describe("the kinds that the scripts read in a namespace", () => {
+  it("are those of the cluster that a command reads, each kind cluster of the scripts with its own (SPEC-0028, P6)", () => {
+    expect(TIER_RESOURCES).toEqual({
+      "freelens-capi-definitions": [...FIXTURE_RESOURCES, ...KAMAJI_RESOURCES],
+      "freelens-capi-management": FIXTURE_RESOURCES,
+      [KAMAJI_CLUSTER]: [...FIXTURE_RESOURCES, ...KAMAJI_RESOURCES],
+    });
+  });
+
   it("name the two kinds of Kamaji on the cluster of the captures and on the cluster of the definitions alone (SPEC-0028, P6)", () => {
     expect(fixtureResourcesOn("real project")).toEqual(FIXTURE_RESOURCES);
     for (const cluster of ["captures", "definitions"] as const) {

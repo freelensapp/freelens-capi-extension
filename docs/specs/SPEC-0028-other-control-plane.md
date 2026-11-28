@@ -3162,6 +3162,11 @@ item above, and these were decided while implementing it:
   artifact of the workflow names the nine folders one by one, with
   `if-no-files-found: error`, and a step prints the SHA-256 of each file of the
   sets from outside the scripts, besides the scripts.
+- Decided while implementing: each kind cluster of the scripts carries the kinds
+  that the scripts read in its namespaces (P6), and a capture builds its reads
+  from the cluster that it reads, so that no command reads a cluster with the
+  kinds of another, which a unit case of a command could not see, the commands
+  that need a cluster having none.
 - Seen while implementing, on a machine at hand with Linux on amd64, where the
   machine shut its Linux down between two commands and its Docker started the
   node of the cluster of the captures again: the webhooks of Cluster API

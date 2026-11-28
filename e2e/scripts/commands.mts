@@ -128,7 +128,7 @@ import {
 } from "./states.mts";
 import { parseDocuments } from "./yaml.mts";
 
-import type { KubeObject } from "./fixtures.mts";
+import type { KubeObject, ScriptsCluster } from "./fixtures.mts";
 import type { ConntrackHost } from "./host.mts";
 import type { KamajiProject, KamajiState, KamajiVersions } from "./kamaji.mts";
 import type { RepositoryProvider } from "./manifests.mts";
@@ -144,7 +144,8 @@ const KUBECTL_CACHE = join(STATE, "cache", "kubectl");
 
 // A kind cluster of the scripts: its name, which is global to the Docker daemon, its folder in the state,
 // with its kubeconfig, which holds its one context, and the record of its node, the ID of the container that
-// the scripts created.
+// the scripts created; and the kinds that the scripts read in one of its namespaces, those that it serves
+// (`fixtureResourcesOn` of fixtures.mts), so that a command reads a cluster with the kinds of that cluster alone.
 export interface Tier {
   name: string;
   context: string;
@@ -152,9 +153,10 @@ export interface Tier {
   kubeconfig: string;
   record: string;
   dockerSocket: boolean;
+  resources: readonly string[];
 }
 
-function tier(name: string, dockerSocket: boolean): Tier {
+function tier(name: string, dockerSocket: boolean, cluster: ScriptsCluster): Tier {
   const folder = join(STATE, name);
 
   return {
@@ -164,14 +166,19 @@ function tier(name: string, dockerSocket: boolean): Tier {
     kubeconfig: join(folder, "kubeconfig"),
     record: join(folder, "node"),
     dockerSocket,
+    resources: fixtureResourcesOn(cluster),
   };
 }
 
-const DEFINITIONS = tier("freelens-capi-definitions", false);
-const MANAGEMENT = tier("freelens-capi-management", true);
+const DEFINITIONS = tier("freelens-capi-definitions", false, "definitions");
+const MANAGEMENT = tier("freelens-capi-management", true, "real project");
 // The cluster of the captures of SPEC-0028, whose node mounts the socket of Docker, as the cluster of the real project
 // (P2).
-const KAMAJI = tier(KAMAJI_CLUSTER, true);
+const KAMAJI = tier(KAMAJI_CLUSTER, true, "captures");
+// The kinds that the scripts read in a namespace of each of their kind clusters, by its name (SPEC-0028, P6).
+export const TIER_RESOURCES: Record<string, readonly string[]> = Object.fromEntries(
+  [DEFINITIONS, MANAGEMENT, KAMAJI].map((target) => [target.name, target.resources]),
+);
 // The record of the value that `net.netfilter.nf_conntrack_max` had before the scripts changed it, in the folder of the
 // cluster of the captures, which `down` gives back (P2, P3).
 const CONNTRACK_RECORD = join(KAMAJI.folder, "conntrack");
@@ -1544,6 +1551,16 @@ export async function removeCapture(project: NamespaceReader, namespace: string)
   await gone("the namespace", () => !exists(), 10);
 }
 
+// What a capture reads the namespaces of a tier with: kubectl on that tier, and the kinds that the scripts read there,
+// which are those of the tier, never those of another cluster (SPEC-0028, P6).
+function namespaceReader(target: Tier): NamespaceReader {
+  return {
+    kubectl: (args, options = {}) => kubectl(target, args, { quiet: true, ...options }),
+    resources: target.resources,
+    log: (line) => console.log(line),
+  };
+}
+
 // Brings workload clusters of the real project into the states of the fixtures, at most CAPTURES_AT_ONCE at a
 // time, each in its own namespace, writes the objects of each one into its fixture set, and deletes them. A
 // capture that fails is reported after the others, and makes the command fail; its fixture set stays as it
@@ -1572,7 +1589,7 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
     (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
   );
   const project: RealProject = {
-    kubectl: (args, options = {}) => kubectl(MANAGEMENT, args, { quiet: true, ...options }),
+    ...namespaceReader(MANAGEMENT),
     apply: (manifest) => {
       kubectl(MANAGEMENT, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
         input: manifest,
@@ -1593,11 +1610,9 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
         { quiet: true },
       ),
     kindnet: (namespace) => kindnetResources(kindnet, namespace),
-    resources: fixtureResourcesOn("real project"),
     kubernetesVersion: workloadKubernetesVersion,
     upgradeFromKubernetesVersion: workloadKubernetesUpgradeFrom,
     clusterApiVersion: version,
-    log: (line) => console.log(line),
   };
   const failures: string[] = [];
 
@@ -1767,7 +1782,7 @@ async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
     refused: nextMinor(workloadKubernetesVersion),
   };
   const project: KamajiProject = {
-    kubectl: (args, options = {}) => kubectl(KAMAJI, args, { quiet: true, ...options }),
+    ...namespaceReader(KAMAJI),
     apply: (manifest) => {
       kubectl(KAMAJI, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
         input: manifest,
@@ -1775,12 +1790,10 @@ async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
       });
     },
     kindnet: (namespace) => kindnetResources(kindnet, namespace),
-    resources: fixtureResourcesOn("captures"),
     address: poolAddressOnCluster(),
     describe: (namespace) =>
       clusterctl(binary, KAMAJI, ["describe", "cluster", namespace, "--namespace", namespace], { quiet: true }),
     versions,
-    log: (line) => console.log(line),
   };
   const run = ciRun(process.env);
   const failures: string[] = [];
@@ -2038,7 +2051,7 @@ type TierKubectl = (args: string[], options?: { input?: string; timeout?: number
 
 // The kinds that the scripts read in a namespace of the cluster of the definitions, those of Kamaji among them
 // (SPEC-0028, P6).
-const DEFINITIONS_RESOURCES = fixtureResourcesOn("definitions");
+const DEFINITIONS_RESOURCES = DEFINITIONS.resources;
 
 // Removes the objects of a namespace from the cluster of the definitions: every finalizer of their objects first,
 // the one of the scripts and those of the project, which no controller removes there, those of Kamaji on a
