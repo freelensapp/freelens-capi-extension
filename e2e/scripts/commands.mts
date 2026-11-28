@@ -1650,6 +1650,20 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
   ensure(!failures.length, `${failures.length} of ${states.length} captures failed:\n- ${failures.join("\n- ")}`);
 }
 
+// The Deployments of the Kamaji control plane provider that the capture starts again, from what
+// `kubectl get --output name` lists by the label of the provider: at least one, since a provider that was not started
+// again may watch no TenantControlPlane (K8), and the capture of `kamaji-scaling` would then fail at its deadline with
+// a message that says nothing of it.
+export function providerDeployments(output: string): string[] {
+  const deployments = lines(output);
+
+  ensure(
+    deployments.length,
+    `The cluster of the captures has no Deployment of the Kamaji control plane provider with the label cluster.x-k8s.io/provider=${KAMAJI_PROVIDER.label}: take the environment down, and bring it up again`,
+  );
+  return deployments;
+}
+
 // The controllers of the cluster of the captures, before any capture, which a restart of its node, as of the machine
 // that runs it, starts again (SPEC-0028, P5): every Deployment of their namespaces Available; the Kamaji control plane
 // provider started again once the cluster serves TenantControlPlanes, since it asks the discovery once, as it starts,
@@ -1687,7 +1701,7 @@ async function controllersAnswer(pins: Pins): Promise<void> {
   );
 
   ensure(provider, "The cluster of the captures has no Kamaji control plane provider: run pnpm e2e:cluster:up:kamaji");
-  for (const deployment of lines(
+  for (const deployment of providerDeployments(
     kubectl(KAMAJI, [
       ...["get", "deployments", "--namespace", provider.metadata.namespace],
       ...["--selector", `cluster.x-k8s.io/provider=${KAMAJI_PROVIDER.label}`, "--output", "name"],

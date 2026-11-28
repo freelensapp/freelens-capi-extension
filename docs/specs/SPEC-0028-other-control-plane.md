@@ -3175,7 +3175,8 @@ item above, and these were decided while implementing it:
   source of that kind (K8), so that the scale of `kamaji-scaling` never reached
   its KamajiControlPlane. Decided while implementing: before its first state,
   the capture waits for every Deployment of the controllers of the cluster,
-  starts the provider again once the cluster serves TenantControlPlanes, and
+  starts the provider again once the cluster serves TenantControlPlanes, which
+  needs a Deployment of it, the cluster refused otherwise, and
   sends a server-side dry run of the objects of a Cluster of Kamaji until the
   webhooks answer; and it removes the workload clusters of every Kamaji state
   and of the helper, which a run that was stopped can leave holding the one

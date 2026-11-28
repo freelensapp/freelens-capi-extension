@@ -400,7 +400,8 @@ when it has one, is a MachineDeployment of one replica of the development
 provider at the same version, with kindnet. Before the first state the command
 waits for every Deployment of the controllers of the cluster, starts the Kamaji
 control plane provider again once the cluster serves TenantControlPlanes, so
-that it watches them however the node of the cluster started, and waits until
+that it watches them however the node of the cluster started, refusing a
+cluster where it finds no Deployment of that provider, and waits until
 their webhooks answer a server-side dry run of the objects of a Cluster, which
 stores nothing. Each state is read once its check holds, two readings agree,
 and a third one agrees with them after `clusterctl describe cluster` of its

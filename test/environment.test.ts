@@ -45,6 +45,7 @@ import {
   onceItSucceeds,
   ownNamespaceProblem,
   parseCommand,
+  providerDeployments,
   providersAgainstPins,
   removeCapture,
   removeObjects,
@@ -2868,6 +2869,15 @@ describe("the cluster of the captures of Kamaji", () => {
     expect(
       kamajiProvidersAgainstPins([...atThePins, provider("InfrastructureProvider", "aws", "v1.14.4")], versions).other,
     ).toEqual(["InfrastructureProvider aws is installed, and the cluster of the captures runs no such provider"]);
+  });
+
+  it("starts the Kamaji control plane provider again before the captures, and refuses a cluster where it finds no Deployment of it (SPEC-0028, P5)", () => {
+    expect(providerDeployments("deployment.apps/capi-kamaji-controller-manager\n")).toEqual([
+      "deployment.apps/capi-kamaji-controller-manager",
+    ]);
+    expect(() => providerDeployments("")).toThrow(
+      "The cluster of the captures has no Deployment of the Kamaji control plane provider with the label cluster.x-k8s.io/provider=control-plane-kamaji",
+    );
   });
 });
 
