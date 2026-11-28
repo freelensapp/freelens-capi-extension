@@ -159,27 +159,220 @@ export const PROVIDERS: readonly RepositoryProvider[] = [
   },
 ];
 
+// The Kamaji control plane provider of the cluster of the captures (SPEC-0028, P3), in the local repository of
+// clusterctl under the label that clusterctl gives it, with the files of its own release.
+export const KAMAJI_PROVIDER = {
+  name: "kamaji",
+  type: "ControlPlaneProvider",
+  label: "control-plane-kamaji",
+  components: "control-plane-components.yaml",
+} as const;
+
 // The configuration of clusterctl, as JSON, which it reads as YAML: every provider and cert-manager from the
 // local repository, where the scripts put the files they checked, and an overrides folder of their own, so
-// that no override of the user applies.
+// that no override of the user applies. With the version of the Kamaji control plane provider, it names that
+// provider too, for the cluster of the captures.
 export function clusterctlConfiguration(
   repository: string,
   overrides: string,
-  versions: { clusterApi: string; certManager: string },
+  versions: { clusterApi: string; certManager: string; kamaji?: string },
 ): string {
+  const kamaji = versions.kamaji
+    ? [
+        {
+          name: KAMAJI_PROVIDER.name,
+          type: KAMAJI_PROVIDER.type,
+          url: `${repository}/${KAMAJI_PROVIDER.label}/${versions.kamaji}/${KAMAJI_PROVIDER.components}`,
+        },
+      ]
+    : [];
+
   return `${JSON.stringify(
     {
-      providers: PROVIDERS.map((provider) => ({
-        name: provider.name,
-        type: provider.type,
-        url: `${repository}/${provider.label}/${versions.clusterApi}/${provider.components}`,
-      })),
+      providers: [
+        ...PROVIDERS.map((provider) => ({
+          name: provider.name,
+          type: provider.type,
+          url: `${repository}/${provider.label}/${versions.clusterApi}/${provider.components}`,
+        })),
+        ...kamaji,
+      ],
       "cert-manager": { url: `${repository}/cert-manager/${versions.certManager}/cert-manager.yaml` },
       overridesFolder: overrides,
     },
     null,
     2,
   )}\n`;
+}
+
+// The label by which clusterctl names the provider of each component that it installs, and by which the views find
+// the controllers of a kind from its definition (SPEC-0003, P24).
+const PROVIDER_LABEL = "cluster.x-k8s.io/provider";
+
+// The definitions of a file of a release, each one as its text, with the label of PROVIDER_LABEL that clusterctl gives
+// the components that it installs in place of the one of the release, as `control-plane-kamaji` for the `kamaji` of the
+// release of the Kamaji control plane provider (SPEC-0028, P8). A definition with no such label among those of its
+// metadata, or with it twice, is refused.
+export function relabeledDefinitions(text: string, provider: string): string[] {
+  return customResourceDefinitions(text).map((definition) => {
+    const metadata = /^metadata:[ \t]*\n((?:(?:[ \t]+[^\n]*|[ \t]*)\n)*)/m.exec(definition);
+    const label = new RegExp(`^([ \\t]+${PROVIDER_LABEL.replaceAll(".", "\\.")}:[ \\t]*)\\S+[ \\t]*$`, "gm");
+    const found = [...(metadata?.[1] ?? "").matchAll(label)];
+
+    ensure(
+      metadata && found.length === 1,
+      `The definition ${definitionName(definition)} does not have one label ${PROVIDER_LABEL} in its metadata`,
+    );
+
+    const start = metadata.index + metadata[0].length - metadata[1].length;
+
+    return `${definition.slice(0, start)}${metadata[1].replace(label, `$1${provider}`)}${definition.slice(start + metadata[1].length)}`;
+  });
+}
+
+// The address of the one address pool of MetalLB of the cluster of the captures, from the IPv4 subnet of the network
+// of kind: 56 below its end, far from the addresses that Docker gives its containers from its start, as the probes
+// took `<prefix>.255.200` of a /16 (SPEC-0028, P3, P4). A subnet that is not IPv4, or smaller than a /24, is refused.
+export function poolAddress(subnet: string): string {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(subnet);
+  const octets = match?.slice(1, 5).map(Number) ?? [];
+  const prefix = Number(match?.[5]);
+
+  ensure(
+    match && octets.every((octet) => octet <= 255) && prefix >= 8 && prefix <= 24,
+    `${subnet} is not an IPv4 subnet of a /24 or larger, which the pool of MetalLB takes an address of`,
+  );
+
+  const network = (octets.reduce((value, octet) => value * 256 + octet, 0) >>> (32 - prefix)) * 2 ** (32 - prefix);
+  const address = network + 2 ** (32 - prefix) - 56;
+
+  return [24, 16, 8, 0].map((shift) => Math.floor(address / 2 ** shift) % 256).join(".");
+}
+
+// The pool of MetalLB of the cluster of the captures, of one address, and the L2 advertisement of it: objects of the
+// scripts, which give every tenant of Kamaji of type LoadBalancer that one address, known before the tenant exists
+// (SPEC-0028, P3, P4).
+export const METALLB_NAMESPACE = "metallb-system";
+export const METALLB_POOL = "freelens-capi-kamaji";
+
+export function metallbPool(address: string): string {
+  return JSON.stringify({
+    apiVersion: "v1",
+    kind: "List",
+    items: [
+      {
+        apiVersion: "metallb.io/v1beta1",
+        kind: "IPAddressPool",
+        metadata: { name: METALLB_POOL, namespace: METALLB_NAMESPACE },
+        spec: { addresses: [`${address}/32`] },
+      },
+      {
+        apiVersion: "metallb.io/v1beta1",
+        kind: "L2Advertisement",
+        metadata: { name: METALLB_POOL, namespace: METALLB_NAMESPACE },
+        spec: { ipAddressPools: [METALLB_POOL] },
+      },
+    ],
+  });
+}
+
+// The port of the API server of a tenant of Kamaji, the default of a TenantControlPlane, which the provider writes in
+// the endpoint of its KamajiControlPlane.
+export const TENANT_PORT = 6443;
+
+// The address of the Service of CoreDNS of a tenant, in the service network of the Cluster (CLUSTER_NETWORK).
+const TENANT_DNS_SERVICE = "10.128.0.10";
+
+// A Cluster of Kamaji of the captures of SPEC-0028 (P1, P4), written from the schemas of the releases, as the probes
+// wrote theirs: a DevCluster as its infrastructure cluster, with the endpoint of the tenant written when `address` is
+// given, and a KamajiControlPlane of one replica, its Service of type LoadBalancer, the DataStore `default` of the chart
+// of Kamaji, and the addons CoreDNS, with the address of its Service in the service network of the Cluster, and
+// kube-proxy, which the kind does not default; with a worker, a MachineDeployment of one replica of the development
+// provider, with the label of kindnet on the Cluster.
+export function kamajiCluster(
+  name: string,
+  namespace: string,
+  options: { version: string; address?: string; worker: boolean },
+): unknown[] {
+  const workers = `${name}-md-0`;
+  const deployment = { [`${CORE}/cluster-name`]: name, [`${CORE}/deployment-name`]: workers };
+
+  return [
+    object(CORE, "Cluster", name, namespace, {
+      metadata: {
+        name,
+        namespace,
+        ...(options.worker ? { labels: { [KINDNET_LABEL.key]: KINDNET_LABEL.value } } : {}),
+      },
+      spec: {
+        clusterNetwork: CLUSTER_NETWORK,
+        controlPlaneRef: reference(CONTROL_PLANE, "KamajiControlPlane", name),
+        infrastructureRef: reference(INFRASTRUCTURE, "DevCluster", name),
+      },
+    }),
+    object(INFRASTRUCTURE, "DevCluster", name, namespace, {
+      spec: {
+        ...(options.address ? { controlPlaneEndpoint: { host: options.address, port: TENANT_PORT } } : {}),
+        backend: { docker: {} },
+      },
+    }),
+    {
+      apiVersion: `${CONTROL_PLANE}/v1alpha2`,
+      kind: "KamajiControlPlane",
+      metadata: { name, namespace },
+      spec: {
+        dataStoreName: "default",
+        addons: { coreDNS: { dnsServiceIPs: [TENANT_DNS_SERVICE] }, kubeProxy: {} },
+        kubelet: { cgroupfs: "systemd", preferredAddressTypes: ["InternalIP"] },
+        network: { serviceType: "LoadBalancer" },
+        replicas: 1,
+        version: options.version,
+      },
+    },
+    ...(options.worker
+      ? [
+          object(INFRASTRUCTURE, "DevMachineTemplate", workers, namespace, {
+            spec: { template: { spec: { backend: { docker: {} } } } },
+          }),
+          object(BOOTSTRAP, "KubeadmConfigTemplate", workers, namespace, {
+            spec: {
+              template: { spec: { joinConfiguration: { nodeRegistration: { kubeletExtraArgs: KUBELET_ARGUMENTS } } } },
+            },
+          }),
+          object(CORE, "MachineDeployment", workers, namespace, {
+            spec: {
+              clusterName: name,
+              replicas: 1,
+              selector: { matchLabels: deployment },
+              template: {
+                metadata: { labels: deployment },
+                spec: {
+                  clusterName: name,
+                  version: options.version,
+                  bootstrap: { configRef: reference(BOOTSTRAP, "KubeadmConfigTemplate", workers) },
+                  infrastructureRef: reference(INFRASTRUCTURE, "DevMachineTemplate", workers),
+                },
+              },
+            },
+          }),
+        ]
+      : []),
+  ];
+}
+
+// The name of the ResourceQuota of the scripts that holds a state of the captures of SPEC-0028 (P5).
+export const QUOTA_NAME = "test-environment";
+
+// A ResourceQuota on Pods of the scripts in the namespace of a state, which allows `pods` Pods: the one that the tenant
+// has, so that its Deployment can make no Pod of a scale or of a rollout, or none, so that it has no ready replica
+// (SPEC-0028, P5; L24).
+export function podQuota(namespace: string, pods: number): string {
+  return JSON.stringify({
+    apiVersion: "v1",
+    kind: "ResourceQuota",
+    metadata: { name: QUOTA_NAME, namespace },
+    spec: { hard: { pods: String(pods) } },
+  });
 }
 
 const CORE = "cluster.x-k8s.io";

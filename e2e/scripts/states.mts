@@ -33,10 +33,18 @@ import {
 
 import type { KubeObject } from "./fixtures.mts";
 
-// What a capture needs of the cluster of the real project.
-export interface RealProject {
-  // kubectl on the cluster of the real project, and its output.
+// What a capture reads a namespace with: kubectl on its cluster, and its output; the kinds that the scripts read there
+// (`fixtureResourcesOn` of fixtures.mts); and its log.
+export interface NamespaceReader {
   kubectl(args: string[], options?: { input?: string; timeout?: number }): string;
+  resources: readonly string[];
+  log(line: string): void;
+  // The pause between two readings, `setTimeout` of the timers of Node unless a test gives its own.
+  pause?(milliseconds: number): Promise<void>;
+}
+
+// What a capture needs of the cluster of the real project.
+export interface RealProject extends NamespaceReader {
   // A server-side apply of the objects of a manifest, by the field manager of the scripts.
   apply(manifest: string): void;
   // The pinned clusterctl, on the cluster of the real project.
@@ -49,7 +57,6 @@ export interface RealProject {
   kubernetesVersion: string;
   upgradeFromKubernetesVersion: string;
   clusterApiVersion: string;
-  log(line: string): void;
 }
 
 export interface WorkloadCluster {
@@ -61,10 +68,13 @@ export interface WorkloadCluster {
   workers: number;
 }
 
-// The objects of a namespace, and the moment when they held the state, in seconds, as Kubernetes writes a time.
+// The objects of a namespace, and the moment when they held the state, in seconds, as Kubernetes writes a time; and,
+// for a capture that asks for it, what `clusterctl describe cluster` printed between the two readings that agreed and
+// a third one that agreed with them.
 export interface Captured {
   objects: KubeObject[];
   capturedAt: string;
+  described?: string;
 }
 
 export interface FixtureState {
@@ -82,7 +92,7 @@ export interface FixtureState {
   source?: "upgrade" | "dry run";
 }
 
-interface Condition {
+export interface Condition {
   type: string;
   status: string;
   reason?: string;
@@ -118,11 +128,11 @@ function conditionsOf(object: KubeObject | undefined): Condition[] {
   return Array.isArray(conditions) ? (conditions as Condition[]) : [];
 }
 
-function condition(object: KubeObject | undefined, type: string): Condition | undefined {
+export function condition(object: KubeObject | undefined, type: string): Condition | undefined {
   return conditionsOf(object).find((item) => item.type === type);
 }
 
-function is(object: KubeObject | undefined, type: string, status: string, reason?: string): boolean {
+export function is(object: KubeObject | undefined, type: string, status: string, reason?: string): boolean {
   const found = condition(object, type);
 
   return found?.status === status && (reason === undefined || found.reason === reason);
@@ -132,17 +142,17 @@ function name(object: KubeObject): string {
   return `${object.kind} ${object.metadata.name}`;
 }
 
-function ofKind(objects: readonly KubeObject[], kind: string): KubeObject[] {
+export function ofKind(objects: readonly KubeObject[], kind: string): KubeObject[] {
   return inNameOrder(objects.filter((object) => object.kind === kind));
 }
 
-function only(objects: readonly KubeObject[], kind: string): KubeObject | undefined {
+export function only(objects: readonly KubeObject[], kind: string): KubeObject | undefined {
   const found = ofKind(objects, kind);
 
   return found.length === 1 ? found[0] : undefined;
 }
 
-function deleting(object: KubeObject): boolean {
+export function deleting(object: KubeObject): boolean {
   return object.metadata.deletionTimestamp !== undefined;
 }
 
@@ -257,21 +267,31 @@ export function notHealthy(objects: readonly KubeObject[]): string | undefined {
 }
 
 // A time as Kubernetes writes it, in whole seconds.
-function now(): string {
+export function now(): string {
   return `${new Date().toISOString().slice(0, 19)}Z`;
 }
 
-function list(items: readonly unknown[]): string {
+export function list(items: readonly unknown[]): string {
   return JSON.stringify({ apiVersion: "v1", kind: "List", items });
 }
 
-// The objects of the kinds of the fixtures in a namespace.
-export function readNamespace(kubectl: RealProject["kubectl"], namespace: string): KubeObject[] {
+// The objects of the kinds of the fixtures in a namespace, or of the kinds given, which those of the cluster that it
+// reads are (`fixtureResourcesOn` of fixtures.mts).
+export function readNamespace(
+  kubectl: NamespaceReader["kubectl"],
+  namespace: string,
+  resources: readonly string[] = FIXTURE_RESOURCES,
+): KubeObject[] {
   return (
-    JSON.parse(kubectl(["get", FIXTURE_RESOURCES.join(","), "--namespace", namespace, "--output", "json"])) as {
+    JSON.parse(kubectl(["get", resources.join(","), "--namespace", namespace, "--output", "json"])) as {
       items: KubeObject[];
     }
   ).items;
+}
+
+// The version of each object of a reading, by its key.
+function versionsOf(objects: readonly KubeObject[]): Map<string, string> {
+  return new Map(objects.map((object) => [objectKey(object), String(object.metadata.resourceVersion)]));
 }
 
 // The objects whose version differs between two readings, or that only one of them has.
@@ -283,7 +303,7 @@ function sameVersions(before: Map<string, string>, after: Map<string, string>): 
   return !changedKeys(before, after).length;
 }
 
-interface Wait {
+export interface Wait {
   what: string;
   // What the objects still miss, or undefined when they hold the state.
   check: (objects: KubeObject[]) => string | undefined;
@@ -292,7 +312,34 @@ interface Wait {
   minutes: number;
 }
 
-async function waitFor(project: RealProject, namespace: string, wait: Wait, stable: boolean): Promise<Captured> {
+// What `describe` printed, and the versions of the objects of the namespace read right after it; or why either failed.
+function describedThenRead(
+  project: NamespaceReader,
+  namespace: string,
+  describe: () => string,
+): { described: string; versions: Map<string, string> } | { failure: string } {
+  try {
+    const described = describe();
+
+    return { described, versions: versionsOf(readNamespace(project.kubectl, namespace, project.resources)) };
+  } catch (error) {
+    return {
+      failure: `clusterctl did not describe the Cluster, or the objects could not be read after it: ${error instanceof Error ? error.message : error}`,
+    };
+  }
+}
+
+// Reads the namespace until its objects hold the state of `wait`, and, when `stable`, until two readings of them agree.
+// With `describe`, which runs once two readings agree, the namespace is read a third time, and the readings start again
+// when an object changed meanwhile, so that what `describe` printed is of the moment of the readings that it returns; a
+// failure of `describe` or of that third reading is tried again as a reading that failed, within the deadline.
+async function waitFor(
+  project: NamespaceReader,
+  namespace: string,
+  wait: Wait,
+  stable: boolean,
+  describe?: () => string,
+): Promise<Captured> {
   const deadline = Date.now() + wait.minutes * 60_000;
   let previous: Map<string, string> | undefined;
   let said = "";
@@ -305,7 +352,7 @@ async function waitFor(project: RealProject, namespace: string, wait: Wait, stab
     let missing: string | undefined;
 
     try {
-      objects = readNamespace(project.kubectl, namespace);
+      objects = readNamespace(project.kubectl, namespace, project.resources);
       missing = wait.check(objects);
     } catch (error) {
       missing = `the objects could not be read: ${error instanceof Error ? error.message : error}`;
@@ -317,18 +364,38 @@ async function waitFor(project: RealProject, namespace: string, wait: Wait, stab
     if (missing === undefined) {
       // Two readings with the same version of every object: the objects held the state, all together, between
       // them.
-      const versions = new Map(objects.map((object) => [objectKey(object), String(object.metadata.resourceVersion)]));
+      const versions = versionsOf(objects);
 
-      if (!stable || (previous && sameVersions(previous, versions))) return { objects, capturedAt: at };
-      if (previous && Date.now() - changedSaidAt >= 30_000) {
-        project.log(
-          `${namespace}: the state holds, and these objects changed between two readings: ${changedKeys(previous, versions).join(", ")}`,
-        );
-        changedSaidAt = Date.now();
+      if (!stable) return { objects, capturedAt: at };
+      if (previous && sameVersions(previous, versions)) {
+        if (!describe) return { objects, capturedAt: at };
+
+        const after = describedThenRead(project, namespace, describe);
+
+        if ("versions" in after && sameVersions(versions, after.versions)) {
+          return { objects, capturedAt: at, described: after.described };
+        }
+        if ("versions" in after) {
+          project.log(
+            `${namespace}: these objects changed while clusterctl described the Cluster, and the readings start again: ${changedKeys(versions, after.versions).join(", ")}`,
+          );
+          previous = after.versions;
+          await (project.pause ?? delay)(2_000);
+          continue;
+        }
+        // The readings start again, as after a reading that failed.
+        missing = after.failure;
+      } else {
+        if (previous && Date.now() - changedSaidAt >= 30_000) {
+          project.log(
+            `${namespace}: the state holds, and these objects changed between two readings: ${changedKeys(previous, versions).join(", ")}`,
+          );
+          changedSaidAt = Date.now();
+        }
+        previous = versions;
+        await (project.pause ?? delay)(2_000);
+        continue;
       }
-      previous = versions;
-      await delay(2_000);
-      continue;
     }
     previous = undefined;
     if (missing !== said || Date.now() - saidAt >= 60_000) {
@@ -340,16 +407,23 @@ async function waitFor(project: RealProject, namespace: string, wait: Wait, stab
       Date.now() < deadline,
       `${namespace}: ${wait.what} did not happen within ${wait.minutes} minutes: ${missing}`,
     );
-    await delay(3_000);
+    await (project.pause ?? delay)(3_000);
   }
 }
 
-// Takes the objects of a namespace once they hold a state and stop changing.
-function snapshot(project: RealProject, namespace: string, wait: Wait): Promise<Captured> {
-  return waitFor(project, namespace, wait, true);
+// Takes the objects of a namespace once they hold a state and stop changing, with what `describe` printed of them
+// when it is given.
+export function snapshot(
+  project: NamespaceReader,
+  namespace: string,
+  wait: Wait,
+  describe?: () => string,
+): Promise<Captured> {
+  return waitFor(project, namespace, wait, true, describe);
 }
 
-async function until(project: RealProject, namespace: string, wait: Wait): Promise<KubeObject[]> {
+// The objects of a namespace once they hold a state.
+export async function until(project: NamespaceReader, namespace: string, wait: Wait): Promise<KubeObject[]> {
   return (await waitFor(project, namespace, wait, false)).objects;
 }
 
@@ -407,7 +481,7 @@ function startWorkload(project: RealProject, namespace: string, options: Workloa
   }
 }
 
-const MINUTES_TO_HEALTHY = 20;
+export const MINUTES_TO_HEALTHY = 20;
 
 async function healthyWorkload(
   project: RealProject,
@@ -450,7 +524,7 @@ function annotate(project: RealProject, namespace: string, machine: KubeObject, 
 
 // Every condition of the objects that follow the pause of their Cluster: all of them but a ClusterClass and a
 // ClusterResourceSet, which follow only their own annotation (SPEC-0001 R4.58).
-function notPaused(objects: readonly KubeObject[]): string | undefined {
+export function notPaused(objects: readonly KubeObject[]): string | undefined {
   for (const object of objects) {
     if (object.kind === "ClusterClass" || object.kind === "ClusterResourceSet") continue;
 
@@ -906,7 +980,7 @@ export const FIXTURE_STATES: readonly FixtureState[] = [
 export const HAND_WRITTEN_STATE = "machine-pool-without-machines";
 
 // A paragraph of Markdown in lines of at most 80 columns.
-function paragraph(text: string): string {
+export function paragraph(text: string): string {
   const lines: string[] = [];
   let line = "";
 
@@ -933,7 +1007,7 @@ export interface ReadmeVersions {
 // What the machine of the capture told of itself in a set, and what the set says in its place: the kernel,
 // the boot and the swap of its Nodes, and the capacity of its machine templates. Empty for a set with
 // neither.
-function hostFacts(objects: readonly KubeObject[]): string[] {
+export function hostFacts(objects: readonly KubeObject[]): string[] {
   const nodes = objects.some((object) => typeof object.status?.nodeInfo === "object");
   const templates = objects.some((object) => holdsHostCapacity(object) && typeof object.status?.capacity === "object");
   const capacity = Object.entries(HOST_CAPACITY)

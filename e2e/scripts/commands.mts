@@ -18,6 +18,10 @@
 //   fixtures-up     applies the fixtures of states to the cluster of the definitions
 //   fixtures-down   removes the fixtures of states from it, or all of them
 //   fixtures-check  applies the fixtures of each state, reads them back and compares them with their files
+//   up-kamaji       the cluster of the captures of SPEC-0028: a kind cluster that mounts the socket of Docker,
+//                   Cluster API, MetalLB, Kamaji and the Kamaji control plane provider, on Linux on amd64 alone
+//   capture-kamaji  brings workload clusters of the cluster of the captures into the states of the Kamaji
+//                   captures, one at a time, and writes the objects of each state into integration/fixtures
 //
 // Run again, `up` and `up-definitions` resume. The scripts keep their state in a private folder outside the
 // repository: for each kind cluster a kubeconfig of their own and the ID of its node, and the cache of what
@@ -27,7 +31,7 @@
 
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { cpus, homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { filesOfTarball } from "./archives.mts";
@@ -35,6 +39,11 @@ import { assertKindNode, assertLocalDocker, ensure, localApiServer, workloadCont
 import {
   certManagerComponents,
   everyPinnedFile,
+  helmArchive,
+  kamajiChartFile,
+  kamajiEtcdChart,
+  kamajiProviderAsset,
+  metallbManifest,
   operatorComponents,
   pinnedContent,
   releaseAsset,
@@ -48,9 +57,11 @@ import {
   cleanObject,
   creationLevels,
   differences,
+  FIXTURE_FINALIZER,
   FIXTURES_FOLDER,
   fileOf,
   fixtureFiles,
+  fixtureResourcesOn,
   inNameOrder,
   objectKey,
   printedObjects,
@@ -59,19 +70,54 @@ import {
   secondsBetween,
   timesInsideText,
 } from "./fixtures.mts";
-import { childEnvironment, clusterctlAsset, INOTIFY_LIMITS, inotifySettings } from "./host.mts";
+import {
+  assertCapturesHost,
+  CONNTRACK_MAX,
+  childEnvironment,
+  clusterctlAsset,
+  INOTIFY_LIMITS,
+  inotifySettings,
+  raiseConntrackMax,
+  restoreConntrackMax,
+} from "./host.mts";
+import {
+  ADDRESS_HELPER,
+  assertChartDependencies,
+  ciRun,
+  describedClusterRow,
+  digestLines,
+  KAMAJI_CLUSTER,
+  KAMAJI_STATES,
+  kamajiReadme,
+  kamajiStatesOf,
+  nextMinor,
+} from "./kamaji.mts";
 import {
   chartDefinitions,
   clusterctlConfiguration,
   customResourceDefinitions,
+  KAMAJI_PROVIDER,
+  kamajiCluster,
   kindConfiguration,
   kindnetLabelArgument,
   kindnetManifest,
   kindnetResources,
+  METALLB_NAMESPACE,
+  METALLB_POOL,
+  metallbPool,
   PROVIDERS,
+  poolAddress,
+  relabeledDefinitions,
   S7,
 } from "./manifests.mts";
-import { CLUSTER_API_SOURCES, kubernetesMinor, readPins } from "./pins.mts";
+import {
+  CLUSTER_API_SOURCES,
+  KAMAJI_CHART_DEFINITIONS,
+  KAMAJI_CHART_FOLDER,
+  KAMAJI_PROVIDER_ASSETS,
+  kubernetesMinor,
+  readPins,
+} from "./pins.mts";
 import { changedFiles, fingerprints, kubeconfigFiles, preparePrivateFolder, stateFolder, takeLock } from "./state.mts";
 import {
   FIXTURE_STATES,
@@ -83,10 +129,12 @@ import {
 } from "./states.mts";
 import { parseDocuments } from "./yaml.mts";
 
-import type { KubeObject } from "./fixtures.mts";
+import type { KubeObject, ScriptsCluster } from "./fixtures.mts";
+import type { ConntrackHost } from "./host.mts";
+import type { KamajiProject, KamajiState, KamajiVersions } from "./kamaji.mts";
 import type { RepositoryProvider } from "./manifests.mts";
 import type { ClusterApiAsset, Pins, WorkflowPins } from "./pins.mts";
-import type { Captured, FixtureState, ReadmeVersions, RealProject } from "./states.mts";
+import type { Captured, FixtureState, NamespaceReader, ReadmeVersions, RealProject } from "./states.mts";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const STATE = stateFolder(process.env, homedir());
@@ -97,7 +145,8 @@ const KUBECTL_CACHE = join(STATE, "cache", "kubectl");
 
 // A kind cluster of the scripts: its name, which is global to the Docker daemon, its folder in the state,
 // with its kubeconfig, which holds its one context, and the record of its node, the ID of the container that
-// the scripts created.
+// the scripts created; and the kinds that the scripts read in one of its namespaces, those that it serves
+// (`fixtureResourcesOn` of fixtures.mts), so that a command reads a cluster with the kinds of that cluster alone.
 export interface Tier {
   name: string;
   context: string;
@@ -105,9 +154,10 @@ export interface Tier {
   kubeconfig: string;
   record: string;
   dockerSocket: boolean;
+  resources: readonly string[];
 }
 
-function tier(name: string, dockerSocket: boolean): Tier {
+function tier(name: string, dockerSocket: boolean, cluster: ScriptsCluster): Tier {
   const folder = join(STATE, name);
 
   return {
@@ -117,11 +167,23 @@ function tier(name: string, dockerSocket: boolean): Tier {
     kubeconfig: join(folder, "kubeconfig"),
     record: join(folder, "node"),
     dockerSocket,
+    resources: fixtureResourcesOn(cluster),
   };
 }
 
-const DEFINITIONS = tier("freelens-capi-definitions", false);
-const MANAGEMENT = tier("freelens-capi-management", true);
+const DEFINITIONS = tier("freelens-capi-definitions", false, "definitions");
+const MANAGEMENT = tier("freelens-capi-management", true, "real project");
+// The cluster of the captures of SPEC-0028, whose node mounts the socket of Docker, as the cluster of the real project
+// (P2).
+const KAMAJI = tier(KAMAJI_CLUSTER, true, "captures");
+// The kinds that the scripts read in a namespace of each of their kind clusters, by its name (SPEC-0028, P6).
+export const TIER_RESOURCES: Record<string, readonly string[]> = Object.fromEntries(
+  [DEFINITIONS, MANAGEMENT, KAMAJI].map((target) => [target.name, target.resources]),
+);
+// The record of the value that `net.netfilter.nf_conntrack_max` had before the scripts changed it, in the folder of the
+// cluster of the captures, which `down` gives back (P2, P3).
+const CONNTRACK_RECORD = join(KAMAJI.folder, "conntrack");
+const HELM = join(STATE, "helm");
 
 // A workload cluster of the real project, by its name, which is global to the Docker daemon.
 export interface WorkloadName {
@@ -151,6 +213,13 @@ const CAPTURE_WORKLOADS: readonly WorkloadName[] = FIXTURE_STATES.filter((state)
 const S7_WORKLOADS: readonly WorkloadName[] = [{ name: S7.infrastructureOnly }, { name: S7.controlPlaneOnly }];
 // The workload clusters whose containers `down` deletes: those of `up`, of the captures and of the trial of S7.
 export const DOWN_WORKLOADS: readonly WorkloadName[] = [...WORKLOADS, ...CAPTURE_WORKLOADS, ...S7_WORKLOADS];
+// The workload clusters of the cluster of the captures of SPEC-0028, each in the namespace of its name, the helper
+// Cluster of `kamaji-provisioning` among them, whose containers `down` deletes when the state folder records that
+// cluster.
+export const KAMAJI_WORKLOADS: readonly WorkloadName[] = [
+  ...KAMAJI_STATES.map((state) => ({ name: state.namespace })),
+  { name: ADDRESS_HELPER },
+];
 const NAMESPACE = "default";
 const FIELD_MANAGER = "freelens-capi-environment";
 const AVAILABLE_WITHIN_MINUTES = 20;
@@ -286,8 +355,9 @@ function kubectl(target: Tier, args: string[], options: RunOptions = {}): string
 
 // The environment of clusterctl: ClusterTopology on, as the release asks for ClusterClasses, no check for a
 // newer clusterctl, and a home and a configuration folder of the scripts in place of those of the user,
-// where clusterctl would look for a configuration of its own.
-function clusterctlEnvironment(kubeconfig?: string): Record<string, string> {
+// where clusterctl would look for a configuration of its own; then `variables`, those that a command sets for the
+// components that it installs.
+function clusterctlEnvironment(kubeconfig?: string, variables: Record<string, string> = {}): Record<string, string> {
   const home = join(CLUSTERCTL, "home");
 
   return environment(kubeconfig, {
@@ -295,10 +365,16 @@ function clusterctlEnvironment(kubeconfig?: string): Record<string, string> {
     CLUSTERCTL_DISABLE_VERSIONCHECK: "true",
     HOME: home,
     XDG_CONFIG_HOME: home,
+    ...variables,
   });
 }
 
-function clusterctl(binary: string, target: Tier, args: string[], options: RunOptions = {}): string {
+function clusterctl(
+  binary: string,
+  target: Tier,
+  args: string[],
+  options: RunOptions & { variables?: Record<string, string> } = {},
+): string {
   verifyTarget(target);
   return run(
     binary,
@@ -307,8 +383,27 @@ function clusterctl(binary: string, target: Tier, args: string[], options: RunOp
       ...["--config", CLUSTERCTL_CONFIG],
       ...["--kubeconfig", target.kubeconfig, "--kubeconfig-context", target.context],
     ],
-    { ...options, env: clusterctlEnvironment(target.kubeconfig) },
+    { ...options, env: clusterctlEnvironment(target.kubeconfig, options.variables) },
   );
+}
+
+// The environment of helm: its homes in the state folder, in place of those of the user, so that no repository, plugin
+// or registry of the user applies.
+function helmEnvironment(kubeconfig: string): Record<string, string> {
+  return environment(kubeconfig, {
+    HELM_CACHE_HOME: join(HELM, "cache"),
+    HELM_CONFIG_HOME: join(HELM, "config"),
+    HELM_DATA_HOME: join(HELM, "data"),
+  });
+}
+
+// The pinned helm on a tier, with the target checked before the request.
+function helm(binary: string, target: Tier, args: string[], options: RunOptions = {}): string {
+  verifyTarget(target);
+  return run(binary, [...args, "--kubeconfig", target.kubeconfig, "--kube-context", target.context], {
+    ...options,
+    env: helmEnvironment(target.kubeconfig),
+  });
 }
 
 function alive(pid: number): boolean {
@@ -365,6 +460,42 @@ function preflight(workflow: WorkflowPins, kubernetes: string, needs: { processo
       `Warning: kubectl ${client.clientVersion?.major}.${client.clientVersion?.minor} is more than one minor version away from Kubernetes ${kubernetes}.`,
     );
   }
+}
+
+// `net.netfilter.nf_conntrack_max` of the host, as the scripts read it from /proc and set it with `sudo -n sysctl`, as
+// the limits of inotify, and the record of the value that the host had, in the folder of the cluster of the captures,
+// which `down` gives back (SPEC-0028, P2, P3).
+const CONNTRACK_HOST: ConntrackHost = {
+  read: () => {
+    try {
+      const value = readFileSync(`/proc/sys/${CONNTRACK_MAX.replaceAll(".", "/")}`, "utf8").trim();
+
+      return /^\d+$/.test(value) ? Number(value) : undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  write: (setting) =>
+    spawnSync("sudo", ["-n", "sysctl", "-w", setting], {
+      env: environment(),
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    }).status === 0,
+  recorded: () => (existsSync(CONNTRACK_RECORD) ? readFileSync(CONNTRACK_RECORD, "utf8") : undefined),
+  record: (value) => {
+    mkdirSync(KAMAJI.folder, { recursive: true });
+    writeFileSync(CONNTRACK_RECORD, `${value}\n`);
+  },
+  forget: () => rmSync(CONNTRACK_RECORD, { force: true }),
+  recordFile: CONNTRACK_RECORD,
+  log: (line) => console.log(line),
+};
+
+// On the host of the cluster of the captures, `net.netfilter.nf_conntrack_max` at the value that kube-proxy computes
+// for the processors of the host, before any worker joins a tenant (SPEC-0028, P3; L4). A value that the scripts cannot
+// set stops the command, since no worker becomes ready without it.
+function setConntrackMax(): void {
+  raiseConntrackMax(CONNTRACK_HOST, cpus().length);
 }
 
 // On Linux, the limits of inotify of the workload clusters, raised when they are lower, or a warning.
@@ -433,8 +564,9 @@ async function clusterctlBinary(pins: Pins): Promise<string> {
 
 // The local repository of clusterctl, written from the checked files at every run: the components of the
 // four providers and the metadata of the release, the templates of the development provider next to its
-// components, and cert-manager in the folder of its version.
-async function writeRepository(pins: Pins): Promise<void> {
+// components, and cert-manager in the folder of its version; for the cluster of the captures, the files of the release
+// of the Kamaji control plane provider too, in the folder of its label (SPEC-0028, P3).
+async function writeRepository(pins: Pins, options: { kamaji?: boolean } = {}): Promise<void> {
   const { version } = pins.clusterApi;
   const repository = join(CLUSTERCTL, "repository");
   const overrides = join(CLUSTERCTL, "overrides");
@@ -463,10 +595,22 @@ async function writeRepository(pins: Pins): Promise<void> {
 
   mkdirSync(certManager, { recursive: true });
   writeFileSync(join(certManager, "cert-manager.yaml"), await pinnedContent(certManagerComponents(pins, DOWNLOADS)));
+  if (options.kamaji) {
+    const folder = join(repository, KAMAJI_PROVIDER.label, pins.kamajiProvider.version);
+
+    mkdirSync(folder, { recursive: true });
+    for (const file of KAMAJI_PROVIDER_ASSETS) {
+      writeFileSync(join(folder, file), await pinnedContent(kamajiProviderAsset(pins, DOWNLOADS, file)));
+    }
+  }
   mkdirSync(overrides, { recursive: true });
   writeFileSync(
     CLUSTERCTL_CONFIG,
-    clusterctlConfiguration(repository, overrides, { clusterApi: version, certManager: pins.certManager.version }),
+    clusterctlConfiguration(repository, overrides, {
+      clusterApi: version,
+      certManager: pins.certManager.version,
+      ...(options.kamaji ? { kamaji: pins.kamajiProvider.version } : {}),
+    }),
   );
 }
 
@@ -552,14 +696,46 @@ export function providersAgainstPins(
   };
 }
 
-// The inventory of clusterctl in the cluster of the real project, empty before its definition exists.
-function installedProviders(): InventoryProvider[] {
+// The providers of the cluster of the captures against the pins (SPEC-0028, P3): those of PROVIDERS at the release of
+// Cluster API and the Kamaji control plane provider at its own, and nothing else. Those that it lacks `up-kamaji`
+// installs, and every other, at another release or one more, refuses a capture.
+export function kamajiProvidersAgainstPins(
+  installed: readonly InventoryProvider[],
+  versions: { clusterApi: string; kamaji: string },
+): { missing: { type: string; name: string; version: string }[]; other: string[] } {
+  const expected = [
+    ...PROVIDERS.map((provider) => ({ type: provider.type, name: provider.name, version: versions.clusterApi })),
+    { type: KAMAJI_PROVIDER.type, name: KAMAJI_PROVIDER.name, version: versions.kamaji },
+  ];
+
+  return {
+    missing: expected.filter(
+      (provider) => !installed.some((item) => item.type === provider.type && item.providerName === provider.name),
+    ),
+    other: installed.flatMap((item) => {
+      const pinned = expected.find((provider) => provider.type === item.type && provider.name === item.providerName);
+
+      if (!pinned) {
+        return [
+          `${item.type} ${item.providerName} is installed, and the cluster of the captures runs no such provider`,
+        ];
+      }
+      return item.version === pinned.version
+        ? []
+        : [`${item.type} ${item.providerName} is installed at ${item.version}, and the pins say ${pinned.version}`];
+    }),
+  };
+}
+
+// The inventory of clusterctl in the cluster of a tier, the real project by default, empty before its definition
+// exists.
+function installedProviders(target: Tier = MANAGEMENT): InventoryProvider[] {
   const definition = ["customresourcedefinitions", "providers.clusterctl.cluster.x-k8s.io"];
 
-  if (!kubectl(MANAGEMENT, ["get", ...definition, "--ignore-not-found", "--output", "name"]).trim()) return [];
+  if (!kubectl(target, ["get", ...definition, "--ignore-not-found", "--output", "name"]).trim()) return [];
   return (
     JSON.parse(
-      kubectl(MANAGEMENT, [
+      kubectl(target, [
         "get",
         "providers.v1alpha3.clusterctl.cluster.x-k8s.io",
         "--all-namespaces",
@@ -743,6 +919,23 @@ async function upDefinitions(): Promise<void> {
     return found;
   });
 
+  // Those of the Kamaji control plane provider, with the label of the provider that clusterctl gives them, and those of
+  // the TenantControlPlane and of the DataStore, as the chart of Kamaji has them (SPEC-0028, P8).
+  definitions.push(
+    ...relabeledDefinitions(
+      (await pinnedContent(kamajiProviderAsset(pins, DOWNLOADS, "control-plane-components.yaml"))).toString("utf8"),
+      KAMAJI_PROVIDER.label,
+    ),
+  );
+  for (const path of KAMAJI_CHART_DEFINITIONS) {
+    const found = customResourceDefinitions(
+      (await pinnedContent(kamajiChartFile(pins, DOWNLOADS, path))).toString("utf8"),
+    );
+
+    ensure(found.length === 1, `${path} of the chart of Kamaji does not hold one definition`);
+    definitions.push(...found);
+  }
+
   ensureKindCluster(DEFINITIONS, pins.managementKubernetes.version);
   console.log(`Applying ${definitions.length} definitions, as the releases have them`);
 
@@ -763,8 +956,237 @@ async function upDefinitions(): Promise<void> {
   );
 }
 
+// helm for Linux on amd64, from its checked archive, written in the state folder; then checked against the version of
+// the pins, which it reports.
+async function helmBinary(pins: Pins): Promise<string> {
+  const archive = filesOfTarball(await pinnedContent(helmArchive(pins, DOWNLOADS)));
+  const content = archive.get("linux-amd64/helm");
+  const binary = join(HELM, "bin", "helm");
+
+  ensure(content, `The archive of helm ${pins.helm.version} has no linux-amd64/helm`);
+  mkdirSync(join(HELM, "bin"), { recursive: true });
+  writeFileSync(binary, content, { mode: 0o700 });
+  chmodSync(binary, 0o700);
+
+  const version = run(binary, ["version", "--template", "{{.Version}}"], {
+    env: helmEnvironment(join(STATE, "no-kubeconfig")),
+    quiet: true,
+  }).trim();
+
+  ensure(version === pins.helm.version, `The pinned helm reports ${version}, and the pins say ${pins.helm.version}`);
+  return binary;
+}
+
+// The chart of Kamaji, written in the folder of the cluster of the captures from its files at the commit of its tag,
+// each checked against its pin; then `helm dependency build`, which downloads kamaji-etcd at the version that its
+// Chart.lock names from the repository that the lock names, whose archive is checked against its pin before the
+// install (SPEC-0028, P3). Returns the folder of the chart.
+async function kamajiChart(pins: Pins, binary: string): Promise<string> {
+  const root = join(KAMAJI.folder, "kamaji");
+  const chart = join(root, KAMAJI_CHART_FOLDER);
+  const repository = "https://clastix.github.io/charts";
+
+  rmSync(root, { recursive: true, force: true });
+  for (const path of Object.keys(pins.kamaji.chart)) {
+    mkdirSync(join(root, path, ".."), { recursive: true });
+    writeFileSync(join(root, path), await pinnedContent(kamajiChartFile(pins, DOWNLOADS, path)));
+  }
+
+  const env = helmEnvironment(join(STATE, "no-kubeconfig"));
+
+  run(binary, ["repo", "add", "freelens-capi-kamaji", repository, "--force-update"], { env, quiet: true });
+  run(binary, ["dependency", "build", chart, "--skip-refresh"], { env, quiet: true, timeout: 5 * 60_000 });
+
+  const folder = join(chart, "charts");
+
+  assertChartDependencies(
+    new Map(readdirSync(folder).map((name) => [name, readFileSync(join(folder, name))])),
+    kamajiEtcdChart(pins, DOWNLOADS),
+  );
+  return chart;
+}
+
+// The one address of the pool of MetalLB of the cluster of the captures, from the IPv4 subnet of the network of kind.
+function kindNetworkAddress(): string {
+  const subnets = JSON.parse(
+    run("docker", ["network", "inspect", "kind", "--format", "{{json .IPAM.Config}}"], { quiet: true }),
+  ) as { Subnet?: string }[];
+  const ipv4 = subnets.map((item) => item.Subnet ?? "").find((subnet) => /^\d+\.\d+\.\d+\.\d+\//.test(subnet));
+
+  ensure(ipv4, "The network kind of Docker has no IPv4 subnet");
+  return poolAddress(ipv4);
+}
+
+// The one address of the pool of MetalLB that `up-kamaji` made, read from the cluster of the captures.
+function poolAddressOnCluster(): string {
+  const pool = JSON.parse(
+    kubectl(
+      KAMAJI,
+      ["get", "ipaddresspools.metallb.io", METALLB_POOL, "--namespace", METALLB_NAMESPACE, "--output", "json"],
+      { quiet: true },
+    ),
+  ) as { spec?: { addresses?: string[] } };
+  const [address] = pool.spec?.addresses ?? [];
+
+  ensure(
+    pool.spec?.addresses?.length === 1 && /^\d+\.\d+\.\d+\.\d+\/32$/.test(address),
+    `The pool ${METALLB_POOL} of MetalLB does not hold one address: run pnpm e2e:cluster:up:kamaji`,
+  );
+  return address.replace(/\/32$/, "");
+}
+
+const PROVIDER_FLAGS = {
+  CoreProvider: "--core",
+  BootstrapProvider: "--bootstrap",
+  ControlPlaneProvider: "--control-plane",
+  InfrastructureProvider: "--infrastructure",
+} as const;
+
+// Waits until every Deployment of a namespace of a tier is Available.
+function deploymentsAvailable(target: Tier, namespace: string): void {
+  kubectl(
+    target,
+    ["wait", "deployments", "--all", "--namespace", namespace, "--for", "condition=Available", "--timeout", "600s"],
+    { timeout: 11 * 60_000 },
+  );
+}
+
+// The cluster of the captures of SPEC-0028 (P2, P3), on Linux on amd64 alone: a kind cluster that mounts the socket of
+// Docker; Cluster API at the release of the pins with the pinned clusterctl, the four providers of PROVIDERS, which
+// bring cert-manager; MetalLB, with a pool of one address of the network of kind; Kamaji, with the pinned helm, from its
+// chart at the commit of its tag, its telemetry disabled; then the Kamaji control plane provider with its gate
+// SkipInfraClusterPatch, after Kamaji, so that it watches the TenantControlPlanes; and, before any worker joins a
+// tenant, the setting of the kernel of the host that the workers need. Run again, it resumes.
+async function upKamaji(): Promise<void> {
+  assertCapturesHost(process.platform, process.arch);
+
+  const { pins, workflow } = readPins(ROOT);
+  const { version } = pins.clusterApi;
+
+  preflight(workflow, pins.managementKubernetes.version, REAL_PROJECT_NEEDS);
+  raiseInotifyLimits();
+  setConntrackMax();
+  await writeRepository(pins, { kamaji: true });
+
+  const binary = await clusterctlBinary(pins);
+  const helmBin = await helmBinary(pins);
+  const chart = await kamajiChart(pins, helmBin);
+
+  ensureKindCluster(KAMAJI, pins.managementKubernetes.version);
+
+  const versions = { clusterApi: version, kamaji: pins.kamajiProvider.version };
+  const before = kamajiProvidersAgainstPins(installedProviders(KAMAJI), versions);
+
+  ensure(!before.other.length, `${before.other.join("; ")}: take the environment down first`);
+
+  const missingCore = before.missing.filter((provider) => provider.name !== KAMAJI_PROVIDER.name);
+
+  if (missingCore.length) {
+    console.log(`Installing Cluster API ${version} with clusterctl, with ClusterTopology on`);
+    clusterctl(
+      binary,
+      KAMAJI,
+      [
+        "init",
+        ...missingCore.flatMap((provider) => [
+          PROVIDER_FLAGS[provider.type as keyof typeof PROVIDER_FLAGS],
+          `${provider.name}:${provider.version}`,
+        ]),
+        ...["--wait-providers", "--wait-provider-timeout", "900"],
+      ],
+      { stream: true, timeout: 40 * 60_000 },
+    );
+  }
+  for (const namespace of new Set([
+    "cert-manager",
+    ...installedProviders(KAMAJI).map((item) => item.metadata.namespace),
+  ])) {
+    deploymentsAvailable(KAMAJI, namespace);
+  }
+
+  console.log(`Installing MetalLB ${pins.metallb.version}, with a pool of one address of the network of kind`);
+  kubectl(KAMAJI, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
+    input: (await pinnedContent(metallbManifest(pins, DOWNLOADS))).toString("utf8"),
+    quiet: true,
+    timeout: 5 * 60_000,
+  });
+  for (const workload of ["deployment/controller", "daemonset/speaker"]) {
+    kubectl(KAMAJI, ["rollout", "status", workload, "--namespace", METALLB_NAMESPACE, "--timeout", "300s"], {
+      timeout: 6 * 60_000,
+    });
+  }
+
+  const pool = metallbPool(kindNetworkAddress());
+
+  // The webhook of MetalLB answers a little after its Pods are ready.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      kubectl(KAMAJI, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
+        input: pool,
+        quiet: true,
+      });
+      break;
+    } catch (error) {
+      if (error instanceof TargetRefusal || attempt === 60) throw error;
+      await delay(2_000);
+    }
+  }
+
+  console.log(
+    `Installing Kamaji ${pins.kamaji.version} with helm, from its chart at ${pins.kamaji.commit.slice(0, 12)}`,
+  );
+  helm(
+    helmBin,
+    KAMAJI,
+    [
+      ...["upgrade", "--install", "kamaji", chart, "--namespace", "kamaji-system", "--create-namespace"],
+      ...["--set", `image.tag=${pins.kamaji.version}`, "--set", "image.pullPolicy=IfNotPresent"],
+      ...["--set", "telemetry.disabled=true", "--set", "resources=null", "--wait", "--timeout", "10m"],
+    ],
+    { quiet: true, timeout: 12 * 60_000 },
+  );
+  deploymentsAvailable(KAMAJI, "kamaji-system");
+  kubectl(
+    KAMAJI,
+    [
+      ...["wait", "datastores.v1alpha1.kamaji.clastix.io/default", "--for", "jsonpath={.status.ready}=true"],
+      ...["--timeout", "300s"],
+    ],
+    { timeout: 6 * 60_000 },
+  );
+
+  if (before.missing.some((provider) => provider.name === KAMAJI_PROVIDER.name)) {
+    console.log(
+      `Installing the Kamaji control plane provider ${pins.kamajiProvider.version}, with SkipInfraClusterPatch`,
+    );
+    clusterctl(
+      binary,
+      KAMAJI,
+      [
+        ...["init", "--control-plane", `${KAMAJI_PROVIDER.name}:${pins.kamajiProvider.version}`],
+        ...["--wait-providers", "--wait-provider-timeout", "900"],
+      ],
+      { stream: true, timeout: 20 * 60_000, variables: { CACPPK_SKIP_INFRA_CLUSTER_PATCH: "true" } },
+    );
+  }
+  // clusterctl returns before the image of the provider is pulled (L2).
+  for (const namespace of new Set(installedProviders(KAMAJI).map((item) => item.metadata.namespace))) {
+    deploymentsAvailable(KAMAJI, namespace);
+  }
+
+  const after = kamajiProvidersAgainstPins(installedProviders(KAMAJI), versions);
+
+  ensure(
+    !after.missing.length && !after.other.length,
+    `The cluster of the captures does not run the providers of the pins: ${[...after.missing.map((provider) => `${provider.type} ${provider.name} is missing`), ...after.other].join("; ")}`,
+  );
+  console.log(`The cluster of the captures is up: kubeconfig ${KAMAJI.kubeconfig}, context ${KAMAJI.context}`);
+}
+
 // What `down` does to the system, apart from what it decides, so that its decisions can be tested.
 export interface DownOperations {
+  // Docker, before anything else: the local one, which runs Linux containers.
+  localDocker(): void;
   kindClusters(): string[];
   // The ID of the control plane container of the kind cluster of that name, when Docker has one.
   nodeId(target: Tier): string | undefined;
@@ -775,7 +1197,16 @@ export interface DownOperations {
   removeContainers(ids: string[]): void;
   // Removes the folder of a tier from the state: its kubeconfig and the record of its node.
   forget(target: Tier): void;
+  // Gives the host back the settings that the scripts changed for the cluster of a tier, as the state folder records
+  // them: `net.netfilter.nf_conntrack_max` for the cluster of the captures (SPEC-0028, P2).
+  restoreSettings(target: Tier): void;
   log(line: string): void;
+}
+
+// The cluster of the captures of SPEC-0028, for `down`: its tier and the workload clusters that it made (P2).
+export interface CapturesTier {
+  tier: Tier;
+  workloads: readonly WorkloadName[];
 }
 
 // Takes the environment down. A kind cluster of the scripts is deleted only when its node is the container
@@ -783,13 +1214,15 @@ export interface DownOperations {
 // real project goes first, so that no controller creates a node of a workload cluster again; then the
 // containers of the workload clusters, only when this state folder records the cluster of the real project
 // that created them. Every step is tried, what is left is checked, and a step that failed makes the command
-// fail and keeps the state, so that the next run tries again. When the kind clusters cannot be listed,
-// nothing is deleted.
+// fail and keeps the state, so that the next run tries again. When Docker is not the local one or does not
+// answer, or the kind clusters cannot be listed, nothing is deleted; the settings of the host that the cluster of the
+// captures changed are given back all the same, since they delete nothing and reach no cluster (SPEC-0028, P2).
 export function takeDown(
   operations: DownOperations,
   management: Tier,
   definitions: Tier,
   workloads: readonly WorkloadName[],
+  captures?: CapturesTier,
 ): void {
   const failures: string[] = [];
   const attempt = (what: string, action: () => void) => {
@@ -799,18 +1232,35 @@ export function takeDown(
       failures.push(`${what}: ${message(error)}`);
     }
   };
+  // A stop before anything is deleted, with the settings of the host given back first.
+  const stop = (what: string, error: unknown): Error => {
+    if (captures) {
+      attempt(`giving back the settings of the host of ${captures.tier.name}`, () =>
+        operations.restoreSettings(captures.tier),
+      );
+    }
+    return new Error(`${what}, and nothing was deleted: ${[message(error), ...failures].join("; ")}`);
+  };
   let clusters: string[];
 
   try {
+    operations.localDocker();
+  } catch (error) {
+    throw stop("Docker is not the local one, or does not answer", error);
+  }
+  try {
     clusters = operations.kindClusters();
   } catch (error) {
-    throw new Error(`The kind clusters could not be listed, and nothing was deleted: ${message(error)}`);
+    throw stop("The kind clusters could not be listed", error);
   }
 
   const managed = operations.recordedNode(management) !== undefined;
+  // The containers of the workload clusters of the cluster of the captures, which its own development provider made,
+  // are deleted only when this state folder records that cluster, as those of the real project.
+  const captured = captures !== undefined && operations.recordedNode(captures.tier) !== undefined;
   const deleted: string[] = [];
 
-  for (const target of [management, definitions]) {
+  for (const target of [management, ...(captures ? [captures.tier] : []), definitions]) {
     attempt(`deleting the kind cluster ${target.name}`, () => {
       if (!clusters.includes(target.name)) return;
 
@@ -838,9 +1288,29 @@ export function takeDown(
       operations.removeContainers(ids);
     });
   }
+  for (const workload of captures?.workloads ?? []) {
+    attempt(`deleting the containers of ${workload.name}`, () => {
+      const ids = operations.workloadContainers(workload);
+
+      if (!ids.length) return;
+      ensure(
+        captured,
+        "this state folder has no record of the cluster of the captures that created them, and they are left in place",
+      );
+      operations.log(`Deleting the ${ids.length} containers of the workload cluster ${workload.name}`);
+      operations.removeContainers(ids);
+    });
+  }
+  if (captures) {
+    attempt(`giving back the settings of the host of ${captures.tier.name}`, () =>
+      operations.restoreSettings(captures.tier),
+    );
+  }
   attempt("checking what is left", () => {
     const left = operations.kindClusters().filter((name) => deleted.includes(name));
-    const containers = managed ? workloads.flatMap((workload) => operations.workloadContainers(workload)) : [];
+    const containers = [...(managed ? workloads : []), ...(captured ? (captures?.workloads ?? []) : [])].flatMap(
+      (workload) => operations.workloadContainers(workload),
+    );
 
     ensure(!left.length, `kind still lists ${left.join(", ")}`);
     ensure(!containers.length, `${containers.length} containers of the workload clusters are left`);
@@ -849,6 +1319,7 @@ export function takeDown(
     throw new Error(`The environment was not taken down:\n- ${failures.join("\n- ")}`);
   }
   operations.forget(management);
+  if (captures) operations.forget(captures.tier);
   operations.forget(definitions);
   operations.log("Nothing of the test environment is left: no kind cluster and no container of its own");
 }
@@ -856,6 +1327,7 @@ export function takeDown(
 function down(): void {
   takeDown(
     {
+      localDocker,
       kindClusters,
       nodeId,
       recordedNode,
@@ -867,11 +1339,15 @@ function down(): void {
       removeContainers: (ids) =>
         run("docker", ["rm", "--force", "--volumes", ...ids], { quiet: true, timeout: 5 * 60_000 }),
       forget: (target) => rmSync(target.folder, { recursive: true, force: true }),
+      restoreSettings: (target) => {
+        if (target.name === KAMAJI.name) restoreConntrackMax(CONNTRACK_HOST);
+      },
       log: (line) => console.log(line),
     },
     MANAGEMENT,
     DEFINITIONS,
     DOWN_WORKLOADS,
+    { tier: KAMAJI, workloads: KAMAJI_WORKLOADS },
   );
 }
 
@@ -943,7 +1419,7 @@ function resourceOf(object: { apiVersion: string; kind: string }): string {
   return `${object.kind.toLowerCase()}.${version}.${group}`;
 }
 
-function folderOf(state: FixtureState): string {
+function folderOf(state: { name: string }): string {
   return join(ROOT, FIXTURES_FOLDER, state.name);
 }
 
@@ -960,9 +1436,13 @@ async function inParallel<Item>(items: readonly Item[], limit: number, action: (
 
 // Writes the fixture set of a state from its capture: every object cleaned, in the namespace of the state, with
 // every owner in the set, no time inside a text, and a generation that the first tier can give it, in files
-// that read back as the objects, with a README. The folder and its files get the modes of a checkout, 755 and
-// 644, and not those of the private umask of the scripts.
-function writeFixtureSet(state: FixtureState, captured: Captured, versions: ReadmeVersions) {
+// that read back as the objects, with the README that `readme` writes of them. The folder and its files get the modes
+// of a checkout, 755 and 644, and not those of the private umask of the scripts. Returns the files it wrote.
+function writeFixtureSet(
+  state: { name: string; namespace: string },
+  captured: Captured,
+  readme: (objects: readonly KubeObject[], leftOut: readonly string[], files: ReadonlyMap<string, string>) => string,
+): Map<string, string> {
   const seconds = secondsBetween(captured.capturedAt, CAPTURE_TIME);
   const leftOut = new Set<string>();
   const objects = captured.objects.map((read) => {
@@ -994,7 +1474,7 @@ function writeFixtureSet(state: FixtureState, captured: Captured, versions: Read
   }
 
   const folder = folderOf(state);
-  const written = new Map([...files, ["README.md", fixtureReadme(state, objects, [...leftOut].sort(), versions)]]);
+  const written = new Map([...files, ["README.md", readme(objects, [...leftOut].sort(), files)]]);
 
   mkdirSync(folder, { recursive: true });
   for (const file of readdirSync(folder)) {
@@ -1008,12 +1488,14 @@ function writeFixtureSet(state: FixtureState, captured: Captured, versions: Read
   console.log(
     `${state.namespace}: wrote ${objects.length} objects in ${files.size} files to ${FIXTURES_FOLDER}/${state.name}`,
   );
+  return written;
 }
 
 // Removes the workload cluster of a capture and its namespace, letting its deletion go first: a paused Cluster
-// resumed, the hooks of the scripts removed from its Machines. It waits without holding the process, so that the
-// captures that run beside it go on.
-async function removeCapture(project: RealProject, namespace: string): Promise<void> {
+// resumed, the hooks of the scripts removed from its Machines, and the finalizer of the scripts from any object that
+// holds it, as the KamajiControlPlane of `kamaji-deleting` (SPEC-0028, P5). It waits without holding the process, so
+// that the captures that run beside it go on.
+export async function removeCapture(project: NamespaceReader, namespace: string): Promise<void> {
   const exists = () =>
     project.kubectl(["get", "namespace", namespace, "--ignore-not-found", "--output", "name"]).trim() !== "";
   const gone = async (what: string, check: () => boolean, minutes: number) => {
@@ -1021,13 +1503,25 @@ async function removeCapture(project: RealProject, namespace: string): Promise<v
 
     while (!check()) {
       ensure(Date.now() < deadline, `${namespace}: ${what} did not go within ${minutes} minutes`);
-      await delay(5_000);
+      await (project.pause ?? delay)(5_000);
     }
   };
 
   if (!exists()) return;
 
-  const objects = readNamespace(project.kubectl, namespace);
+  const objects = readNamespace(project.kubectl, namespace, project.resources);
+
+  for (const object of objects.filter((item) => item.metadata.finalizers?.includes(FIXTURE_FINALIZER))) {
+    project.kubectl([
+      ...["patch", resourceOf(object), object.metadata.name, "--namespace", namespace, "--type", "merge"],
+      ...[
+        "--patch",
+        JSON.stringify({
+          metadata: { finalizers: object.metadata.finalizers?.filter((item) => item !== FIXTURE_FINALIZER) },
+        }),
+      ],
+    ]);
+  }
 
   for (const cluster of objects.filter((object) => object.kind === "Cluster" && object.spec?.paused)) {
     project.kubectl([
@@ -1051,11 +1545,21 @@ async function removeCapture(project: RealProject, namespace: string): Promise<v
   project.kubectl(["delete", "clusters.v1beta2.cluster.x-k8s.io", "--all", "--namespace", namespace, "--wait=false"]);
   await gone(
     "the workload cluster",
-    () => !readNamespace(project.kubectl, namespace).some((object) => object.kind === "Cluster"),
+    () => !readNamespace(project.kubectl, namespace, project.resources).some((object) => object.kind === "Cluster"),
     15,
   );
   project.kubectl(["delete", "namespace", namespace, "--wait=false"]);
   await gone("the namespace", () => !exists(), 10);
+}
+
+// What a capture reads the namespaces of a tier with: kubectl on that tier, and the kinds that the scripts read there,
+// which are those of the tier, never those of another cluster (SPEC-0028, P6).
+function namespaceReader(target: Tier): NamespaceReader {
+  return {
+    kubectl: (args, options = {}) => kubectl(target, args, { quiet: true, ...options }),
+    resources: target.resources,
+    log: (line) => console.log(line),
+  };
 }
 
 // Brings workload clusters of the real project into the states of the fixtures, at most CAPTURES_AT_ONCE at a
@@ -1086,7 +1590,7 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
     (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
   );
   const project: RealProject = {
-    kubectl: (args, options = {}) => kubectl(MANAGEMENT, args, { quiet: true, ...options }),
+    ...namespaceReader(MANAGEMENT),
     apply: (manifest) => {
       kubectl(MANAGEMENT, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
         input: manifest,
@@ -1110,9 +1614,11 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
     kubernetesVersion: workloadKubernetesVersion,
     upgradeFromKubernetesVersion: workloadKubernetesUpgradeFrom,
     clusterApiVersion: version,
-    log: (line) => console.log(line),
   };
   const failures: string[] = [];
+
+  // The states of the captures of Kamaji are captured by capture-kamaji alone, on the cluster of the captures.
+  console.log(CAPTURE_LEAVES_OUT);
 
   await inParallel(states, CAPTURES_AT_ONCE, async (state) => {
     const { capture: run } = state;
@@ -1121,11 +1627,16 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
     try {
       await removeCapture(project, state.namespace);
       console.log(`${state.namespace}: capturing ${state.name}`);
-      writeFixtureSet(state, await run(project, state.namespace), {
+
+      const readmeVersions: ReadmeVersions = {
         clusterApi: version,
         kubernetes: workloadKubernetesVersion,
         upgradeFrom: workloadKubernetesUpgradeFrom,
-      });
+      };
+
+      writeFixtureSet(state, await run(project, state.namespace), (objects, leftOut) =>
+        fixtureReadme(state, objects, leftOut, readmeVersions),
+      );
     } catch (error) {
       failures.push(`${state.name}: ${message(error)}`);
       console.error(`${state.namespace}: the capture failed: ${message(error)}`);
@@ -1137,6 +1648,204 @@ async function capture(states: readonly FixtureState[]): Promise<void> {
       }
     }
   });
+  ensure(!failures.length, `${failures.length} of ${states.length} captures failed:\n- ${failures.join("\n- ")}`);
+}
+
+// The Deployments of the Kamaji control plane provider that the capture starts again, from what
+// `kubectl get --output name` lists by the label of the provider: at least one, since a provider that was not started
+// again may watch no TenantControlPlane (K8), and the capture of `kamaji-scaling` would then fail at its deadline with
+// a message that says nothing of it.
+export function providerDeployments(output: string): string[] {
+  const deployments = lines(output);
+
+  ensure(
+    deployments.length,
+    `The cluster of the captures has no Deployment of the Kamaji control plane provider with the label cluster.x-k8s.io/provider=${KAMAJI_PROVIDER.label}: take the environment down, and bring it up again`,
+  );
+  return deployments;
+}
+
+// The controllers of the cluster of the captures, before any capture, which a restart of its node, as of the machine
+// that runs it, starts again (SPEC-0028, P5): every Deployment of their namespaces Available; the Kamaji control plane
+// provider started again once the cluster serves TenantControlPlanes, since it asks the discovery once, as it starts,
+// whether to watch them (K8), and a restart of the node can start it before the API server serves them again; then
+// the webhooks answering a server-side dry run of the objects of a Cluster of Kamaji, which stores nothing, ten minutes
+// at most.
+async function controllersAnswer(pins: Pins): Promise<void> {
+  const installed = installedProviders(KAMAJI);
+  const namespaces = new Set([
+    "cert-manager",
+    METALLB_NAMESPACE,
+    "kamaji-system",
+    ...installed.map((item) => item.metadata.namespace),
+  ]);
+
+  for (const namespace of namespaces) deploymentsAvailable(KAMAJI, namespace);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      kubectl(
+        KAMAJI,
+        ["get", "tenantcontrolplanes.v1alpha1.kamaji.clastix.io", "--all-namespaces", "--output", "name"],
+        {
+          quiet: true,
+        },
+      );
+      break;
+    } catch (error) {
+      if (error instanceof TargetRefusal || attempt === 60) throw error;
+      await delay(5_000);
+    }
+  }
+
+  const provider = installed.find(
+    (item) => item.type === KAMAJI_PROVIDER.type && item.providerName === KAMAJI_PROVIDER.name,
+  );
+
+  ensure(provider, "The cluster of the captures has no Kamaji control plane provider: run pnpm e2e:cluster:up:kamaji");
+  for (const deployment of providerDeployments(
+    kubectl(KAMAJI, [
+      ...["get", "deployments", "--namespace", provider.metadata.namespace],
+      ...["--selector", `cluster.x-k8s.io/provider=${KAMAJI_PROVIDER.label}`, "--output", "name"],
+    ]),
+  )) {
+    console.log(`Starting ${deployment} again, so that it watches the TenantControlPlanes`);
+    kubectl(KAMAJI, ["rollout", "restart", deployment, "--namespace", provider.metadata.namespace]);
+    kubectl(
+      KAMAJI,
+      ["rollout", "status", deployment, "--namespace", provider.metadata.namespace, "--timeout", "300s"],
+      {
+        timeout: 6 * 60_000,
+      },
+    );
+  }
+
+  const objects = list(
+    kamajiCluster("freelens-capi-kamaji-webhooks", "default", {
+      version: pins.clusterApi.workloadKubernetesUpgradeFrom,
+      address: "192.0.2.1",
+      worker: true,
+    }),
+  );
+  const deadline = Date.now() + 10 * 60_000;
+
+  for (;;) {
+    try {
+      kubectl(KAMAJI, ["create", "--dry-run=server", "--output", "name", "--filename", "-"], {
+        input: objects,
+        quiet: true,
+      });
+      return;
+    } catch (error) {
+      if (error instanceof TargetRefusal || Date.now() > deadline) throw error;
+      console.log(`Waiting for the webhooks of the cluster of the captures to answer: ${message(error).slice(0, 200)}`);
+      await delay(10_000);
+    }
+  }
+}
+
+// The namespaces that the capture of a Kamaji state removes before and after it: its own, and that of its helper
+// Cluster, which it deletes with the Cluster of the state (SPEC-0028, P5).
+export function captureNamespaces(state: KamajiState): string[] {
+  return [state.namespace, ...(state.helper ? [state.helper] : [])];
+}
+
+// What `capture` says of the states that it leaves out, which `capture-kamaji` takes (SPEC-0028, P7).
+export const CAPTURE_LEAVES_OUT = `The states of the captures of Kamaji, ${KAMAJI_STATES.map((state) => state.name).join(", ")}, are left out: pnpm e2e:fixtures:capture:kamaji captures them, on the cluster of the captures`;
+
+// Brings workload clusters of the cluster of the captures into the states of the Kamaji captures (SPEC-0028, P5 to P7),
+// one at a time, since the pool of MetalLB has one address, each in its own namespace, with its helper Cluster for
+// `kamaji-provisioning`, writes the objects of each one into its fixture set, with the SHA-256 of each YAML file in its
+// README and of every file of the set in the log, and deletes them. It refuses a cluster of the captures whose
+// providers are not those of the pins, at their releases, and nothing else. A capture that fails is reported after the
+// others, and makes the command fail; its fixture set stays as it was.
+async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
+  assertCapturesHost(process.platform, process.arch);
+
+  const { pins, workflow } = readPins(ROOT);
+  const { version, workloadKubernetesVersion, workloadKubernetesUpgradeFrom } = pins.clusterApi;
+
+  preflight(workflow, pins.managementKubernetes.version, REAL_PROJECT_NEEDS);
+  // The cluster of the captures and its providers first: the host is changed only for a cluster that the captures can
+  // run on.
+  verifyTarget(KAMAJI);
+
+  const { missing, other } = kamajiProvidersAgainstPins(installedProviders(KAMAJI), {
+    clusterApi: version,
+    kamaji: pins.kamajiProvider.version,
+  });
+
+  ensure(
+    !missing.length,
+    `The cluster of the captures lacks ${missing.map((provider) => `${provider.type} ${provider.name}`).join(", ")}: run pnpm e2e:cluster:up:kamaji first`,
+  );
+  ensure(!other.length, `${other.join("; ")}: take the environment down, and bring it up again`);
+  raiseInotifyLimits();
+  setConntrackMax();
+  await controllersAnswer(pins);
+  await writeRepository(pins, { kamaji: true });
+
+  const binary = await clusterctlBinary(pins);
+  const kindnet = kindnetManifest(
+    (await pinnedContent(sourceFile(pins, DOWNLOADS, "test/e2e/data/cni/kindnet/kindnet.yaml"))).toString("utf8"),
+  );
+  const versions: KamajiVersions = {
+    clusterApi: version,
+    provider: pins.kamajiProvider.version,
+    kamaji: pins.kamaji.version,
+    tenant: workloadKubernetesUpgradeFrom,
+    upgradeTo: workloadKubernetesVersion,
+    refused: nextMinor(workloadKubernetesVersion),
+  };
+  const project: KamajiProject = {
+    ...namespaceReader(KAMAJI),
+    apply: (manifest) => {
+      kubectl(KAMAJI, ["apply", "--server-side", "--field-manager", FIELD_MANAGER, "--filename", "-"], {
+        input: manifest,
+        quiet: true,
+      });
+    },
+    kindnet: (namespace) => kindnetResources(kindnet, namespace),
+    address: poolAddressOnCluster(),
+    describe: (namespace) =>
+      clusterctl(binary, KAMAJI, ["describe", "cluster", namespace, "--namespace", namespace], { quiet: true }),
+    versions,
+  };
+  const run = ciRun(process.env);
+  const failures: string[] = [];
+
+  // The captures run one at a time, the pool of MetalLB having one address: the workload clusters of every Kamaji state
+  // and of the helper, which a run that was stopped can leave, holding that address, go before the first.
+  for (const workload of KAMAJI_WORKLOADS) await removeCapture(project, workload.name);
+  for (const state of states) {
+    const namespaces = captureNamespaces(state);
+
+    try {
+      for (const namespace of namespaces) await removeCapture(project, namespace);
+      console.log(`${state.namespace}: capturing ${state.name}`);
+
+      const captured = await state.capture(project, state.namespace);
+
+      ensure(captured.described, `${state.namespace}: clusterctl did not describe the Cluster`);
+
+      const row = describedClusterRow(captured.described, state.namespace, state.namespace);
+      const written = writeFixtureSet(state, captured, (objects, leftOut, files) =>
+        kamajiReadme(state, objects, leftOut, { versions, run, row, files }),
+      );
+
+      for (const line of digestLines(state, written)) console.log(line);
+    } catch (error) {
+      failures.push(`${state.name}: ${message(error)}`);
+      console.error(`${state.namespace}: the capture failed: ${message(error)}`);
+    } finally {
+      for (const namespace of namespaces) {
+        try {
+          await removeCapture(project, namespace);
+        } catch (error) {
+          failures.push(`${state.name}, removing the workload cluster of ${namespace}: ${message(error)}`);
+        }
+      }
+    }
+  }
   ensure(!failures.length, `${failures.length} of ${states.length} captures failed:\n- ${failures.join("\n- ")}`);
 }
 
@@ -1352,11 +2061,16 @@ function definitions(args: string[], options: RunOptions = {}): string {
 // kubectl on a tier, as a command and a session of a test run it, with the target checked before every request.
 type TierKubectl = (args: string[], options?: { input?: string; timeout?: number }) => string;
 
+// The kinds that the scripts read in a namespace of the cluster of the definitions, those of Kamaji among them
+// (SPEC-0028, P6).
+const DEFINITIONS_RESOURCES = DEFINITIONS.resources;
+
 // Removes the objects of a namespace from the cluster of the definitions: every finalizer of their objects first,
-// the one of the scripts and those of the project, which no controller removes there, then the namespace.
+// the one of the scripts and those of the project, which no controller removes there, those of Kamaji on a
+// TenantControlPlane among them, then the namespace.
 function removeNamespaceObjects(run: TierKubectl, namespace: string): void {
   if (!run(["get", "namespace", namespace, "--ignore-not-found", "--output", "name"]).trim()) return;
-  for (const object of readNamespace(run, namespace)) {
+  for (const object of readNamespace(run, namespace, DEFINITIONS_RESOURCES)) {
     if (!object.metadata.finalizers?.length) continue;
     run([
       ...["patch", resourceOf(object), object.metadata.name, "--namespace", namespace, "--type", "merge"],
@@ -1422,7 +2136,9 @@ function applyObjectsTo(run: TierKubectl, namespace: string, objects: readonly K
     }
   }
 
-  const current = new Map(readNamespace(run, namespace).map((object) => [objectKey(object), object]));
+  const current = new Map(
+    readNamespace(run, namespace, DEFINITIONS_RESOURCES).map((object) => [objectKey(object), object]),
+  );
   const statuses = plans
     .filter((plan) => plan.status)
     .map((plan) => ({ ...current.get(plan.key), status: plan.status }));
@@ -1507,7 +2223,7 @@ function fixturesCheck(states: readonly FixtureState[]): void {
   for (const state of states) {
     try {
       const runAt = applyFixtures(state);
-      const read = readNamespace(definitions, state.namespace).map(
+      const read = readNamespace(definitions, state.namespace, DEFINITIONS_RESOURCES).map(
         (object) => cleanObject(object, secondsBetween(runAt, CAPTURE_TIME)).object,
       );
       const found = roundTripDifferences(readFixtureSet(folderOf(state)), read);
@@ -1534,10 +2250,12 @@ function fixturesCheck(states: readonly FixtureState[]): void {
 export const COMMAND_NAMES = [
   "up",
   "up-definitions",
+  "up-kamaji",
   "down",
   "demo",
   "check-pins",
   "capture",
+  "capture-kamaji",
   "fixtures-up",
   "fixtures-down",
   "fixtures-check",
@@ -1545,30 +2263,45 @@ export const COMMAND_NAMES = [
 
 type CommandName = (typeof COMMAND_NAMES)[number];
 
-// Each command, whether it uses Docker, which is then checked first, and the states of the fixtures it takes:
-// none, at least one, or, when none is given, every one. `capture` takes only the states that it captures.
+// A command line: its command, the states of the fixtures that it takes, and the states of the captures of Kamaji
+// that `capture-kamaji` takes, which no other command knows until their sets are in the repository (SPEC-0028, P7).
+export interface ParsedCommand {
+  name: CommandName;
+  states: FixtureState[];
+  kamajiStates: KamajiState[];
+}
+
+// Each command, whether it uses Docker, which is then checked first, and the states it takes: none, at least one,
+// or, when none is given, every one. `capture` takes only the states of the fixtures that it captures, and
+// `capture-kamaji` the states of the captures of Kamaji alone. `down` checks Docker itself, under the lock of the run,
+// so that it gives the settings of the host back also when Docker is not the local one or does not answer (SPEC-0028,
+// P2).
 const COMMANDS: Record<
   CommandName,
   {
-    run: (states: readonly FixtureState[]) => void | Promise<void>;
+    run: (parsed: ParsedCommand) => void | Promise<void>;
     docker: boolean;
-    states: "none" | "required" | "optional";
+    states: "none" | "required" | "optional" | "kamaji";
   }
 > = {
   up: { run: up, docker: true, states: "none" },
   "up-definitions": { run: upDefinitions, docker: true, states: "none" },
-  down: { run: down, docker: true, states: "none" },
+  "up-kamaji": { run: upKamaji, docker: true, states: "none" },
+  down: { run: down, docker: false, states: "none" },
   demo: { run: demo, docker: true, states: "none" },
   "check-pins": { run: checkPins, docker: false, states: "none" },
-  capture: { run: capture, docker: true, states: "required" },
-  "fixtures-up": { run: fixturesUp, docker: true, states: "required" },
-  "fixtures-down": { run: fixturesDown, docker: true, states: "optional" },
-  "fixtures-check": { run: fixturesCheck, docker: true, states: "optional" },
+  capture: { run: (parsed) => capture(parsed.states), docker: true, states: "required" },
+  "capture-kamaji": { run: (parsed) => captureKamaji(parsed.kamajiStates), docker: true, states: "kamaji" },
+  "fixtures-up": { run: (parsed) => fixturesUp(parsed.states), docker: true, states: "required" },
+  "fixtures-down": { run: (parsed) => fixturesDown(parsed.states), docker: true, states: "optional" },
+  "fixtures-check": { run: (parsed) => fixturesCheck(parsed.states), docker: true, states: "optional" },
 };
 
 // The command of the arguments, which must be one of the commands, and the states that follow it, which must be
-// states of the fixtures, or `all`, for a command that takes them.
-export function parseCommand(argv: readonly string[]): { name: CommandName; states: FixtureState[] } {
+// states of the fixtures, or `all`, for a command that takes them, or states of the captures of Kamaji, or `all`, for
+// `capture-kamaji`. A state of the captures of Kamaji named to another command is refused with the command that takes
+// it.
+export function parseCommand(argv: readonly string[]): ParsedCommand {
   const [name, ...rest] = argv;
   const usage = `Usage: node e2e/scripts/environment.mts <${COMMAND_NAMES.join("|")}> [<state>...|all]`;
 
@@ -1580,10 +2313,23 @@ export function parseCommand(argv: readonly string[]): { name: CommandName; stat
   const command = COMMANDS[name as CommandName];
 
   ensure(command.states !== "none" || !rest.length, usage);
-  ensure(command.states !== "required" || rest.length, `${usage}: ${name} takes the states of the fixtures`);
+  ensure(
+    (command.states !== "required" && command.states !== "kamaji") || rest.length,
+    `${usage}: ${name} takes the states of the fixtures`,
+  );
+  if (command.states === "kamaji") {
+    return { name: name as CommandName, states: [], kamajiStates: kamajiStatesOf(rest) };
+  }
+  for (const state of rest) {
+    ensure(
+      !KAMAJI_STATES.some((item) => item.name === state),
+      `${state} is a state of the captures of Kamaji, which pnpm e2e:fixtures:capture:kamaji alone takes until its set is in the repository`,
+    );
+  }
   return {
     name: name as CommandName,
     states: command.states === "none" ? [] : statesOf(rest.length ? rest : ["all"], name === "capture"),
+    kamajiStates: [],
   };
 }
 
@@ -1604,7 +2350,7 @@ export async function main(argv: readonly string[]): Promise<void> {
   let failure: unknown;
 
   try {
-    await command.run(parsed.states);
+    await command.run(parsed);
   } catch (error) {
     failure = error;
   } finally {

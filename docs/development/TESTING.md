@@ -26,9 +26,15 @@ environment of a command, the containers that `down` deletes and what it
 decides, the providers of the real project against the pins, the command line,
 the limits of inotify, what the scripts take from the files of a release, the
 fixtures: the shift of their times, the cleaning of a captured object, their
-apply, their YAML, their states and the sets of the repository, and the objects
-of the trial of S7 ("Tests of the real tier"). SPEC-0002 lists its cases, and
-SPEC-0003 those of the trial of S7 ("Tests", "With the real project: S7"). The
+apply, their YAML, their states and the sets of the repository, the objects
+of the trial of S7 ("Tests of the real tier"), and the captures of Kamaji: the
+cluster of the captures, its pins and its providers, the commands, the nine
+states and how each is held and read, each wait of each state on readings that
+miss it alone, the cleaning and the README of their
+sets, the definitions of Kamaji on the first tier and the workflow of the
+captures ("The captures of Kamaji"). SPEC-0002 lists its cases, SPEC-0003 those
+of the trial of S7 ("Tests", "With the real project: S7"), and SPEC-0028 those
+of the captures of Kamaji ("Tests", "Unit"). The
 status model is read on the fixtures by `src/common/status/fixtures.test.ts`
 (SPEC-0003, "Tests"). `pnpm test:integration` runs the integration tests,
 described in `AGENTS.md`: the session of the template, which installs the
@@ -51,7 +57,9 @@ sessions of the real tier in Freelens dev ("Tests of the real tier").
 
 Two tiers, each a kind cluster of its own name, with the version of kind that
 the integration workflow pins and the version of Kubernetes of the pins, one
-that Cluster API supports for a management cluster.
+that Cluster API supports for a management cluster; and a third kind cluster,
+of the same versions, where the fixtures of a Cluster with a KamajiControlPlane
+are captured from the provider ("The cluster of the captures of Kamaji").
 
 ### The definitions alone
 
@@ -67,7 +75,14 @@ publish, taken as they are from their files:
 - those of `operator-components.yaml`, of the release of the Cluster API
   Operator;
 - the `Provider` of the inventory of clusterctl, from the source of Cluster API
-  at the commit of the tag, since no asset of the release carries it.
+  at the commit of the tag, since no asset of the release carries it;
+- those of the Kamaji control plane provider, the KamajiControlPlane and its
+  template, from `control-plane-components.yaml` of its release, with the
+  label `cluster.x-k8s.io/provider` that clusterctl gives the components that
+  it installs, `control-plane-kamaji`, in place of the `kamaji` of the release,
+  since the views find the controllers of a kind by that label (SPEC-0003,
+  P24); and those of the TenantControlPlane and of the DataStore, as the chart
+  of Kamaji has them at the commit of its tag (SPEC-0028, P8).
 
 The definitions keep what the build of the release gives them: the conversion
 webhook, whose Service does not exist on this cluster, and the contract labels
@@ -112,23 +127,77 @@ it created, installs only the providers missing from the inventory of
 clusterctl, creates only the workload clusters that do not exist, and waits
 again.
 
+### The cluster of the captures of Kamaji
+
+`pnpm e2e:cluster:up:kamaji` creates the kind cluster `freelens-capi-kamaji`,
+whose node mounts the socket of Docker, as the cluster of the real project, on
+Linux on amd64 alone: the command refuses any other system or processor, and
+names the one that it found (SPEC-0028, P2). It installs, in this order, each
+file checked against its pin (SPEC-0028, P3):
+
+1. Cluster API at the release of the pins with the pinned clusterctl, from the
+   local repository of checked files, as for the real project: cert-manager,
+   the core, the kubeadm bootstrap and control plane providers and the
+   development provider, so that a read of a namespace through the kinds of the
+   fixtures finds every kind that it names;
+2. MetalLB, its `metallb-native.yaml` at the tag of the pins, then a pool of
+   one address of the network of kind, 56 below the end of its IPv4 subnet, as
+   `172.18.255.200` of a /16, and an L2 advertisement of it, objects of the
+   scripts, the pool applied again until the webhook of MetalLB answers: every
+   tenant of Kamaji of type `LoadBalancer` gets that one address, known before
+   the tenant exists;
+3. Kamaji, with the pinned helm, from the files of its chart at the commit of
+   its tag, each checked against its pin, since the chart names no release of
+   its own; `helm dependency build`, which downloads the subchart `kamaji-etcd`
+   at the version that its `Chart.lock` names, from the repository that the
+   lock names, added to the homes of helm in the state folder, and whose
+   archive is checked against its pin before the install; installed with the
+   image of its tag, `image.pullPolicy` `IfNotPresent`, its telemetry disabled
+   and `resources` unset, with the DataStore `default` that it brings, which
+   the command waits for until it is ready;
+4. the Kamaji control plane provider at its pin, with
+   `clusterctl init --control-plane kamaji:<version>` from the same local
+   repository, which holds the two files of its release, with its gate
+   `SkipInfraClusterPatch`, after Kamaji, since it asks the discovery once, as
+   it starts, whether to watch the TenantControlPlanes; the command then waits
+   for its Deployment, which clusterctl does not.
+
+Before any worker joins a tenant, it gives the host the value of
+`net.netfilter.nf_conntrack_max` that kube-proxy computes, 32768 for each
+processor and 131072 at least, with `sudo -n sysctl`, when the host has another:
+the kube-proxy of a tenant writes it whenever it differs, which the container of
+a worker may not do, and no worker then becomes ready (SPEC-0028, P3, L4). Once
+it is set, the value that the host had is recorded in the state folder, the
+first time alone, and `pnpm e2e:cluster:down` gives it back, with no sudo when
+the host holds it already, as after a reboot, also when it stops before it
+deletes anything because Docker is not the local one or does not answer, or kind
+cannot list its clusters. A value that the scripts cannot set stops the command
+with the command that sets it, and leaves no record; a value that `down` cannot
+give back makes it fail and keep the record, with the command that gives it
+back, after which `down` forgets it. Like `up`, it raises the limits of inotify.
+Run again, it resumes: it uses the kind cluster that it created, and installs
+only the providers missing from the inventory, which must be those of the pins
+at their releases, and nothing else.
+
 ### Commands
 
-| Command                                | What it does                                                                                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm e2e:cluster:up`                  | The real project, as above. Run again, it resumes                                                                         |
-| `pnpm e2e:cluster:up:definitions`      | The definitions alone, as above                                                                                           |
-| `pnpm e2e:cluster:down`                | Deletes the kind clusters that the scripts created and the containers of their workload clusters, and checks what is left |
-| `pnpm e2e:pins:check`                  | Downloads every pinned file from its source and checks it against its pin, with no cluster and no Docker                  |
-| `pnpm demo:up`                         | `pnpm e2e:cluster:up`, then says how to open the cluster in Freelens ([TRY-IT.md](TRY-IT.md))                             |
-| `pnpm demo:down`                       | `pnpm e2e:cluster:down`                                                                                                   |
-| `pnpm e2e:fixtures:capture <state>...` | Captures the fixtures of each state named, or of every state with `all`, from the real project ("The fixtures")           |
-| `pnpm e2e:fixtures:up <state>...`      | Applies the fixtures of each state named, or of every state with `all`, to the cluster of the definitions                 |
-| `pnpm e2e:fixtures:down [<state>...]`  | Removes them from it, those of every state when it is given none                                                          |
-| `pnpm e2e:fixtures:check [<state>...]` | Applies the fixtures of each state, reads them back and compares them with their files, then removes them                 |
+| Command                                       | What it does                                                                                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm e2e:cluster:up`                         | The real project, as above. Run again, it resumes                                                                                                                                                   |
+| `pnpm e2e:cluster:up:definitions`             | The definitions alone, as above                                                                                                                                                                     |
+| `pnpm e2e:cluster:up:kamaji`                  | The cluster of the captures of Kamaji, as above, on Linux on amd64 alone. Run again, it resumes                                                                                                     |
+| `pnpm e2e:cluster:down`                       | Deletes the kind clusters that the scripts created and the containers of their workload clusters, gives the host back the setting that the cluster of the captures changed, and checks what is left |
+| `pnpm e2e:pins:check`                         | Downloads every pinned file from its source and checks it against its pin, with no cluster and no Docker                                                                                            |
+| `pnpm demo:up`                                | `pnpm e2e:cluster:up`, then says how to open the cluster in Freelens ([TRY-IT.md](TRY-IT.md))                                                                                                       |
+| `pnpm demo:down`                              | `pnpm e2e:cluster:down`                                                                                                                                                                             |
+| `pnpm e2e:fixtures:capture <state>...`        | Captures the fixtures of each state named, or of every state with `all`, from the real project ("The fixtures")                                                                                     |
+| `pnpm e2e:fixtures:capture:kamaji <state>...` | Captures the fixtures of each Kamaji state named, or of all, from the cluster of the captures ("The captures of Kamaji")                                                                            |
+| `pnpm e2e:fixtures:up <state>...`             | Applies the fixtures of each state named, or of every state with `all`, to the cluster of the definitions                                                                                           |
+| `pnpm e2e:fixtures:down [<state>...]`         | Removes them from it, those of every state when it is given none                                                                                                                                    |
+| `pnpm e2e:fixtures:check [<state>...]`        | Applies the fixtures of each state, reads them back and compares them with their files, then removes them                                                                                           |
 
-The two tiers have different names and can be up at the same time. The demo
-is the cluster of the real project.
+The three kind clusters have different names and can be up at the same time.
+The demo is the cluster of the real project.
 
 The scripts are `e2e/scripts/*.mts`, run by Node as they are.
 `environment.mts` is the entry that the scripts of `package.json` run, and
@@ -138,7 +207,9 @@ checks, `downloads.mts` the pinned files and their cache, `state.mts` the state
 folder, its lock and the kubeconfig of the user, `host.mts` what the scripts
 need of the system and give the commands they run, `manifests.mts` what they
 give kind, kubectl and clusterctl, `states.mts` the states of the fixtures and
-how each one is captured, `fixtures.mts` what a capture and an apply do to an
+how each one is captured, `kamaji.mts` the states of the captures of Kamaji,
+how each one is held and read, the row of `clusterctl describe cluster` and the
+README of their sets, `fixtures.mts` what a capture and an apply do to an
 object, and `yaml.mts` the YAML of the fixtures.
 
 ## The fixtures
@@ -266,9 +337,11 @@ does not change it.
 the definitions, each one in place of what its namespace held: the objects
 first, each owner before the objects it owns, which take its identifier; then
 the changes to a spec that give an object the generation of its file, one field
-set and unset, `spec.paused` of a Cluster, `spec.minReadySeconds` of a Machine
-or `spec.backend.docker.bootstrapTimeout` of a DevMachine, the kinds that need
-them; then the status of each object, through the status subresource; then the
+set and unset, `spec.paused` of a Cluster, `spec.minReadySeconds` of a Machine,
+`spec.backend.docker.bootstrapTimeout` of a DevMachine, `spec.dataStoreSchema` of
+a KamajiControlPlane or `spec.dataStoreOverrides` of a TenantControlPlane, the
+kinds that need them (SPEC-0028, P8); then the status of each object, through
+the status subresource; then the
 deletion of each deleting object. Every time moves from `CAPTURE_TIME` to the
 moment of the run. The finalizers of the project hold a deleting object there,
 since no controller removes them, and so does the finalizer of the scripts,
@@ -287,6 +360,79 @@ cleans it as a capture does, compares it with its file, field by field, the
 two times of the API server apart, and removes the set. The API server applies
 the schema of each definition to every object and to its status, its CEL rules
 included, so a fixture that does not pass it fails there; no schema is changed.
+
+The three commands read a namespace of the cluster of the definitions through
+the kinds of the fixtures and the two kinds of Kamaji, the KamajiControlPlanes
+at `v1alpha2` and the TenantControlPlanes at `v1alpha1`, in one `kubectl get`,
+which a kind that the cluster does not serve makes fail whole: a cluster of the
+definitions made before the definitions of Kamaji were among its own takes them
+when `pnpm e2e:cluster:up:definitions` runs again (SPEC-0028, P6, P8).
+
+### The captures of Kamaji
+
+The fixtures of a Cluster with a KamajiControlPlane are nine states, captured
+from the provider on the cluster of the captures ("The cluster of the captures
+of Kamaji") by `pnpm e2e:fixtures:capture:kamaji <state>...`, or `all`, one at a
+time, since the pool of MetalLB has one address (SPEC-0028, P1 to P6). Their
+sets are not in the repository yet: a run of the workflow of the captures
+dispatched on a branch made for it captures them, and a pull request commits
+them after a review of their diff ("Continuous integration"). Until then the
+capture command alone knows these states: `pnpm e2e:fixtures:capture all`
+leaves them out, and says so, and every other command refuses them, naming the
+command that takes them (SPEC-0028, P7).
+
+| State                    | Namespace                              | How the provider is brought into it, and held there                                                                                      |
+| ------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `kamaji-provisioning`    | `freelens-capi-kamaji-provisioning`    | No worker and no endpoint in its DevCluster; a helper Cluster of the scripts, in `freelens-capi-kamaji-address`, takes the address first |
+| `kamaji-healthy`         | `freelens-capi-kamaji-healthy`         | One worker, the endpoint of the tenant in its DevCluster, every condition at its normal value and the counters copied into the Cluster   |
+| `kamaji-scaling`         | `freelens-capi-kamaji-scaling`         | From `kamaji-healthy`, a ResourceQuota of the scripts of one Pod, then three replicas through the subresource `scale`                    |
+| `kamaji-upgrading`       | `freelens-capi-kamaji-upgrading`       | From `kamaji-healthy`, the same quota, then `spec.version` at `workloadKubernetesVersion` of the pins                                    |
+| `kamaji-version-refused` | `freelens-capi-kamaji-version-refused` | From `kamaji-healthy`, `spec.version` at the minor after that version, which the webhook of Kamaji refuses                               |
+| `kamaji-sleeping`        | `freelens-capi-kamaji-sleeping`        | From `kamaji-healthy`, `spec.replicas` 0, read past the grace of the conditions of the Nodes of its worker                               |
+| `kamaji-not-ready`       | `freelens-capi-kamaji-not-ready`       | From `kamaji-healthy`, a quota of no Pod, then the Pods of the tenant deleted, read as `kamaji-sleeping`                                 |
+| `kamaji-paused`          | `freelens-capi-kamaji-paused`          | From `kamaji-healthy`, `spec.paused` of the Cluster, read before any event of its KamajiControlPlane                                     |
+| `kamaji-deleting`        | `freelens-capi-kamaji-deleting`        | From `kamaji-healthy`, the finalizer of the scripts on its KamajiControlPlane, then the Cluster deleted, read once the worker is gone    |
+
+Each Cluster names a DevCluster and a KamajiControlPlane of one replica, its
+Service of type `LoadBalancer`, the DataStore `default` and the addons CoreDNS
+and kube-proxy, at `workloadKubernetesUpgradeFrom` of the pins, and its worker,
+when it has one, is a MachineDeployment of one replica of the development
+provider at the same version, with kindnet. Before the first state the command
+waits for every Deployment of the controllers of the cluster, starts the Kamaji
+control plane provider again once the cluster serves TenantControlPlanes, so
+that it watches them however the node of the cluster started, refusing a cluster
+where it finds no Deployment of that provider, and waits until their webhooks
+answer a server-side dry run of the objects of a Cluster, which stores nothing.
+Each state is read once its check holds, two readings agree, and a third one
+agrees with them after `clusterctl describe cluster` of its Cluster, run with
+the pinned clusterctl and its default flags: when an object changed meanwhile,
+or clusterctl or that reading failed, the readings start again; a state that can
+no longer be reached stops its capture at once, and one that is not reached in
+time fails it. The capture of each state removes its workload cluster before and
+after it, the helper Cluster with that of `kamaji-provisioning`, its quota with
+its namespace, and the finalizer of the scripts first.
+
+A capture reads the kinds of the fixtures and the two kinds of Kamaji, never a
+Secret, a ConfigMap, a Deployment, a Service, a Pod or the DataStore, and
+cleans each object as every capture does ("The fixtures"), with three changes
+(SPEC-0028, P6): the time of the last probe of core that succeeded, which it
+writes after `Remote connection probe failed, probe last succeeded at` and after
+`Last successful probe at`, in the messages of its conditions and in those
+that repeat them, moves as the time of a field, and every other time inside a
+text is still refused; the generation of a TenantControlPlane is read from its
+own `status.observedGeneration` alone, every other one of its status, those of
+its Deployment and of its Service, kept as captured; and every checksum in the
+status of a TenantControlPlane, of a Secret or of a ConfigMap of the tenant,
+is written as `00000000000000000000000000000000`, the names of those Secrets
+and ConfigMaps kept. The README of each set says how the state was reached and
+held, the versions of Cluster API, of the provider, of Kamaji and of Kubernetes
+of the tenant and of the worker, the endpoint of its DevCluster, the run of CI
+that captured it, what the capture changed and left out, the six cells of the
+row of its Cluster that `clusterctl describe cluster` printed, REPLICAS,
+AVAILABLE, READY, UP TO DATE, STATUS and REASON, each read by the column that
+the header names, a cell that the tool leaves empty written `empty`, and the
+SHA-256 of each of its YAML files as the capture wrote them. The log of the
+capture prints the SHA-256 of every file of the set, its README among them.
 
 ### The large Cluster of the session of the tree
 
@@ -525,9 +671,30 @@ extension that the profile of Freelens dev has, and leaves none.
   steps taken from `integration-tests.yaml` keep name the runner of this job.
 - `e2e-pins-check.yaml`, on every change to the pins or to the scripts:
   `pnpm e2e:pins:check`.
+- `kamaji-capture.yaml`, only when it is dispatched, on a branch made for it,
+  never on a pull request, on `main` or at night, on `ubuntu-24.04`, an amd64
+  runner (SPEC-0028, P7): it runs `pnpm e2e:cluster:up:kamaji`, captures the
+  Kamaji states with `pnpm e2e:fixtures:capture:kamaji all`, prints the SHA-256
+  of each file of their sets, which the scripts print as they write them too,
+  uploads the folders of the Kamaji sets as an artifact of the run, then runs
+  `pnpm e2e:cluster:down` and checks that no kind cluster and no container of
+  the scripts is left. GitHub dispatches a workflow only once its file is on the
+  default branch, and the run takes the workflow and the scripts of the branch
+  that the dispatch names; the form of a dispatch names `main` first, and a run
+  dispatched there skips the job. The pull request that commits the sets
+  compares the digests of each README with those of its log, the one record that
+  tells a file changed with its digest from the file captured. The job has 60
+  minutes, about twice what it takes from the times of the probes of SPEC-0028
+  on a machine at hand, a limit revised from the durations of its runs. The
+  images of the provider, of Kamaji, of `clastix/kubectl` and of kindnet come
+  from Docker Hub, which limits the pulls with no login: a pull that it refuses
+  fails the job, which is dispatched again once the limit has reset.
 
-No workflow uploads the state folder of the scripts, a kubeconfig or any file
-of a cluster.
+No workflow uploads the state folder of the scripts, a kubeconfig or a Secret,
+and none uploads any other file of a cluster but the workflow of the captures of
+Kamaji, whose artifact holds the folders of the Kamaji sets alone, files of a
+cluster cleaned as every capture cleans them, which go into the repository
+anyway (SPEC-0028, P7).
 
 ## The pins
 
@@ -552,14 +719,24 @@ scripts download from, and the SHA-256 of every file:
   npm registry publishes it, and the chart of Sveltos, `projectsveltos` at the
   release whose definitions the CI of that extension applies, as its release
   on GitHub publishes it, each with its version as its project numbers it and
-  the SHA-256 of its file.
+  the SHA-256 of its file;
+- the cluster of the captures of Kamaji (SPEC-0028, P3): the Kamaji control
+  plane provider, `kamajiProvider`, its release and the two files of it that
+  clusterctl reads; Kamaji, `kamaji`, the edge release that the provider
+  requires, which names no release of its chart, the commit of that tag and the
+  SHA-256 of each file of its folder `charts/kamaji` there, by its path, the
+  definitions of the first tier among them; `kamajiEtcd`, the subchart that
+  `helm dependency build` downloads, at the version that the `Chart.lock` of
+  that chart names, from the repository that the lock names; MetalLB,
+  `metallb`, its `metallb-native.yaml` at its tag; and `helm`, for Linux on
+  amd64 alone, the one system of that cluster.
 
 The version of kind is the `kind_version` of the env of
 `.github/workflows/integration-tests.yaml`, which the scripts read from there:
 it is pinned once, for the integration tests and for the environment. The
 versions of Kubernetes are pinned in the pins alone, each one within what the
 release of Cluster API supports in the table of versions of its book
-(`docs/book/src/reference/versions.md` at the tag): the two kind clusters,
+(`docs/book/src/reference/versions.md` at the tag): the three kind clusters,
 which stand for management clusters, take the version of
 `managementKubernetes`, from `v1.33` to `v1.37` for `v1.14.4`, and the workload
 clusters the versions of the pins for them, which the release supports for
@@ -571,7 +748,8 @@ unit test checks that the rule of Renovate allows the same range.
 The scripts refuse a pins file with a missing, unknown or malformed entry, and
 check every file against its digest before they use it: when they download it,
 and every time they read it from their cache. clusterctl reports the release
-and the commit it was built from, and the scripts check both against the pins.
+and the commit it was built from, and the scripts check both against the pins;
+the pinned helm reports its version, which they check against its pin too.
 
 Renovate follows the versions of Cluster API and of the operator, and the tag
 of `kindest/node` of the kind clusters within its range (a custom manager in
@@ -606,13 +784,35 @@ folder of that version and does not find while the pins name another, and to a
 version of Kubernetes that the new release supports for workload clusters. The
 range of `managementKubernetes`, in the pins and in the rule of Renovate,
 changes with Cluster API too. The pins of S6 have no Renovate entry either:
-they are the releases that the specs read, and change with them. The digest of
-each is that of its file, as the scripts download it:
+they are the releases that the specs read, and change with them, and neither
+have the pins of the cluster of the captures of Kamaji, which change with the
+spec that reads them again (SPEC-0028, P3). The digest of each is that of its
+file, as the scripts download it, from the records of its project where it has
+them: GitHub for the assets of the release of the provider, the index of the
+repository of charts for `kamaji-etcd`, whose `digest` is the SHA-256 of its
+archive, and the `.sha256sum` beside the archive of helm:
 
 ```sh
 curl -fsSL https://registry.npmjs.org/@freelensapp/sveltos-extension/-/sveltos-extension-<version>.tgz | shasum -a 256
 curl -fsSL https://github.com/projectsveltos/helm-charts/releases/download/projectsveltos-<version>/projectsveltos-<version>.tgz | shasum -a 256
+gh release view <tag> --repo clastix/cluster-api-control-plane-provider-kamaji --json assets \
+  --jq '.assets[] | [.name, (.digest | ltrimstr("sha256:"))] | @tsv'
+# The commit of the tag of Kamaji, and the SHA-256 of each file of its chart there.
+gh api repos/clastix/kamaji/commits/<tag> --jq .sha
+git -C <a clone of clastix/kamaji at that commit> ls-tree -r --name-only HEAD charts/kamaji |
+  while read -r file; do echo "$file $(git -C <the clone> cat-file blob "HEAD:$file" | shasum -a 256 | cut -d' ' -f1)"; done
+curl -fsSL https://clastix.github.io/charts/index.yaml # the digest of kamaji-etcd at its version
+curl -fsSL https://raw.githubusercontent.com/metallb/metallb/<tag>/config/manifests/metallb-native.yaml | shasum -a 256
+curl -fsSL https://get.helm.sh/helm-<version>-linux-amd64.tar.gz.sha256sum
 ```
+
+`pnpm e2e:pins:check` checks each file of the pin of Kamaji against its digest,
+and two ties of that pin are checked by hand, with the two commands of the
+commit and of the files of the chart above, whenever it changes: that its commit
+is the one of the tag of its version, since the version names the image that
+helm installs and the commit the files of the chart; and that its files are
+every file of `charts/kamaji` at that commit, since a file left out of the pins
+is left out of the chart that helm installs.
 
 ## Safety
 
@@ -627,8 +827,9 @@ of SPEC-0002:
   of kubectl. One run at a time uses it, under a lock; a lock left by a run
   that was killed is taken over.
 - **Names global to the Docker daemon.** The names of the kind clusters,
-  `freelens-capi-definitions` and `freelens-capi-management`, and of the
-  workload clusters, `freelens-capi-md` and `freelens-capi-mp`, are those of
+  `freelens-capi-definitions`, `freelens-capi-management` and
+  `freelens-capi-kamaji`, and of the workload clusters, `freelens-capi-md` and
+  `freelens-capi-mp` and those of the captures, are those of
   containers and labels of the Docker daemon, which every user and every state
   folder on it shares. When the scripts create a kind cluster, they record the
   ID of its node container in the state folder; they use a kind cluster again
@@ -651,7 +852,9 @@ of SPEC-0002:
 - **The local Docker.** Every command that uses Docker, `down` and `demo`
   included, first refuses a Docker reached other than through a Unix socket,
   by `DOCKER_HOST` or by the current context, and one that does not run Linux
-  containers.
+  containers. `down` checks it under the lock of the run, and gives back the
+  setting of the host that the cluster of the captures changed before it stops
+  there (SPEC-0028, P2).
 - **Official files, pinned.** Cluster API comes from the assets of its release
   and the source at the commit of its tag, checked by digest. Nothing of it is
   copied into the repository, patched or rebuilt.
@@ -684,6 +887,25 @@ of SPEC-0002:
   behind it once the environment is taken down. The same holds for the workload
   clusters of the test of S7, named `freelens-capi-s7-infra-only` and
   `freelens-capi-s7-cp-only`, which it deletes at its end with their namespace.
+- **The cluster of the captures of Kamaji.** `pnpm e2e:cluster:up:kamaji` and
+  `pnpm e2e:fixtures:capture:kamaji` run on Linux on amd64 alone, and refuse any
+  other system or processor before any request; the capture changes the host
+  only once it has checked the cluster of the captures and its providers. They
+  write to the cluster of the captures and to the containers of its workload
+  clusters, as the real project, and to one setting of the kernel of the host
+  besides the limits of inotify, `net.netfilter.nf_conntrack_max`, whose value
+  before they changed it they record in the state folder once they have set it,
+  and which `pnpm e2e:cluster:down` gives back, also when Docker or kind keep it
+  from deleting anything, and with no sudo when the host holds it already,
+  failing and keeping the state when it cannot (SPEC-0028, P2, P3). `down`
+  deletes that cluster, before the cluster of the definitions, and the
+  containers of its workload clusters, those of the helper of
+  `kamaji-provisioning` among them, when the state folder records that cluster.
+  The objects that hold a state are of the scripts, in the namespace of the
+  state: a ResourceQuota on Pods, deleted with the namespace, and the finalizer
+  of the scripts on a KamajiControlPlane, which the capture removes before it
+  deletes the workload cluster. The chart of Kamaji is installed with its
+  telemetry disabled, so that a capture sends nothing out.
 - **The limits of inotify, on Linux.** The nodes of the workload clusters need
   more instances of inotify than some systems give: with too few, their
   containers exit with code 255 as they start, and the health check of the

@@ -61,6 +61,24 @@ export const FIXTURE_RESOURCES = [
   "providers.v1alpha3.clusterctl.cluster.x-k8s.io",
 ] as const;
 
+// The kinds of Kamaji that the fixtures of SPEC-0028 hold, each at the version that the extension reads: the control
+// plane of the provider and its tenant (P6). Their Secrets, ConfigMaps, Deployments, Services and Pods are not read,
+// and neither is the DataStore, which has no namespace.
+export const KAMAJI_RESOURCES = [
+  "kamajicontrolplanes.v1alpha2.controlplane.cluster.x-k8s.io",
+  "tenantcontrolplanes.v1alpha1.kamaji.clastix.io",
+] as const;
+
+// The clusters of the scripts that a read of a namespace names its kinds on.
+export type ScriptsCluster = "real project" | "captures" | "definitions";
+
+// The kinds that the scripts read in a namespace of a cluster, in one `kubectl get`, which a kind that the cluster does
+// not serve makes fail whole: the kinds of Kamaji on the two clusters that serve them, the cluster of the captures and
+// the cluster of the definitions, and on no other (SPEC-0028, P6).
+export function fixtureResourcesOn(cluster: ScriptsCluster): readonly string[] {
+  return cluster === "real project" ? FIXTURE_RESOURCES : [...FIXTURE_RESOURCES, ...KAMAJI_RESOURCES];
+}
+
 export interface OwnerReference {
   apiVersion: string;
   kind: string;
@@ -146,10 +164,35 @@ export function shiftTime(value: string, seconds: number): string {
   return `${moved.toISOString().slice(0, 19)}${match[2] ?? ""}Z`;
 }
 
+// The words that core writes before the time of the last probe of a workload cluster that succeeded, once its probe
+// has failed after a success: in the RemoteConnectionProbe of the Cluster, and in the NodeReady and the NodeHealthy of
+// a Machine past their grace, and in every message that repeats one of them (SPEC-0028, P6). That time does not move
+// while the probe keeps failing, so each is moved as the time of a field is, and matched by its own words alone.
+export const PROBE_TIME_WORDS = [
+  "Remote connection probe failed, probe last succeeded at ",
+  "Last successful probe at ",
+] as const;
+
+const PROBE_TIMES = new RegExp(
+  `(${PROBE_TIME_WORDS.join("|")})(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2}))`,
+  "g",
+);
+
+// A text with the time after each of PROBE_TIME_WORDS changed by `change`, when it is a time.
+function withProbeTimes(text: string, change: (time: string) => string): string {
+  return text.replace(PROBE_TIMES, (whole, words: string, time: string) =>
+    isTime(time) ? words + change(time) : whole,
+  );
+}
+
 // A value with every time moved by a number of seconds: every string that is a time, wherever it is, keys
-// left as they are.
+// left as they are, and the time of the last probe that succeeded inside a message of core.
 export function shiftTimes<Value>(value: Value, seconds: number): Value {
-  if (typeof value === "string") return (isTime(value) ? shiftTime(value, seconds) : value) as Value;
+  if (typeof value === "string") {
+    return (
+      isTime(value) ? shiftTime(value, seconds) : withProbeTimes(value, (time) => shiftTime(time, seconds))
+    ) as Value;
+  }
   if (Array.isArray(value)) return value.map((item) => shiftTimes(item, seconds)) as Value;
   if (isRecord(value)) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, shiftTimes(item, seconds)])) as Value;
@@ -157,9 +200,12 @@ export function shiftTimes<Value>(value: Value, seconds: number): Value {
   return value;
 }
 
-// The paths of the strings that hold a time inside a text, which no shift reaches.
+// The paths of the strings that hold a time inside a text, which no shift reaches: every time but the one after the
+// words of PROBE_TIME_WORDS, which a shift moves.
 export function timesInsideText(value: unknown, path = ""): string[] {
-  if (typeof value === "string") return !isTime(value) && TIME_INSIDE.test(value) ? [path] : [];
+  if (typeof value === "string") {
+    return !isTime(value) && TIME_INSIDE.test(withProbeTimes(value, () => "")) ? [path] : [];
+  }
   if (Array.isArray(value)) return value.flatMap((item, index) => timesInsideText(item, `${path}[${index}]`));
   if (isRecord(value)) return Object.entries(value).flatMap(([key, item]) => timesInsideText(item, `${path}.${key}`));
   return [];
@@ -241,17 +287,39 @@ function observedGenerations(value: unknown, change?: (generation: number) => nu
   });
 }
 
+// The kinds whose status observes generations of other objects than itself, and whose own observed generation is
+// `status.observedGeneration` alone: a TenantControlPlane copies the status of its Deployment, with the generation of
+// that Deployment, one above its own in every settled state, and the conditions of its Service (SPEC-0028, P6).
+const OWN_OBSERVED_GENERATION_ONLY = new Set(["kamaji.clastix.io/TenantControlPlane"]);
+
+// The generations that the status of an object observed of itself, changed by `change` when it is given.
+function ownObservedGenerations(object: KubeObject, change?: (generation: number) => number): number[] {
+  if (!OWN_OBSERVED_GENERATION_ONLY.has(`${groupOf(object.apiVersion)}/${object.kind}`)) {
+    return observedGenerations(object.status, change);
+  }
+
+  const status = object.status;
+
+  if (!isRecord(status) || typeof status.observedGeneration !== "number") return [];
+
+  const observed = status.observedGeneration;
+
+  if (change) status.observedGeneration = change(observed);
+  return [observed];
+}
+
 // The generation of an object kept as an offset too: the lowest generation that the first tier can give it,
 // 1, or 2 for a deleting object, whose deletion the API server counts as a change, raised by the distance
 // from its generation to the lowest one its status observed; every observed generation moves with it, so
 // that each one is as far from the generation as in the capture. A generation of 1 is left out, as the API
-// server writes it on creation.
+// server writes it on creation. Of a kind of OWN_OBSERVED_GENERATION_ONLY, only its own observed generation is read
+// and moved, and every other is kept as captured.
 export function normalizeGeneration(object: KubeObject): void {
   const generation = object.metadata.generation;
 
   if (generation === undefined) return;
 
-  const observed = observedGenerations(object.status);
+  const observed = ownObservedGenerations(object);
   const lowest = Math.min(generation, ...observed);
 
   ensure(
@@ -261,7 +329,7 @@ export function normalizeGeneration(object: KubeObject): void {
 
   const normalized = Math.max(object.metadata.deletionTimestamp ? 2 : 1, 1 + generation - lowest);
 
-  observedGenerations(object.status, (value) => value + normalized - generation);
+  ownObservedGenerations(object, (value) => value + normalized - generation);
   if (normalized === 1) delete object.metadata.generation;
   else object.metadata.generation = normalized;
 }
@@ -287,6 +355,32 @@ const HOST_CAPACITY_KINDS = new Set([
 // Whether an object is of a kind whose status holds the capacity of the Docker host.
 export function holdsHostCapacity(object: KubeObject): boolean {
   return HOST_CAPACITY_KINDS.has(`${groupOf(object.apiVersion)}/${object.kind}`);
+}
+
+// The value that a fixture gives every checksum in the status of a TenantControlPlane, in place of the one that Kamaji
+// computed from the content of a Secret or of a ConfigMap of the tenant, which no fixture holds and nothing reads; the
+// names of those Secrets and ConfigMaps stay (SPEC-0028, P6).
+export const FIXTURE_CHECKSUM = "00000000000000000000000000000000";
+
+// The kinds whose status holds checksums of the content of Secrets and of ConfigMaps.
+const CHECKSUM_KINDS = new Set(["kamaji.clastix.io/TenantControlPlane"]);
+
+// Whether an object is of a kind whose status holds checksums of Secrets and of ConfigMaps.
+export function holdsChecksums(object: KubeObject): boolean {
+  return CHECKSUM_KINDS.has(`${groupOf(object.apiVersion)}/${object.kind}`);
+}
+
+// Every checksum of a value, a string that is not empty under a key named checksum, given FIXTURE_CHECKSUM.
+function withFixedChecksums(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) withFixedChecksums(item);
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "checksum" && typeof item === "string" && item !== "") value[key] = FIXTURE_CHECKSUM;
+    else withFixedChecksums(item);
+  }
 }
 
 // Replaces what the machine of the capture tells of itself, and nothing else: the kernel and the boot in the
@@ -335,6 +429,7 @@ export function cleanObject(captured: KubeObject, seconds: number): { object: Ku
   for (const owner of metadata.ownerReferences ?? []) delete owner.uid;
   normalizeGeneration(object);
   withoutTheHost(object);
+  if (holdsChecksums(object)) withFixedChecksums(object.status);
 
   const path = KUBEADM_CONFIGURATIONS[`${groupOf(object.apiVersion)}/${object.kind}`];
   const leftOut = path ? leaveOutOfKubeadmConfiguration(at(object, path), path.join(".")) : [];
@@ -388,6 +483,20 @@ const GENERATION_TOGGLES: Record<string, { path: string[]; other: (value: unknow
   "infrastructure.cluster.x-k8s.io/DevMachine": {
     path: ["spec", "backend", "docker", "bootstrapTimeout"],
     other: (value) => (value === undefined ? "5m0s" : undefined),
+  },
+  // A KamajiControlPlane whose `Available` observed the generation before its own, as when Kamaji refuses the version
+  // of its spec (SPEC-0028, P8): the schema of `spec.dataStoreSchema` is a string, with no rule and no default
+  // (provider:config/crd/bases/controlplane.cluster.x-k8s.io_kamajicontrolplanes.yaml:1182-1185).
+  "controlplane.cluster.x-k8s.io/KamajiControlPlane": {
+    path: ["spec", "dataStoreSchema"],
+    other: (value) => (value === undefined ? "test-environment" : undefined),
+  },
+  // A TenantControlPlane whose own `status.observedGeneration` is behind its generation: the schema of
+  // `spec.dataStoreOverrides` is a list, with no rule and no default
+  // (kamaji:charts/kamaji/crds/kamaji.clastix.io_tenantcontrolplanes.yaml:8739-8751).
+  "kamaji.clastix.io/TenantControlPlane": {
+    path: ["spec", "dataStoreOverrides"],
+    other: (value) => (value === undefined ? [] : undefined),
   },
 };
 

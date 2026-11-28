@@ -9,10 +9,12 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { assertDigest, sha256 } from "./checks.mts";
-import { CLUSTER_API_ASSETS, CLUSTER_API_SOURCES } from "./pins.mts";
+import { assertDigest, ensure, sha256 } from "./checks.mts";
+import { CLUSTER_API_ASSETS, CLUSTER_API_SOURCES, KAMAJI_PROVIDER_ASSETS } from "./pins.mts";
 
 import type { ClusterApiAsset, ClusterApiSource, Pins } from "./pins.mts";
+
+type KamajiProviderAsset = (typeof KAMAJI_PROVIDER_ASSETS)[number];
 
 // A pinned file: what the scripts call it, its URL, its copy in the cache, and its SHA-256.
 export interface PinnedFile {
@@ -98,6 +100,75 @@ export function sveltosChart(pins: Pins, downloads: string): PinnedFile {
   };
 }
 
+// An asset of the release of the Kamaji control plane provider (SPEC-0028, P3).
+export function kamajiProviderAsset(pins: Pins, downloads: string, asset: KamajiProviderAsset): PinnedFile {
+  const { version, assets } = pins.kamajiProvider;
+
+  return {
+    name: `${asset} of the Kamaji control plane provider ${version}`,
+    url: `https://github.com/clastix/cluster-api-control-plane-provider-kamaji/releases/download/${version}/${asset}`,
+    file: join(downloads, "cluster-api-control-plane-provider-kamaji", version, asset),
+    digest: assets[asset],
+    executable: false,
+  };
+}
+
+// A file of the chart of Kamaji, by its path in the source at the commit of its tag, since the chart names no release
+// of its own (SPEC-0028, P3).
+export function kamajiChartFile(pins: Pins, downloads: string, path: string): PinnedFile {
+  const { commit, chart } = pins.kamaji;
+  const digest = chart[path];
+
+  ensure(digest, `${path} is not a file of the chart of Kamaji that the pins hold`);
+  return {
+    name: `${path} of Kamaji at ${commit.slice(0, 12)}`,
+    url: `https://raw.githubusercontent.com/clastix/kamaji/${commit}/${path}`,
+    file: join(downloads, "kamaji", commit, path),
+    digest,
+    executable: false,
+  };
+}
+
+// The archive of the subchart kamaji-etcd, as the repository that the Chart.lock of the chart of Kamaji names publishes
+// it, which `helm dependency build` downloads (SPEC-0028, P3).
+export function kamajiEtcdChart(pins: Pins, downloads: string): PinnedFile {
+  const { version, sha256 } = pins.kamajiEtcd;
+
+  return {
+    name: `the chart kamaji-etcd ${version}`,
+    url: `https://clastix.github.io/charts/kamaji-etcd-${version}.tgz`,
+    file: join(downloads, "kamaji-etcd", version, `kamaji-etcd-${version}.tgz`),
+    digest: sha256,
+    executable: false,
+  };
+}
+
+// The manifest of MetalLB at its tag (SPEC-0028, P3).
+export function metallbManifest(pins: Pins, downloads: string): PinnedFile {
+  const { version, sha256 } = pins.metallb;
+
+  return {
+    name: `metallb-native.yaml of MetalLB ${version}`,
+    url: `https://raw.githubusercontent.com/metallb/metallb/${version}/config/manifests/metallb-native.yaml`,
+    file: join(downloads, "metallb", version, "metallb-native.yaml"),
+    digest: sha256,
+    executable: false,
+  };
+}
+
+// helm for Linux on amd64, the one system of the cluster of the captures, as its project publishes it (SPEC-0028, P3).
+export function helmArchive(pins: Pins, downloads: string): PinnedFile {
+  const { version, sha256 } = pins.helm;
+
+  return {
+    name: `helm ${version} for Linux on amd64`,
+    url: `https://get.helm.sh/helm-${version}-linux-amd64.tar.gz`,
+    file: join(downloads, "helm", version, `helm-${version}-linux-amd64.tar.gz`),
+    digest: sha256,
+    executable: false,
+  };
+}
+
 // Every file that the pins name, once each.
 export function everyPinnedFile(pins: Pins, downloads: string): PinnedFile[] {
   return [
@@ -107,6 +178,11 @@ export function everyPinnedFile(pins: Pins, downloads: string): PinnedFile[] {
     certManagerComponents(pins, downloads),
     sveltosExtensionPackage(pins, downloads),
     sveltosChart(pins, downloads),
+    ...KAMAJI_PROVIDER_ASSETS.map((asset) => kamajiProviderAsset(pins, downloads, asset)),
+    ...Object.keys(pins.kamaji.chart).map((path) => kamajiChartFile(pins, downloads, path)),
+    kamajiEtcdChart(pins, downloads),
+    metallbManifest(pins, downloads),
+    helmArchive(pins, downloads),
   ];
 }
 
