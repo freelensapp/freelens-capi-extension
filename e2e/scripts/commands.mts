@@ -35,7 +35,7 @@ import { cpus, homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { filesOfTarball } from "./archives.mts";
-import { assertKindNode, assertLocalDocker, ensure, localApiServer, sha256, workloadContainerIds } from "./checks.mts";
+import { assertKindNode, assertLocalDocker, ensure, localApiServer, workloadContainerIds } from "./checks.mts";
 import {
   certManagerComponents,
   everyPinnedFile,
@@ -85,6 +85,7 @@ import {
   assertChartDependencies,
   ciRun,
   describedClusterRow,
+  digestLines,
   KAMAJI_CLUSTER,
   KAMAJI_STATES,
   kamajiReadme,
@@ -1753,8 +1754,8 @@ export const CAPTURE_LEAVES_OUT = `The states of the captures of Kamaji, ${KAMAJ
 
 // Brings workload clusters of the cluster of the captures into the states of the Kamaji captures (SPEC-0028, P5 to P7),
 // one at a time, since the pool of MetalLB has one address, each in its own namespace, with its helper Cluster for
-// `kamaji-provisioning`, writes the objects of each one into its fixture set, with the SHA-256 of each file in the
-// README and in the log, and deletes them. It refuses a cluster of the captures whose providers are not those of the
+// `kamaji-provisioning`, writes the objects of each one into its fixture set, with the SHA-256 of each YAML file in its
+// README and of every file of the set in the log, and deletes them. It refuses a cluster of the captures whose providers are not those of the
 // pins, at their releases, and nothing else. A capture that fails is reported after the others, and makes the command
 // fail; its fixture set stays as it was.
 async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
@@ -1831,10 +1832,7 @@ async function captureKamaji(states: readonly KamajiState[]): Promise<void> {
         kamajiReadme(state, objects, leftOut, { versions, run, row, files }),
       );
 
-      for (const [file, text] of written) {
-        if (file.endsWith(".yaml"))
-          console.log(`${sha256(Buffer.from(text))}  ${FIXTURES_FOLDER}/${state.name}/${file}`);
-      }
+      for (const line of digestLines(state, written)) console.log(line);
     } catch (error) {
       failures.push(`${state.name}: ${message(error)}`);
       console.error(`${state.namespace}: the capture failed: ${message(error)}`);

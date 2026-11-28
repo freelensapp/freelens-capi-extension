@@ -10,7 +10,7 @@
 // no other command knows these states.
 
 import { assertDigest, ensure, sha256 } from "./checks.mts";
-import { CAPTURE_TIME, FIXTURE_FINALIZER, PROBE_TIME_WORDS } from "./fixtures.mts";
+import { CAPTURE_TIME, FIXTURE_FINALIZER, FIXTURES_FOLDER, PROBE_TIME_WORDS } from "./fixtures.mts";
 import { kamajiCluster, podQuota } from "./manifests.mts";
 import {
   condition,
@@ -743,6 +743,13 @@ export function kamajiReadme(
     paragraph("The SHA-256 of each YAML file of the set, as the capture wrote it:"),
     [...files.entries()].map(([file, text]) => `- \`${file}\`: \`${sha256(Buffer.from(text))}\``).join("\n"),
   ].join("\n\n")}\n`;
+}
+
+// The lines of the log of a capture that record the files of a Kamaji set as it wrote them, its README among them: the
+// SHA-256 of each and its path, as `sha256sum` prints them, which the review of the pull request that commits the sets
+// compares with the digests of each README (P7, P8).
+export function digestLines(state: { name: string }, written: ReadonlyMap<string, string>): string[] {
+  return [...written].map(([file, text]) => `${sha256(Buffer.from(text))}  ${FIXTURES_FOLDER}/${state.name}/${file}`);
 }
 
 // The cells of the row of `clusterctl describe cluster` and the SHA-256 of each file that the README of a Kamaji set

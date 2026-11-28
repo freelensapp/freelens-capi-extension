@@ -431,8 +431,8 @@ that captured it, what the capture changed and left out, the six cells of the
 row of its Cluster that `clusterctl describe cluster` printed, REPLICAS,
 AVAILABLE, READY, UP TO DATE, STATUS and REASON, each read by the column that
 the header names, a cell that the tool leaves empty written `empty`, and the
-SHA-256 of each of its YAML files as the capture wrote them, which the log of
-the capture prints too.
+SHA-256 of each of its YAML files as the capture wrote them. The log of the
+capture prints the SHA-256 of every file of the set, its README among them.
 
 ### The large Cluster of the session of the tree
 

@@ -3161,7 +3161,10 @@ item above, and these were decided while implementing it:
   that takes it, and `capture` says, as it starts, that it leaves them out. The
   artifact of the workflow names the nine folders one by one, with
   `if-no-files-found: error`, and a step prints the SHA-256 of each file of the
-  sets from outside the scripts, besides the scripts.
+  sets from outside the scripts, besides the scripts, which print it as they
+  write each file, the README of each set among them, so that a README changed
+  after the capture shows when the review compares the digests with the log
+  (P8).
 - Decided while implementing: the job of the workflow of the captures runs only
   when the dispatch names another branch than `main`, which the form of a
   dispatch names first, so that it never runs on `main`, a dispatch included; a

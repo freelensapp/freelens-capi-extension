@@ -103,6 +103,7 @@ import {
   assertChartDependencies,
   ciRun,
   describedClusterRow,
+  digestLines,
   KAMAJI_CLUSTER,
   KAMAJI_STATES,
   kamajiReadme,
@@ -3671,6 +3672,18 @@ describe("the README of a Kamaji set", () => {
     expect(kamajiReadme(state, objects, [], { versions, run: undefined, row, files })).toContain("Captured outside CI");
   });
 
+  it("is recorded in the log with every file of its set, as the capture wrote them (SPEC-0028, P7)", () => {
+    const written = new Map([
+      ["cluster.yaml", "kind: Cluster\n"],
+      ["README.md", "# A Cluster of Kamaji, healthy\n"],
+    ]);
+
+    expect(digestLines(state, written)).toEqual([
+      `${sha256(Buffer.from("kind: Cluster\n"))}  integration/fixtures/kamaji-healthy/cluster.yaml`,
+      `${sha256(Buffer.from("# A Cluster of Kamaji, healthy\n"))}  integration/fixtures/kamaji-healthy/README.md`,
+    ]);
+  });
+
   it("takes the run of CI from the variables of GitHub Actions alone", () => {
     expect(
       ciRun({
@@ -5007,6 +5020,10 @@ describe("the workflow of the captures of Kamaji", () => {
     expect(captureWorkflowProblems(workflow)).toEqual([]);
     expect(workflow).toContain("pnpm e2e:cluster:up:kamaji");
     expect(workflow).toContain("pnpm e2e:fixtures:capture:kamaji all");
+    // The digest of every file of the sets, their READMEs among them, from outside the scripts.
+    expect(workflow).toContain(
+      "run: find integration/fixtures -path 'integration/fixtures/kamaji-*' -type f | sort | xargs sha256sum\n",
+    );
     expect(workflow).toMatch(/run: pnpm e2e:cluster:down\n/);
     expect(workflow).toMatch(/timeout-minutes: 60\n/);
   });

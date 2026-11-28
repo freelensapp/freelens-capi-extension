@@ -95,10 +95,10 @@ jobs:
       - name: Capture the Kamaji states
         run: pnpm e2e:fixtures:capture:kamaji all
 
-      # The record of the files, which the review of the pull request that commits the sets compares with the digests of
-      # each README, from outside the scripts.
+      # The record of every file of the sets, their READMEs among them, which the review of the pull request that commits
+      # the sets compares with the digests of each README, from outside the scripts.
       - name: Print the SHA-256 of each file of the sets
-        run: find integration/fixtures -path 'integration/fixtures/kamaji-*' -type f -name '*.yaml' | sort | xargs sha256sum
+        run: find integration/fixtures -path 'integration/fixtures/kamaji-*' -type f | sort | xargs sha256sum
 
       - name: Upload the sets
         uses: actions/upload-artifact@v7
