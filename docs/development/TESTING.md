@@ -164,20 +164,20 @@ file checked against its pin (SPEC-0028, P3):
 
 Before any worker joins a tenant, it gives the host the value of
 `net.netfilter.nf_conntrack_max` that kube-proxy computes, 32768 for each
-processor and 131072 at least, with `sudo -n sysctl`, when the host has
-another: the kube-proxy of a tenant writes it whenever it differs, which the
-container of a worker may not do, and no worker then becomes ready (SPEC-0028,
-P3, L4). Once it is set, the value that the host had is recorded in the state
-folder, the first time alone, and `pnpm e2e:cluster:down` gives it back, with
-no sudo when the host holds it already, as after a reboot, also when it stops
-before it deletes anything because Docker is not the local one or does not
-answer, or kind cannot list its clusters. A value that the scripts cannot set
-stops the command with the command that sets it, and leaves no record; a value
-that `down` cannot give back makes it fail and keep the record, with the command
-that gives it back, after which `down` forgets it. Like `up`, it raises the
-limits of inotify. Run again, it resumes: it uses the kind cluster that it created, and
-installs only the providers missing from the inventory, which must be those of
-the pins at their releases, and nothing else.
+processor and 131072 at least, with `sudo -n sysctl`, when the host has another:
+the kube-proxy of a tenant writes it whenever it differs, which the container of
+a worker may not do, and no worker then becomes ready (SPEC-0028, P3, L4). Once
+it is set, the value that the host had is recorded in the state folder, the
+first time alone, and `pnpm e2e:cluster:down` gives it back, with no sudo when
+the host holds it already, as after a reboot, also when it stops before it
+deletes anything because Docker is not the local one or does not answer, or kind
+cannot list its clusters. A value that the scripts cannot set stops the command
+with the command that sets it, and leaves no record; a value that `down` cannot
+give back makes it fail and keep the record, with the command that gives it
+back, after which `down` forgets it. Like `up`, it raises the limits of inotify.
+Run again, it resumes: it uses the kind cluster that it created, and installs
+only the providers missing from the inventory, which must be those of the pins
+at their releases, and nothing else.
 
 ### Commands
 
@@ -400,17 +400,17 @@ when it has one, is a MachineDeployment of one replica of the development
 provider at the same version, with kindnet. Before the first state the command
 waits for every Deployment of the controllers of the cluster, starts the Kamaji
 control plane provider again once the cluster serves TenantControlPlanes, so
-that it watches them however the node of the cluster started, refusing a
-cluster where it finds no Deployment of that provider, and waits until
-their webhooks answer a server-side dry run of the objects of a Cluster, which
-stores nothing. Each state is read once its check holds, two readings agree,
-and a third one agrees with them after `clusterctl describe cluster` of its
-Cluster, run with the pinned clusterctl and its default flags: when an object
-changed meanwhile, or clusterctl or that reading failed, the readings start
-again; a state that can no longer be reached stops its capture at once, and one
-that is not reached in time fails it. The capture of each state removes its workload cluster before
-and after it, the helper Cluster with that of `kamaji-provisioning`, its quota
-with its namespace, and the finalizer of the scripts first.
+that it watches them however the node of the cluster started, refusing a cluster
+where it finds no Deployment of that provider, and waits until their webhooks
+answer a server-side dry run of the objects of a Cluster, which stores nothing.
+Each state is read once its check holds, two readings agree, and a third one
+agrees with them after `clusterctl describe cluster` of its Cluster, run with
+the pinned clusterctl and its default flags: when an object changed meanwhile,
+or clusterctl or that reading failed, the readings start again; a state that can
+no longer be reached stops its capture at once, and one that is not reached in
+time fails it. The capture of each state removes its workload cluster before and
+after it, the helper Cluster with that of `kamaji-provisioning`, its quota with
+its namespace, and the finalizer of the scripts first.
 
 A capture reads the kinds of the fixtures and the two kinds of Kamaji, never a
 Secret, a ConfigMap, a Deployment, a Service, a Pod or the DataStore, and
@@ -678,17 +678,17 @@ extension that the profile of Freelens dev has, and leaves none.
   of each file of their sets, which the scripts print as they write them too,
   uploads the folders of the Kamaji sets as an artifact of the run, then runs
   `pnpm e2e:cluster:down` and checks that no kind cluster and no container of
-  the scripts is left. GitHub dispatches a workflow only once its file is on
-  the default branch, and the run takes the workflow and the scripts of the
-  branch that the dispatch names; the form of a dispatch names `main` first,
-  and a run dispatched there skips the job. The pull request that commits the
-  sets compares the digests of each README with those of its log, the one
-  record that tells a file changed with its digest from the file captured. The job has 60 minutes, about twice what it takes from the times of
-  the probes of SPEC-0028 on a machine at hand, a limit revised from the
-  durations of its runs. The images of the provider, of Kamaji, of
-  `clastix/kubectl` and of kindnet come from Docker Hub, which limits the pulls
-  with no login: a pull that it refuses fails the job, which is dispatched again
-  once the limit has reset.
+  the scripts is left. GitHub dispatches a workflow only once its file is on the
+  default branch, and the run takes the workflow and the scripts of the branch
+  that the dispatch names; the form of a dispatch names `main` first, and a run
+  dispatched there skips the job. The pull request that commits the sets
+  compares the digests of each README with those of its log, the one record that
+  tells a file changed with its digest from the file captured. The job has 60
+  minutes, about twice what it takes from the times of the probes of SPEC-0028
+  on a machine at hand, a limit revised from the durations of its runs. The
+  images of the provider, of Kamaji, of `clastix/kubectl` and of kindnet come
+  from Docker Hub, which limits the pulls with no login: a pull that it refuses
+  fails the job, which is dispatched again once the limit has reset.
 
 No workflow uploads the state folder of the scripts, a kubeconfig or a Secret,
 and none uploads any other file of a cluster but the workflow of the captures of
@@ -807,12 +807,12 @@ curl -fsSL https://get.helm.sh/helm-<version>-linux-amd64.tar.gz.sha256sum
 ```
 
 `pnpm e2e:pins:check` checks each file of the pin of Kamaji against its digest,
-and two ties of that pin are checked by hand, with the first two commands of
-the Kamaji chart above, whenever it changes: that its commit is the one of the
-tag of its version, since the version names the image that helm installs and
-the commit the files of the chart; and that its files are every file of
-`charts/kamaji` at that commit, since a file left out of the pins is left out
-of the chart that helm installs.
+and two ties of that pin are checked by hand, with the two commands of the
+commit and of the files of the chart above, whenever it changes: that its commit
+is the one of the tag of its version, since the version names the image that
+helm installs and the commit the files of the chart; and that its files are
+every file of `charts/kamaji` at that commit, since a file left out of the pins
+is left out of the chart that helm installs.
 
 ## Safety
 
