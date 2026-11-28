@@ -19,7 +19,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { Mark, Time } from "../../common/views/cluster-cells";
 
 const {
-  Component: { Badge, LocaleDate, ReactiveDuration },
+  Component: { Badge, LocaleDate, ReactiveDuration, Spinner },
 } = Renderer;
 
 // The time that a mark started, as a duration, or N/A for a time that the project wrote and that is not valid.
@@ -120,4 +120,10 @@ export function MarksCell({ children, tooltip, className, "data-testid": testId 
 // A note next to the marks of a cell, such as the count of the MachinePools of unknown health.
 export function MarkNote({ children }: { children: ReactNode }) {
   return <span className={styles.note}>{children}</span>;
+}
+
+// The spinner of the host in a cell of marks, for a part of the cell that still waits for its inputs: a note of the
+// cell, which stands apart from the parts next to it and at the middle of the line, as the other notes do.
+export function MarkSpinner({ "data-testid": testId }: { "data-testid"?: string }) {
+  return <Spinner className={styles.note} data-testid={testId} />;
 }

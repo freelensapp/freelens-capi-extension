@@ -86,7 +86,7 @@ import {
   withReveals,
 } from "../../common/views/tree-rows";
 import { ErrorBoundary } from "../components/error-boundary";
-import { Instant, MarkLine, MarkNote, MarksCell, MarkView } from "../components/marks";
+import { Instant, MarkLine, MarkNote, MarkSpinner, MarksCell, MarkView } from "../components/marks";
 import { NoticeView } from "../components/notice";
 import { TextButton } from "../details/cluster-details-v1beta2";
 import { TreeDetailsDrawer } from "../details/tree-details-drawer";
@@ -244,7 +244,7 @@ function ConditionCellView({ condition }: { condition: ConditionView }) {
 
   return (
     <MarksCell className={styles.content} tooltip={tooltip} data-testid="capi-tree-condition">
-      {own?.form === "pending" ? <Spinner /> : null}
+      {own?.form === "pending" ? <MarkSpinner /> : null}
       {own?.form === "health" && own.cell.mark !== undefined ? (
         <MarkView mark={own.cell.mark} data-testid="capi-tree-health" />
       ) : null}
@@ -256,7 +256,7 @@ function ConditionCellView({ condition }: { condition: ConditionView }) {
       ) : null}
       {own?.form === "words" ? <MarkNote>{own.words.text}</MarkNote> : null}
       {counts === undefined ? null : counts.form === "pending" ? (
-        <Spinner data-testid="capi-tree-counts-spinner" />
+        <MarkSpinner data-testid="capi-tree-counts-spinner" />
       ) : (
         <MarkNote>
           <span data-testid="capi-tree-counts">{counts.text}</span>
